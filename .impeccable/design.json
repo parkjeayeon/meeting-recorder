@@ -205,7 +205,7 @@
       "accent": {
         "role": "primary",
         "displayName": "Live Vermilion",
-        "canonical": "#d9431f",
+        "canonical": "#c83a1a",
         "tonalRamp": [
           "#1d0200",
           "#460b01",
@@ -223,7 +223,7 @@
       "accent-hover": {
         "role": "primary",
         "displayName": "Vermilion Pressed",
-        "canonical": "#c33a19",
+        "canonical": "#b33317",
         "tonalRamp": [
           "#1d0100",
           "#460b00",
@@ -259,7 +259,7 @@
       "accent-wash": {
         "role": "primary",
         "displayName": "Vermilion Wash",
-        "canonical": "rgba(217, 67, 31, 0.09)",
+        "canonical": "rgba(200, 58, 26, 0.09)",
         "tonalRamp": [
           "#1d0200",
           "#460b01",
@@ -277,7 +277,7 @@
       "accent-wash-2": {
         "role": "primary",
         "displayName": "Vermilion Wash Strong",
-        "canonical": "rgba(217, 67, 31, 0.16)",
+        "canonical": "rgba(200, 58, 26, 0.16)",
         "tonalRamp": [
           "#1d0200",
           "#460b01",
@@ -295,7 +295,7 @@
       "ok": {
         "role": "status",
         "displayName": "Ready Green",
-        "canonical": "#1f8a5b",
+        "canonical": "#1a7a50",
         "tonalRamp": [
           "#000f06",
           "#032c1a",
@@ -313,7 +313,7 @@
       "focus": {
         "role": "primary",
         "displayName": "Focus Ring",
-        "canonical": "rgba(217, 67, 31, 0.5)",
+        "canonical": "rgba(200, 58, 26, 0.5)",
         "tonalRamp": [
           "#1d0200",
           "#460b01",
@@ -1065,7 +1065,7 @@
       "refersTo": "button-record",
       "description": "셸 상단 막대의 회의 녹음 버튼. 녹음 중에는 주홍 물 바탕으로 바뀐다.",
       "html": "<div style=\"display:flex;gap:8px\"><button class=\"ds-rec\"><svg viewBox=\"0 0 20 20\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\"><circle cx=\"10\" cy=\"10\" r=\"6.5\"/><circle cx=\"10\" cy=\"10\" r=\"3\" fill=\"currentColor\" stroke=\"none\"/></svg>회의 녹음</button><button class=\"ds-rec on\"><svg viewBox=\"0 0 20 20\" width=\"16\" height=\"16\"><rect x=\"5.5\" y=\"5.5\" width=\"9\" height=\"9\" rx=\"2\" fill=\"currentColor\"/></svg>녹음 중지</button></div>",
-      "css": ".ds-rec { display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 12px; border:1px solid var(--accent,#d9431f); border-radius:8px; background:var(--accent,#d9431f); color:var(--accent-ink,#fff); font:550 13px/1 Pretendard,-apple-system,sans-serif; cursor:pointer; transition:background-color .12s ease-out,border-color .12s ease-out; } .ds-rec:hover { background:var(--accent-hover,#c33a19); border-color:var(--accent-hover,#c33a19); } .ds-rec.on { background:var(--accent-wash,rgba(217,67,31,.09)); border-color:var(--accent-wash-2,rgba(217,67,31,.16)); color:var(--accent,#d9431f); } .ds-rec:focus-visible { outline:2px solid var(--focus,rgba(217,67,31,.5)); outline-offset:2px; }"
+      "css": ".ds-rec { display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 12px; border:1px solid var(--accent,#c83a1a); border-radius:8px; background:var(--accent,#c83a1a); color:var(--accent-ink,#fff); font:550 13px/1 Pretendard,-apple-system,sans-serif; cursor:pointer; transition:background-color .12s ease-out,border-color .12s ease-out; } .ds-rec:hover { background:var(--accent-hover,#b33317); border-color:var(--accent-hover,#b33317); } .ds-rec.on { background:var(--accent-wash,rgba(217,67,31,.09)); border-color:var(--accent-wash-2,rgba(217,67,31,.16)); color:var(--accent,#c83a1a); } .ds-rec:focus-visible { outline:2px solid var(--focus,rgba(217,67,31,.5)); outline-offset:2px; }"
     },
     {
       "name": "Search Input",
@@ -1105,7 +1105,7 @@
       "refersTo": "script-line-playing",
       "description": "시각·화자·발화 세 열. 재생 중인 줄은 주홍 물 바탕, 시각은 주홍.",
       "html": "<div class=\"ds-script\"><div class=\"ds-sline\"><button class=\"ds-stime\">09:52</button><span class=\"ds-who\"><i style=\"background:#eda100\"></i>화자 2</span><span class=\"ds-said\">왜냐하면 그냥 그림판에다 그림 그리는 거잖아.</span></div><div class=\"ds-sline playing\"><button class=\"ds-stime\">10:06</button><span class=\"ds-who\"><i style=\"background:#2a78d6\"></i>화자 1</span><span class=\"ds-said\">그리고 지금 당장 같은 경우에는 기획 인력들이 필요해요.</span></div></div>",
-      "css": ".ds-script { width:620px; font-family:Pretendard,-apple-system,sans-serif; color:var(--ink,#15171a); } .ds-sline { display:grid; grid-template-columns:60px 92px 1fr; gap:12px; padding:7px 10px; border-radius:9px; align-items:baseline; } .ds-sline:hover { background:var(--panel-2,#f6f7f9); } .ds-sline.playing { background:var(--accent-wash,rgba(217,67,31,.09)); } .ds-stime { border:0; background:none; padding:0; text-align:left; font:12px \"SF Mono\",ui-monospace,monospace; color:var(--ink-3,#6b727c); cursor:pointer; } .ds-stime:hover, .ds-sline.playing .ds-stime { color:var(--accent,#d9431f); } .ds-stime:hover { text-decoration:underline; text-underline-offset:3px; } .ds-who { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:650; color:var(--ink-2,#4a5059); } .ds-who i { width:8px; height:8px; border-radius:50%; } .ds-said { font-size:14.5px; line-height:1.65; }"
+      "css": ".ds-script { width:620px; font-family:Pretendard,-apple-system,sans-serif; color:var(--ink,#15171a); } .ds-sline { display:grid; grid-template-columns:60px 92px 1fr; gap:12px; padding:7px 10px; border-radius:9px; align-items:baseline; } .ds-sline:hover { background:var(--panel-2,#f6f7f9); } .ds-sline.playing { background:var(--accent-wash,rgba(217,67,31,.09)); } .ds-stime { border:0; background:none; padding:0; text-align:left; font:12px \"SF Mono\",ui-monospace,monospace; color:var(--ink-3,#6b727c); cursor:pointer; } .ds-stime:hover, .ds-sline.playing .ds-stime { color:var(--accent,#c83a1a); } .ds-stime:hover { text-decoration:underline; text-underline-offset:3px; } .ds-who { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:650; color:var(--ink-2,#4a5059); } .ds-who i { width:8px; height:8px; border-radius:50%; } .ds-said { font-size:14.5px; line-height:1.65; }"
     },
     {
       "name": "Switch",
@@ -1121,7 +1121,7 @@
       "refersTo": "accent",
       "description": "다듬기 교정 부호: 지운 말 주홍 취소선, 더한 말 주홍 밑줄.",
       "html": "<p class=\"ds-marks\">회의는 <del>3시에, 아니</del> <ins>4시에</ins> 시작합니다.</p>",
-      "css": ".ds-marks { font:14.5px/1.6 Pretendard,-apple-system,sans-serif; color:var(--ink,#15171a); } .ds-marks del { text-decoration:line-through; text-decoration-color:var(--accent,#d9431f); text-decoration-thickness:1.5px; color:var(--ink-3,#6b727c); } .ds-marks ins { text-decoration:underline; text-decoration-color:var(--accent,#d9431f); text-decoration-thickness:1.5px; text-underline-offset:3px; }"
+      "css": ".ds-marks { font:14.5px/1.6 Pretendard,-apple-system,sans-serif; color:var(--ink,#15171a); } .ds-marks del { text-decoration:line-through; text-decoration-color:var(--accent,#c83a1a); text-decoration-thickness:1.5px; color:var(--ink-3,#6b727c); } .ds-marks ins { text-decoration:underline; text-decoration-color:var(--accent,#c83a1a); text-decoration-thickness:1.5px; text-underline-offset:3px; }"
     }
   ],
   "narrative": {
