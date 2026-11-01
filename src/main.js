@@ -76,9 +76,15 @@ let handsfreeMode = null;
 let fnDownAt = 0;
 let ignoreNextUp = false;
 let dictationStartAt = 0;
+let memoStopping = false; // 받아쓰기를 멈추고 파일을 넘기는 사이 (이때부터 입력이 끝날 때까지는 처리 중)
+let lastBusyNotice = 0;
 let tapTimer = null;
 
 function command(action, mode) {
+  if (action === 'stop' && recording?.mode === 'memo') {
+    memoStopping = true;
+    setTimeout(() => (memoStopping = false), 5000); // 창 쪽에서 멈추기에 실패해도 fn이 막혀 있지 않게
+  }
   send('rec:cmd', { action, mode });
 }
 
@@ -87,8 +93,20 @@ function command(action, mode) {
 // - 0.5초 안에 뗐다면 0.5초 더 기다렸다가 두 번째 누름이 없으면 버린다
 // - 시작 후 0.5초 안에 다시 누르면 지금 녹음을 그대로 이어서 잠금(손을 떼도 계속 듣기)
 // - 잠긴 상태에서 다시 누르면 끝내고 입력, 시작 후 0.5초 안에 세 번째로 누르면 취소
+// 앞 받아쓰기를 아직 처리하는 중이면 새로 시작하지 않는다 (Wispr Flow와 같이, 알림은 0.5초에 한 번만)
+function dictationBusy() {
+  return transcribing > 0 || memoStopping;
+}
+
 function onFnDown() {
   fnDownAt = Date.now();
+  if (fnState === 'idle' && dictationBusy()) {
+    if (fnDownAt - lastBusyNotice > DEBOUNCE_MS) sendOverlay('overlay:stage', { stage: 'busy' });
+    if (SELFTEST) console.log('SELFTEST busy-ignored');
+    lastBusyNotice = fnDownAt;
+    ignoreNextUp = true;
+    return;
+  }
   if (fnState === 'handsfree') {
     // 버튼으로 시작한 받아쓰기는 fn으로도 끝낼 수 있지만, 회의 녹음은 fn에 반응하지 않는다
     if (handsfreeMode !== 'memo') return;
@@ -231,13 +249,13 @@ function startFnListener() {
 // 셀프테스트: 실제 키 대신 fn 이벤트를 흉내 내서 상태 머신 전체를 검증
 function runFnSimulation() {
   const steps = [
-    [500, 'down'], [2000, 'up'], // 꾹 누르기 1.5초 → 받아쓰기
+    [500, 'down'], [2000, 'up+down'], [2080, 'up'], // 꾹 누르기 1.5초 → 받아쓰기, 떼자마자 다시 누름은 처리 중이라 무시
     [3000, 'down'], [3100, 'up'], // 짧은 탭 → 버림
     [4500, 'down'], [4600, 'up'], [4750, 'down'], [4850, 'up'], // 두 번 탭 → 손을 떼도 계속 받아쓰기
     [6200, 'down'], [6300, 'up'], // 한 번 더 누르면 끝내고 받아쓰기
     [7000, 'down'], [7100, 'up'], [7250, 'down'], [7350, 'up'], [7400, 'down'], [7450, 'up'], // 빠르게 세 번 → 취소
   ];
-  for (const [t, line] of steps) setTimeout(() => handleFnLine(line), t);
+  for (const [t, line] of steps) setTimeout(() => line.split('+').forEach(handleFnLine), t);
   // 회의는 버튼으로만 시작/정지하고, 녹음 중 fn은 무시돼야 한다
   setTimeout(() => uiToggle('meeting'), 9000);
   setTimeout(() => { handleFnLine('down'); handleFnLine('up'); }, 10500);
@@ -271,8 +289,11 @@ ipcMain.handle('rec:start', (_e, { mode, sampleRate, tracks, devices }) => {
   recording = { dir, mode, writers, sampleRate, devices, startedAt: new Date(), micPeak: 0, app: null, pausedMs: 0, pausedAt: null, speakers: mode === 'meeting' ? nextSpeakers : null };
   if (mode === 'meeting') nextSpeakers = null;
   if (mode === 'memo') {
-    // 받아쓰기가 너무 길어지면 20분에서 끝내고 입력한다
+    // 받아쓰기가 너무 길어지면 19분에 미리 알리고 20분에서 끝내고 입력한다
     const rec = recording;
+    setTimeout(() => {
+      if (recording === rec) sendOverlay('overlay:stage', { stage: 'limit' });
+    }, DICTATION_MAX_MS - 60 * 1000);
     setTimeout(() => {
       if (recording !== rec) return;
       command('stop');
@@ -313,6 +334,7 @@ ipcMain.on('rec:chunk', (_e, { track, samples }) => {
 });
 
 ipcMain.handle('rec:stop', (_e, { discard = false } = {}) => {
+  if (!recording || recording.mode !== 'memo' || discard) memoStopping = false;
   if (!recording) return null;
   const { dir, mode, writers, sampleRate, devices, startedAt, micPeak, speakers } = recording;
   const rec = recording;
@@ -351,6 +373,7 @@ function logDictation(entry) {
 
 async function runDictation({ dir, peak, startedAt, durationSec, rec }) {
   transcribing++;
+  memoStopping = false;
   sendOverlayState();
   const onStage = (stage) => {
     sendOverlay('overlay:stage', stage);

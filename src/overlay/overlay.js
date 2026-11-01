@@ -136,7 +136,22 @@ function showResult({ status, text, error }) {
   else done('받아쓰기 실패', error ?? '', true, 4500);
 }
 
+// 띠의 글자만 잠깐 바꿨다가 되돌린다 (처리 중에 fn을 눌렀을 때)
+let flashTimer;
+function flashLabel(text, ms = 1600) {
+  const before = label.textContent;
+  clearTimeout(flashTimer);
+  if (strip.dataset.mode === 'hidden') setStrip('done');
+  label.textContent = text;
+  flashTimer = setTimeout(() => {
+    if (strip.dataset.mode === 'done' && label.textContent === text) setStrip('hidden');
+    else if (label.textContent === text) label.textContent = before;
+  }, ms);
+}
+
 api.onStage((s) => {
+  if (s.stage === 'busy') return flashLabel('앞 받아쓰기를 입력하는 중입니다');
+  if (s.stage === 'limit') return void (label.textContent = '1분 뒤 자동으로 끝납니다');
   if (s.stage === 'done') showResult(s);
   else if (!recording) showStage(s.stage);
 });
