@@ -11,6 +11,7 @@ const minutes = require('./minutes');
 const SELFTEST = process.argv.includes('--selftest');
 const TAP_MAX_MS = 300; // 이보다 짧게 눌렀다 떼면 실수로 누른 것으로 보고 버린다
 const DEBOUNCE_MS = 500; // 두 번 누르기·짧은 탭 판단 (Wispr Flow DICTATION_DEBOUNCE_DELAY와 같은 값)
+const VOICE_RMS = 0.003; // 이 크기 이상이면 말소리로 센다 (-50dBFS, 조용한 방 잡음 -63dBFS보다 13dB 위)
 const DICTATION_MAX_MS = 20 * 60 * 1000; // 받아쓰기 한 번의 최대 길이 (Wispr Flow와 같은 20분)
 const RECORDINGS_DIR = path.join(os.homedir(), 'Documents', 'MeetingRecorder');
 // 받아쓰기는 음성을 남기지 않는다: 임시 폴더에 녹음 → 변환·입력 → 음성 삭제, 데이터만 이 파일에 한 줄씩 쌓는다
@@ -286,7 +287,7 @@ ipcMain.handle('rec:start', (_e, { mode, sampleRate, tracks, devices }) => {
   fs.mkdirSync(dir, { recursive: true });
   const writers = {};
   for (const t of tracks) writers[t] = new WavWriter(path.join(dir, `${t}.wav`), { sampleRate });
-  recording = { dir, mode, writers, sampleRate, devices, startedAt: new Date(), micPeak: 0, app: null, pausedMs: 0, pausedAt: null, speakers: mode === 'meeting' ? nextSpeakers : null };
+  recording = { dir, mode, writers, sampleRate, devices, startedAt: new Date(), micPeak: 0, voicedMs: 0, app: null, pausedMs: 0, pausedAt: null, speakers: mode === 'meeting' ? nextSpeakers : null };
   if (mode === 'meeting') nextSpeakers = null;
   if (mode === 'memo') {
     // 받아쓰기가 너무 길어지면 19분에 미리 알리고 20분에서 끝내고 입력한다
@@ -327,7 +328,11 @@ ipcMain.on('rec:chunk', (_e, { track, samples }) => {
     peak = Math.max(peak, Math.abs(pcm[i]));
     sum += pcm[i] * pcm[i];
   }
-  if (track === 'mic') recording.micPeak = Math.max(recording.micPeak, peak);
+  if (track === 'mic') {
+    recording.micPeak = Math.max(recording.micPeak, peak);
+    // 말소리 크기(-50dBFS 이상)가 들어온 시간. 딸깍 소리 하나로 Whisper가 '감사합니다'를 지어내는 것을 막는다
+    if (Math.sqrt(sum / Math.max(1, pcm.length)) > VOICE_RMS) recording.voicedMs += (pcm.length / recording.sampleRate) * 1000;
+  }
   // 플로팅 독의 레벨 막대 (100ms마다 한 칸)
   const db = 10 * Math.log10(sum / Math.max(1, pcm.length) + 1e-12);
   sendOverlay('overlay:level', { track, db });
@@ -336,7 +341,7 @@ ipcMain.on('rec:chunk', (_e, { track, samples }) => {
 ipcMain.handle('rec:stop', (_e, { discard = false } = {}) => {
   if (!recording || recording.mode !== 'memo' || discard) memoStopping = false;
   if (!recording) return null;
-  const { dir, mode, writers, sampleRate, devices, startedAt, micPeak, speakers } = recording;
+  const { dir, mode, writers, sampleRate, devices, startedAt, micPeak, voicedMs, speakers } = recording;
   const rec = recording;
   if (discard) {
     for (const w of Object.values(writers)) w.close();
@@ -356,7 +361,7 @@ ipcMain.handle('rec:stop', (_e, { discard = false } = {}) => {
   recording = null;
   updateTray();
   if (SELFTEST) console.log('SELFTEST saved', path.basename(dir), JSON.stringify(files));
-  if (mode === 'memo') runDictation({ dir, peak: micPeak, startedAt, durationSec: files.mic?.durationSec ?? 0, rec });
+  if (mode === 'memo') runDictation({ dir, peak: micPeak, voicedMs, startedAt, durationSec: files.mic?.durationSec ?? 0, rec });
   if (mode === 'meeting' && dictation.getSettings().minutes) runMinutes(dir, speakers ?? null);
   return { dir, ...meta };
 });
@@ -371,7 +376,7 @@ function logDictation(entry) {
   fs.appendFileSync(DICTATION_LOG, `${JSON.stringify(entry)}\n`);
 }
 
-async function runDictation({ dir, peak, startedAt, durationSec, rec }) {
+async function runDictation({ dir, peak, voicedMs, startedAt, durationSec, rec }) {
   transcribing++;
   memoStopping = false;
   sendOverlayState();
@@ -381,7 +386,7 @@ async function runDictation({ dir, peak, startedAt, durationSec, rec }) {
   };
   let result;
   try {
-    result = await dictation.dictate(path.join(dir, 'mic.wav'), { helperBin: helperPath('permissions'), peak, onStage });
+    result = await dictation.dictate(path.join(dir, 'mic.wav'), { helperBin: helperPath('permissions'), peak, voicedMs, onStage });
   } catch (err) {
     result = { status: 'error', error: err.message };
   }
@@ -394,6 +399,7 @@ async function runDictation({ dir, peak, startedAt, durationSec, rec }) {
     id,
     startedAt,
     durationSec,
+    voicedSec: Number((voicedMs / 1000).toFixed(2)),
     status: result.status, // pasted | no-permission | failed | silent | empty | error
     app: rec.app?.name || null,
     bundleId: rec.app?.bundleId || null,
@@ -501,7 +507,7 @@ function readDictationLog() {
         return null;
       }
     })
-    .filter((d) => d?.raw) // 말이 없었던 시도는 통계용으로만 남기고 화면에는 보이지 않는다
+    .filter((d) => d?.raw && d.status !== 'empty') // 말이 없었거나 지어낸 문장으로 걸러진 시도는 통계용으로만 남긴다
     .map((d) => ({
       id: d.id,
       mode: 'memo',

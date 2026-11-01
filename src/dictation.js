@@ -276,7 +276,10 @@ async function transcribe(wavPath, { language, vocabulary }) {
 }
 
 // Whisper가 무음·잡음에서 자주 지어내는 문장들
-const HALLUCINATIONS = [/^(감사합니다|시청해 ?주셔서 감사합니다|구독과 좋아요.*|MBC 뉴스.*|\.+|thank you\.?)$/i];
+const HALLUCINATIONS = [
+  /^(감사합니다|고맙습니다|감사드립니다|시청해 ?주셔서 감사합니다|시청해 ?주셔서 고맙습니다|다음 영상에서 만나요|구독과 좋아요.*|구독 ?좋아요.*|MBC 뉴스.*|KBS 뉴스.*|자막 제공.*|한글자막.*|\.+|thank you\.?|thanks for watching\.?)$/i,
+  /^(감사합니다[.!\s]*){2,}$/,
+];
 
 function isHallucination(text) {
   return !text || HALLUCINATIONS.some((re) => re.test(text.replace(/[.!?\s]+$/, '').trim()) || re.test(text));
@@ -320,12 +323,14 @@ async function paste(text, helperBin) {
 }
 
 // ── 전체 흐름 ───────────────────────────────────────────────────────────
-async function dictate(wavPath, { helperBin, peak, onStage = () => {} }) {
+const MIN_VOICED_MS = 300; // 말소리가 이보다 짧으면 Whisper에 넘기지 않는다
+
+async function dictate(wavPath, { helperBin, peak, voicedMs = Infinity, onStage = () => {} }) {
   const settings = getSettings();
   const timing = {};
   let t = Date.now();
   // 거의 무음이면 Whisper를 돌리지 않는다 (무음에서 문장을 지어내는 문제 방지)
-  if (peak < 0.01) return { status: 'silent' };
+  if (peak < 0.01 || voicedMs < MIN_VOICED_MS) return { status: 'silent' };
 
   onStage({ stage: 'transcribe' });
   const raw = await transcribe(wavPath, settings);
