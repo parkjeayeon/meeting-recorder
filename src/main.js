@@ -1,4 +1,5 @@
-const { app, BrowserWindow, ipcMain, session, desktopCapturer, Tray, Menu, nativeImage, shell, screen, systemPreferences, clipboard, nativeTheme } = require('electron');
+const { app, BrowserWindow, ipcMain, session, desktopCapturer, Tray, Menu, nativeImage, shell, screen, systemPreferences, clipboard, nativeTheme, protocol, dialog } = require('electron');
+const { Readable } = require('stream');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -35,7 +36,8 @@ let win;
 let overlay;
 let tray;
 let fnProc;
-let recording = null; // { dir, mode, writers: { mic, system }, startedAt, micPeak }
+let recording = null; // { dir, mode, writers: { mic, system }, startedAt, micPeak, pausedMs, pausedAt, speakers }
+let nextSpeakers = null; // 창의 시작 시트에서 고른 참석 인원 (다음 회의 녹음에 쓴다)
 let transcribing = 0; // 진행 중인 받아쓰기 수
 let quitting = false;
 
@@ -100,6 +102,50 @@ function onFnUp({ chord }) {
   fnState = 'idle';
   if (chord || Date.now() - fnDownAt < TAP_MAX_MS) command('cancel');
   else command('stop');
+}
+
+// 회의 녹음 일시정지: 그동안 들어오는 소리를 파일에 쓰지 않는다 (재개하면 바로 이어서 기록)
+function elapsedMs(rec = recording) {
+  if (!rec) return 0;
+  const now = Date.now();
+  return now - rec.startedAt - rec.pausedMs - (rec.pausedAt ? now - rec.pausedAt : 0);
+}
+
+function clockInfo() {
+  return recording ? { mode: recording.mode, paused: Boolean(recording.pausedAt), elapsedMs: elapsedMs() } : null;
+}
+
+function setPaused(on) {
+  if (!recording || recording.mode !== 'meeting' || Boolean(recording.pausedAt) === on) return;
+  if (on) recording.pausedAt = Date.now();
+  else {
+    recording.pausedMs += Date.now() - recording.pausedAt;
+    recording.pausedAt = null;
+  }
+  updateTray();
+  send('rec:clock', clockInfo());
+}
+
+// 녹음 취소: 저장하지 않고 버린다
+function uiCancel() {
+  if (!recording) return;
+  command('cancel');
+  fnState = 'idle';
+  handsfreeMode = null;
+}
+
+async function confirmCancel() {
+  if (!recording) return;
+  const min = Math.round(elapsedMs() / 60000);
+  const { response } = await dialog.showMessageBox({
+    type: 'warning',
+    buttons: ['녹음 버리기', '계속 녹음'],
+    defaultId: 1,
+    cancelId: 1,
+    message: '회의 녹음을 취소할까요?',
+    detail: `지금까지 녹음한 ${min ? `${min}분` : '내용'}이 저장되지 않고 지워집니다.`,
+  });
+  if (response === 0) uiCancel();
 }
 
 function uiToggle(mode) {
@@ -189,7 +235,8 @@ ipcMain.handle('rec:start', (_e, { mode, sampleRate, tracks, devices }) => {
   fs.mkdirSync(dir, { recursive: true });
   const writers = {};
   for (const t of tracks) writers[t] = new WavWriter(path.join(dir, `${t}.wav`), { sampleRate });
-  recording = { dir, mode, writers, sampleRate, devices, startedAt: new Date(), micPeak: 0, app: null };
+  recording = { dir, mode, writers, sampleRate, devices, startedAt: new Date(), micPeak: 0, app: null, pausedMs: 0, pausedAt: null, speakers: mode === 'meeting' ? nextSpeakers : null };
+  if (mode === 'meeting') nextSpeakers = null;
   if (mode === 'memo') {
     // 통계용: 어느 앱에 입력하려고 했는지 (fn을 누른 순간 앞에 있던 앱)
     const rec = recording;
@@ -207,7 +254,7 @@ ipcMain.handle('rec:start', (_e, { mode, sampleRate, tracks, devices }) => {
 
 ipcMain.on('rec:chunk', (_e, { track, samples }) => {
   const w = recording?.writers[track];
-  if (!w) return;
+  if (!w || recording.pausedAt) return;
   const pcm = new Float32Array(samples.buffer, samples.byteOffset, samples.length);
   w.append(pcm);
   let peak = 0;
@@ -224,7 +271,7 @@ ipcMain.on('rec:chunk', (_e, { track, samples }) => {
 
 ipcMain.handle('rec:stop', (_e, { discard = false } = {}) => {
   if (!recording) return null;
-  const { dir, mode, writers, sampleRate, devices, startedAt, micPeak } = recording;
+  const { dir, mode, writers, sampleRate, devices, startedAt, micPeak, speakers } = recording;
   const rec = recording;
   if (discard) {
     for (const w of Object.values(writers)) w.close();
@@ -239,13 +286,13 @@ ipcMain.handle('rec:stop', (_e, { discard = false } = {}) => {
     w.close();
     files[track] = { file: path.basename(w.filePath), durationSec: Number(w.durationSec.toFixed(2)) };
   }
-  const meta = { mode, sampleRate, bitDepth: 16, startedAt, endedAt: new Date(), devices, files };
+  const meta = { mode, sampleRate, bitDepth: 16, startedAt, endedAt: new Date(), devices, files, ...(speakers ? { speakers } : {}) };
   fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2));
   recording = null;
   updateTray();
   if (SELFTEST) console.log('SELFTEST saved', path.basename(dir), JSON.stringify(files));
   if (mode === 'memo') runDictation({ dir, peak: micPeak, startedAt, durationSec: files.mic?.durationSec ?? 0, rec });
-  if (mode === 'meeting' && dictation.getSettings().minutes) runMinutes(dir);
+  if (mode === 'meeting' && dictation.getSettings().minutes) runMinutes(dir, speakers ?? null);
   return { dir, ...meta };
 });
 
@@ -340,6 +387,24 @@ ipcMain.handle('minutes:read', (_e, dir) => {
   const read = (f) => (fs.existsSync(path.join(d, f)) ? fs.readFileSync(path.join(d, f), 'utf8') : null);
   return { minutes: read('minutes.md'), transcript: read('transcript.txt'), scriptClean: read('script-clean.txt') };
 });
+// 회의록의 할 일 체크: minutes.md에서 n번째 "- [ ]" 줄을 뒤집는다
+ipcMain.handle('minutes:todo', (_e, dir, index, done) => {
+  const file = path.join(recordingDir(dir), 'minutes.md');
+  let n = -1;
+  const md = fs.readFileSync(file, 'utf8').replace(/^(\s*- \[)( |x)(\])/gim, (all, a, mark, b) => (++n === index ? `${a}${done ? 'x' : ' '}${b}` : all));
+  fs.writeFileSync(file, md);
+  return md;
+});
+// 회의 삭제는 휴지통으로 옮긴다 (Finder에서 되살릴 수 있다)
+ipcMain.handle('meeting:trash', async (_e, dir) => {
+  const d = recordingDir(dir);
+  if (activeMinutes.has(d)) throw new Error('회의록을 만드는 중에는 지울 수 없습니다');
+  await shell.trashItem(d);
+});
+ipcMain.handle('dict:delete', (_e, id) => {
+  const lines = fs.readFileSync(DICTATION_LOG, 'utf8').split('\n').filter(Boolean);
+  fs.writeFileSync(DICTATION_LOG, lines.filter((l) => !l.includes(`"id":${JSON.stringify(id)}`)).map((l) => `${l}\n`).join(''));
+});
 ipcMain.handle('script:clean', async (_e, dir) => {
   const r = await minutes.makeCleanScript(recordingDir(dir));
   return { failed: r.failed, chunks: r.chunks };
@@ -377,6 +442,9 @@ function readDictationLog() {
       startedAt: d.startedAt,
       durationSec: d.durationSec,
       app: d.app,
+      words: d.words,
+      chars: d.chars,
+      wpm: d.wpm,
       transcript: { raw: d.raw, text: d.text, cleanupProvider: d.cleanupProvider, cleanupError: d.cleanupError, timing: d.timing },
     }));
 }
@@ -406,6 +474,10 @@ function listFolders(limit) {
         minutesState = { ...minutesState, status: 'error', error: '앱이 종료되어 중단됨' };
       }
       const durationSec = Math.max(0, ...Object.values(meta.files ?? {}).map((f) => f.durationSec ?? 0));
+      let summary = null;
+      try {
+        summary = /^## 요약\s*\n([\s\S]*?)(?=\n## |$)/m.exec(fs.readFileSync(path.join(dir, 'minutes.md'), 'utf8'))?.[1].trim() ?? null;
+      } catch {}
       return {
         id: name,
         dir,
@@ -413,9 +485,11 @@ function listFolders(limit) {
         startedAt: meta.startedAt,
         durationSec,
         tracks: Object.keys(meta.files ?? {}),
+        speakersHint: meta.speakers ?? null,
         firstFile: Object.values(meta.files ?? {})[0]?.file ?? null,
         transcript,
         minutes: minutesState,
+        summary,
       };
     })
     .filter(Boolean);
@@ -566,6 +640,14 @@ ipcMain.on('app:openRecordings', () => {
   shell.openPath(RECORDINGS_DIR);
 });
 ipcMain.on('rec:toggle', (_e, mode) => uiToggle(mode));
+ipcMain.on('rec:pause', (_e, on) => setPaused(Boolean(on)));
+ipcMain.on('rec:cancel', () => uiCancel());
+// 참석 인원: 녹음 전에는 다음 회의에, 녹음 중이면 지금 회의에 적용한다 (null = 자동)
+ipcMain.on('rec:speakers', (_e, n) => {
+  const v = Number(n) || null;
+  if (recording?.mode === 'meeting') recording.speakers = v;
+  else nextSpeakers = v;
+});
 ipcMain.on('rec:failed', () => {
   fnState = 'idle';
 });
@@ -631,7 +713,7 @@ function sendOverlay(channel, payload) {
 
 function sendOverlayState() {
   if (overlay && !overlay.isDestroyed()) {
-    overlay.webContents.send('overlay:state', { recording: recording?.mode ?? null, transcribing: transcribing > 0 });
+    overlay.webContents.send('overlay:state', { recording: recording?.mode ?? null, transcribing: transcribing > 0, clock: clockInfo() });
   }
 }
 
@@ -644,8 +726,14 @@ ipcMain.on('overlay:action', (_e, name) => {
 function updateTray() {
   clearInterval(trayTimer);
   sendOverlayState();
-  const menu = recording
-    ? [{ label: recording.mode === 'meeting' ? '회의 녹음 정지' : '받아쓰기 정지', click: () => uiToggle(recording?.mode) }]
+  const menu = recording?.mode === 'meeting'
+    ? [
+        { label: recording.pausedAt ? '녹음 재개' : '일시정지', click: () => setPaused(!recording?.pausedAt) },
+        { label: '종료하고 저장', click: () => uiToggle('meeting') },
+        { label: '녹음 취소 (버리기)…', click: confirmCancel },
+      ]
+    : recording
+    ? [{ label: '받아쓰기 정지', click: () => uiToggle(recording?.mode) }]
     : [
         { label: '받아쓰기 시작 (fn 꾹 누르기)', click: () => uiToggle('memo') },
         { label: '마지막 받아쓰기 붙여넣기', click: pasteLast },
@@ -673,11 +761,29 @@ function updateTray() {
   }
   const label = recording.mode === 'meeting' ? '회의' : '메모';
   const tick = () => {
-    const s = Math.floor((Date.now() - recording.startedAt) / 1000);
-    tray.setTitle(`● ${label} ${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`);
+    const s = Math.floor(elapsedMs() / 1000);
+    tray.setTitle(`${recording.pausedAt ? '❚❚' : '●'} ${label} ${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`);
   };
   tick();
   trayTimer = setInterval(() => recording && tick(), 1000);
+}
+
+// 회의 녹음 재생용: rec://m/<회의 폴더 이름>/<파일>. 2시간 WAV(수백 MB)도 원하는 곳부터 재생되게 Range 요청을 받는다
+protocol.registerSchemesAsPrivileged([{ scheme: 'rec', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true } }]);
+
+function serveRecording(request) {
+  const [, folder = '', name = ''] = new URL(request.url).pathname.split('/');
+  const file = path.resolve(RECORDINGS_DIR, decodeURIComponent(folder), decodeURIComponent(name));
+  if (path.dirname(path.dirname(file)) !== RECORDINGS_DIR || !/\.wav$/i.test(file) || !fs.existsSync(file)) {
+    return new Response('not found', { status: 404 });
+  }
+  const size = fs.statSync(file).size;
+  const range = /bytes=(\d*)-(\d*)/.exec(request.headers.get('range') ?? '');
+  const start = range?.[1] ? Number(range[1]) : 0;
+  const end = range?.[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
+  const headers = { 'Content-Type': 'audio/wav', 'Accept-Ranges': 'bytes', 'Content-Length': String(end - start + 1) };
+  if (range) headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
+  return new Response(Readable.toWeb(fs.createReadStream(file, { start, end })), { status: range ? 206 : 200, headers });
 }
 
 if (!SELFTEST && !app.requestSingleInstanceLock()) {
@@ -688,6 +794,7 @@ if (!SELFTEST && !app.requestSingleInstanceLock()) {
 }
 
 async function init() {
+  protocol.handle('rec', serveRecording);
   // 권한 대화상자를 기다리느라 fn 감지·독·로그인 항목 설정이 멈추지 않게 await하지 않는다
   if (process.platform === 'darwin') systemPreferences.askForMediaAccess('microphone');
   fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
@@ -708,15 +815,15 @@ async function init() {
   updateTray();
 
   win = new BrowserWindow({
-    width: 780,
-    height: 620,
-    minWidth: 640,
-    minHeight: 480,
+    width: 1240,
+    height: 820,
+    minWidth: 960,
+    minHeight: 640,
     show: !openedAtLogin && !SELFTEST,
     title: 'Meeting Recorder',
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#141619' : '#fbfcfd',
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 18, y: 18 },
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#111214' : '#eceef1',
+    titleBarStyle: 'hidden',
+    trafficLightPosition: { x: 16, y: 15 },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       backgroundThrottling: false, // 창이 숨겨져도 녹음이 끊기지 않게

@@ -2,248 +2,274 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; media-src rec:" />
   <title>Meeting Recorder</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-home" viewBox="0 0 20 20"><path d="M3.5 9 10 3.5 16.5 9v7a1 1 0 0 1-1 1h-3.5v-4.5h-4V17H4.5a1 1 0 0 1-1-1z"/></symbol>
     <symbol id="i-mic" viewBox="0 0 20 20"><rect x="7" y="2.5" width="6" height="10" rx="3"/><path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5"/></symbol>
-    <symbol id="i-rec" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.5"/><circle cx="10" cy="10" r="2.5" class="fill"/></symbol>
-    <symbol id="i-stop" viewBox="0 0 20 20"><rect x="5.5" y="5.5" width="9" height="9" rx="1.5" class="fill"/></symbol>
-    <symbol id="i-copy" viewBox="0 0 20 20"><rect x="7" y="7" width="9.5" height="9.5" rx="1.5"/><path d="M13 7V4.5A1 1 0 0 0 12 3.5H4.5a1 1 0 0 0-1 1V12a1 1 0 0 0 1 1H7"/></symbol>
-    <symbol id="i-folder" viewBox="0 0 20 20"><path d="M2.5 5.5a1 1 0 0 1 1-1h4l1.5 2h7.5a1 1 0 0 1 1 1v7.5a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1z"/></symbol>
-    <symbol id="i-paste" viewBox="0 0 20 20"><path d="M7 3.5h6v2.5H7zM13 4.5h1.5a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1H7"/><path d="M8 12l2 2 2-2M10 8.5V14"/></symbol>
-    <symbol id="i-list" viewBox="0 0 20 20"><path d="M7 5.5h10M7 10h10M7 14.5h10M3 5.5h.5M3 10h.5M3 14.5h.5"/></symbol>
     <symbol id="i-people" viewBox="0 0 20 20"><circle cx="7.5" cy="7" r="2.75"/><path d="M2.5 16c.6-2.6 2.6-4 5-4s4.4 1.4 5 4"/><path d="M13 4.6a2.6 2.6 0 0 1 0 4.9M14.6 12.3c1.5.5 2.5 1.8 2.9 3.7"/></symbol>
-    <symbol id="i-key" viewBox="0 0 20 20"><circle cx="7" cy="12.5" r="3.5"/><path d="M9.5 10l7-7M14 5.5l2 2M12 7.5l1.5 1.5"/></symbol>
+    <symbol id="i-book" viewBox="0 0 20 20"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H16v11.5H5.5A1.5 1.5 0 0 0 4 16zM4 16a1.5 1.5 0 0 0 1.5 1.5H16v-3"/><path d="M7.5 6.5h5"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 20 20"><path d="M3.5 16.5h13M6 13.5v-4M10 13.5v-8M14 13.5V8"/></symbol>
     <symbol id="i-gear" viewBox="0 0 20 20"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4"/></symbol>
+    <symbol id="i-search" viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="m13 13 4 4"/></symbol>
+    <symbol id="i-rec" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.5"/><circle cx="10" cy="10" r="3" class="fill"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 20 20"><rect x="5.5" y="5.5" width="9" height="9" rx="2" class="fill"/></symbol>
+    <symbol id="i-play" viewBox="0 0 20 20"><path d="M6.5 4.5v11l9-5.5z" class="fill"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 20 20"><rect x="5.5" y="4.5" width="3" height="11" rx="1" class="fill"/><rect x="11.5" y="4.5" width="3" height="11" rx="1" class="fill"/></symbol>
+    <symbol id="i-back10" viewBox="0 0 20 20"><path d="M4.5 10a5.5 5.5 0 1 0 1.8-4.1"/><path d="M6.5 2.5v3.6H2.9"/></symbol>
+    <symbol id="i-fwd10" viewBox="0 0 20 20"><path d="M15.5 10a5.5 5.5 0 1 1-1.8-4.1"/><path d="M13.5 2.5v3.6h3.6"/></symbol>
+    <symbol id="i-left" viewBox="0 0 20 20"><path d="M12 4.5 6.5 10l5.5 5.5"/></symbol>
+    <symbol id="i-right" viewBox="0 0 20 20"><path d="m8 4.5 5.5 5.5L8 15.5"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 20 20"><rect x="7" y="7" width="9.5" height="9.5" rx="2"/><path d="M13 7V4.5A1 1 0 0 0 12 3.5H4.5a1 1 0 0 0-1 1V12a1 1 0 0 0 1 1H7"/></symbol>
+    <symbol id="i-paste" viewBox="0 0 20 20"><path d="M7 3.5h6v2.5H7zM13 4.5h1.5a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1H7"/><path d="M8 12l2 2 2-2M10 8.5V14"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 20 20"><path d="M2.5 5.5a1 1 0 0 1 1-1h4l1.5 2h7.5a1 1 0 0 1 1 1v7.5a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 20 20"><path d="M3.5 5.5h13M8 5.5V3.5h4v2M5 5.5l.8 10.6a1 1 0 0 0 1 .9h6.4a1 1 0 0 0 1-.9L15 5.5"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 20 20"><path d="M15.5 9.5a5.5 5.5 0 1 1-1.6-3.9L16 7.5"/><path d="M16 3.5v4h-4"/></symbol>
+    <symbol id="i-more" viewBox="0 0 20 20"><circle cx="5" cy="10" r="1.2" class="fill"/><circle cx="10" cy="10" r="1.2" class="fill"/><circle cx="15" cy="10" r="1.2" class="fill"/></symbol>
+    <symbol id="i-x" viewBox="0 0 20 20"><path d="m5 5 10 10M15 5 5 15"/></symbol>
+    <symbol id="i-check" viewBox="0 0 20 20"><path d="m4.5 10.5 3.5 3.5 7.5-8"/></symbol>
+    <symbol id="i-key" viewBox="0 0 20 20"><circle cx="7" cy="12.5" r="3.5"/><path d="M9.5 10l7-7M14 5.5l2 2M12 7.5l1.5 1.5"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 20 20"><path d="M10 2.5 16 5v4.5c0 3.8-2.5 6.6-6 8-3.5-1.4-6-4.2-6-8V5z"/></symbol>
+    <symbol id="i-wand" viewBox="0 0 20 20"><path d="m3.5 16.5 9-9M11 6l3 3M14.5 2.5v2M17.5 5.5h-2M16.6 3.4l-1.4 1.4"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 6v4.5M10 13.5v.5"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></symbol>
   </svg>
 
-  <aside class="side">
-    <div class="drag"></div>
-    <div class="brand">Meeting Recorder</div>
-    <nav class="toc" aria-label="목차">
-      <button class="toc-item" data-page="records" aria-current="page"><svg><use href="#i-list"/></svg><span>기록</span><span class="num" id="countRecords"></span></button>
-      <button class="toc-item" data-page="meetings"><svg><use href="#i-people"/></svg><span>회의</span><span class="num" id="countMeetings"></span></button>
-      <button class="toc-item" data-page="settings"><svg><use href="#i-gear"/></svg><span>설정</span><span class="flag" id="settingsFlag" hidden></span></button>
-    </nav>
-    <dl class="engine-state">
-      <div><dt>음성 인식</dt><dd id="sideEngine">확인 중</dd></div>
-      <div><dt>다듬기</dt><dd id="sideCleanup">확인 중</dd></div>
-      <div><dt>화자 구분</dt><dd id="sideDiarize">확인 중</dd></div>
-    </dl>
-    <button class="side-link" id="openConnSide"><svg><use href="#i-key"/></svg>토큰·계정 연결</button>
-  </aside>
-
-  <main class="sheet">
-    <header class="sheet-head">
-      <h1 id="pageTitle">기록</h1>
-      <div class="head-actions">
-        <button class="ink-btn" id="memoBtn"><svg><use href="#i-mic"/></svg><span>받아쓰기</span></button>
-        <button class="ink-btn" id="meetingBtn"><svg><use href="#i-rec"/></svg><span>회의 녹음</span></button>
+  <div class="shell">
+    <aside class="side">
+      <div class="side-drag"></div>
+      <div class="brand"><span class="brand-mark"><svg><use href="#i-mic"/></svg></span>Meeting Recorder</div>
+      <button class="search-btn" id="openPalette"><svg><use href="#i-search"/></svg><span>검색</span><kbd>⌘K</kbd></button>
+      <nav class="nav" aria-label="화면">
+        <a class="nav-item" href="#home" data-route="home"><svg><use href="#i-home"/></svg><span>홈</span></a>
+        <a class="nav-item" href="#dictations" data-route="dictations"><svg><use href="#i-mic"/></svg><span>받아쓰기</span><span class="count" id="countDict"></span></a>
+        <a class="nav-item" href="#meetings" data-route="meetings"><svg><use href="#i-people"/></svg><span>회의</span><span class="count" id="countMeet"></span></a>
+        <a class="nav-item" href="#dictionary" data-route="dictionary"><svg><use href="#i-book"/></svg><span>사전</span><span class="count" id="countWords"></span></a>
+        <a class="nav-item" href="#stats" data-route="stats"><svg><use href="#i-chart"/></svg><span>통계</span></a>
+      </nav>
+      <div class="side-foot">
+        <button class="engines" id="enginesBtn" title="엔진 상태 · 눌러서 설정">
+          <span class="engine" id="engAsr"><i></i><span>음성 인식</span><em></em></span>
+          <span class="engine" id="engCleanup"><i></i><span>다듬기</span><em></em></span>
+          <span class="engine" id="engDiarize"><i></i><span>화자 구분</span><em></em></span>
+        </button>
+        <button class="nav-item" id="openSettings"><svg><use href="#i-gear"/></svg><span>설정</span><span class="dot" id="settingsDot" hidden></span><kbd>⌘,</kbd></button>
       </div>
-    </header>
+    </aside>
 
-    <!-- 지금 상태: 대기 / 듣는 중 / 회의 녹음 중 / 변환 단계 -->
-    <section class="live" id="live" data-state="idle" aria-live="polite">
-      <span class="live-mark"></span>
-      <span class="live-text" id="liveText">대기 중</span>
-      <span class="live-sub" id="liveSub"></span>
-      <ol class="route" id="route" hidden>
-        <li data-stage="listen">듣기</li>
-        <li data-stage="transcribe">인식</li>
-        <li data-stage="cleanup">다듬기</li>
-        <li data-stage="paste">입력</li>
-      </ol>
-      <canvas class="tape" id="tape" width="360" height="28" hidden></canvas>
-      <span class="live-time" id="liveTime"></span>
-    </section>
-
-    <ul class="corrections" id="corrections"></ul>
-
-    <section class="page" id="page-records">
-      <div class="ledger" id="records"></div>
-      <div class="empty" id="recordsEmpty" hidden>
-        <p><kbd>fn</kbd>을 누른 채 말하고 손을 떼세요.</p>
-        <p class="empty-sub">말한 내용이 지금 커서가 있는 곳에 입력되고, 여기에 첫 줄이 적힙니다. 다듬기가 지운 군말은 취소선, 넣은 말은 밑줄로 표시됩니다. 음성은 남기지 않습니다.</p>
-      </div>
-    </section>
-
-    <section class="page" id="page-meetings" hidden>
-      <div class="ledger" id="meetings"></div>
-      <div class="empty" id="meetingsEmpty" hidden>
-        <p>오른쪽 위 회의 녹음 버튼으로 시작하세요.</p>
-        <p class="empty-sub">화면 왼쪽 독의 녹음 버튼이나 메뉴바에서도 시작할 수 있습니다. 멈추면 녹음 파일(48kHz WAV)을 남긴 뒤 녹취와 회의록(요약 · 결정 사항 · 할 일)을 만들어 여기에 적습니다. 음성 인식은 이 Mac 안에서 처리합니다.</p>
-      </div>
-    </section>
-
-    <section class="page settings" id="page-settings" hidden>
-      <section class="form-block">
-        <h2>받아쓰기</h2>
-        <div class="row">
-          <label for="dictEnabled">fn 꾹 누르기</label>
-          <div class="ctl">
-            <label class="check"><input type="checkbox" id="dictEnabled" /> 말한 내용을 커서 위치에 입력</label>
-            <p class="hint">받아쓴 음성은 글로 바꾼 뒤 바로 지우고, 글과 통계용 데이터(길이·글자 수·입력한 앱)만 남깁니다.</p>
-          </div>
+    <div class="main">
+      <header class="topbar">
+        <div class="crumbs" id="crumbs"></div>
+        <div class="live" id="live" data-state="idle" aria-live="polite" hidden>
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText"></span>
+          <ol class="route" id="route" hidden>
+            <li data-stage="listen">듣기</li><li data-stage="transcribe">인식</li><li data-stage="cleanup">다듬기</li><li data-stage="paste">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18" hidden></canvas>
+          <span class="live-time" id="liveTime"></span>
         </div>
-        <div class="row">
-          <label for="dictLanguage">언어</label>
-          <div class="ctl"><select id="dictLanguage">
+        <label class="live-speakers" id="liveSpeakers" hidden title="화자 구분에 쓰는 참석 인원. 녹음 중에도 바꿀 수 있습니다.">
+          <svg><use href="#i-people"/></svg>
+          <select id="liveSpeakersSel" aria-label="참석 인원"></select>
+        </label>
+        <div class="top-acts">
+          <button class="btn ghost" id="cancelBtn" hidden title="저장하지 않고 버립니다"><svg><use href="#i-x"/></svg><span>취소</span></button>
+          <button class="btn ghost" id="pauseBtn" hidden><svg><use href="#i-pause"/></svg><span>일시정지</span></button>
+          <button class="btn ghost" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"/></svg><span>받아쓰기</span></button>
+          <button class="btn rec" id="meetingBtn"><svg><use href="#i-rec"/></svg><span>회의 녹음</span></button>
+        </div>
+      </header>
+      <main class="panel">
+        <div class="view" id="view" tabindex="-1"></div>
+      </main>
+    </div>
+  </div>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <dialog class="palette" id="palette" aria-label="빠른 검색">
+    <div class="palette-input">
+      <svg><use href="#i-search"/></svg>
+      <input id="paletteInput" type="text" placeholder="회의 제목, 받아쓴 말, 화면, 동작 검색" autocomplete="off" spellcheck="false" />
+      <kbd>esc</kbd>
+    </div>
+    <div class="palette-list" id="paletteList" role="listbox"></div>
+  </dialog>
+
+  <dialog class="sheet" id="meetStart" aria-labelledby="meetStartTitle">
+    <header class="sheet-head">
+      <span class="sheet-mark"><svg><use href="#i-rec"/></svg></span>
+      <div>
+        <h3 id="meetStartTitle">회의 녹음 시작</h3>
+        <p>시작한 뒤에도 일시정지하거나 취소할 수 있습니다.</p>
+      </div>
+      <button class="icon-btn" id="startClose" aria-label="닫기"><svg><use href="#i-x"/></svg></button>
+    </header>
+    <section class="sheet-sec">
+      <div class="sheet-label"><b>참석 인원</b><span>알려 주면 누가 말했는지 더 정확하게 나눕니다</span></div>
+      <div class="segbar" id="startSpeakers" role="radiogroup" aria-label="참석 인원"></div>
+    </section>
+    <section class="sheet-sec">
+      <div class="sheet-label"><b>회의 방식</b></div>
+      <div class="kinds" id="startKind" role="radiogroup" aria-label="회의 방식">
+        <button type="button" role="radio" data-kind="offline"><svg><use href="#i-people"/></svg><b>대면 회의</b><span>이 Mac 마이크로만 녹음</span></button>
+        <button type="button" role="radio" data-kind="online"><svg><use href="#i-mic"/></svg><b>화상 회의</b><span>상대방 소리(시스템 오디오)도 함께</span></button>
+      </div>
+    </section>
+    <footer class="sheet-foot">
+      <label class="inline-switch"><span class="switch"><input type="checkbox" id="startMinutes" /><i></i></span>끝나면 회의록 만들기</label>
+      <button class="btn" id="startNo">닫기</button>
+      <button class="btn rec" id="startYes"><svg><use href="#i-rec"/></svg>녹음 시작</button>
+    </footer>
+  </dialog>
+
+  <dialog class="modal confirm" id="confirm">
+    <h3 id="confirmTitle"></h3>
+    <p id="confirmText"></p>
+    <div class="modal-acts">
+      <button class="btn" id="confirmNo">취소</button>
+      <button class="btn danger" id="confirmYes"></button>
+    </div>
+  </dialog>
+
+  <dialog class="settings" id="settings" aria-labelledby="settingsTitle">
+    <nav class="set-nav" aria-label="설정 항목">
+      <h2 id="settingsTitle">설정</h2>
+      <button class="set-tab" data-sec="general"><svg><use href="#i-mic"/></svg>받아쓰기</button>
+      <button class="set-tab" data-sec="cleanup"><svg><use href="#i-wand"/></svg>다듬기</button>
+      <button class="set-tab" data-sec="meeting"><svg><use href="#i-people"/></svg>회의</button>
+      <button class="set-tab" data-sec="accounts"><svg><use href="#i-key"/></svg>계정·토큰<span class="dot" id="accountsDot" hidden></span></button>
+      <button class="set-tab" data-sec="perms"><svg><use href="#i-shield"/></svg>권한<span class="dot" id="permDot" hidden></span></button>
+    </nav>
+    <div class="set-body">
+      <button class="icon-btn set-close" id="settingsClose" aria-label="닫기"><svg><use href="#i-x"/></svg></button>
+
+      <section class="set-sec" data-sec="general">
+        <h3>받아쓰기</h3>
+        <p class="sec-lead"><kbd>fn</kbd>을 꾹 누른 채 말하고 떼면, 다듬은 글이 지금 커서 위치에 들어갑니다. 받아쓴 음성은 글로 바꾼 뒤 바로 지웁니다.</p>
+        <div class="field">
+          <div class="field-text"><b>fn으로 받아쓰기</b><span>끄면 fn을 눌러도 아무 일도 일어나지 않습니다.</span></div>
+          <label class="switch"><input type="checkbox" id="dictEnabled" /><i></i></label>
+        </div>
+        <div class="field">
+          <div class="field-text"><b>언어</b><span>받아쓰기와 회의 녹취에 같이 씁니다.</span></div>
+          <select id="dictLanguage">
             <option value="ko">한국어</option>
             <option value="auto">자동 감지</option>
             <option value="en">English</option>
-          </select></div>
+            <option value="ja">日本語</option>
+          </select>
         </div>
-        <div class="row">
-          <label for="dictVocab">자주 쓰는 단어</label>
-          <div class="ctl">
-            <textarea id="dictVocab" rows="2" placeholder="Wispr Flow, PJY, Electron"></textarea>
-            <p class="hint">회사·제품 이름, 전문 용어를 쉼표로 적으면 더 정확히 알아듣습니다.</p>
-          </div>
+        <div class="field">
+          <div class="field-text"><b>마이크</b><span id="micHint">받아쓰기와 회의 녹음에 쓰는 장치</span></div>
+          <select id="micSelect"><option value="">시스템 기본값</option></select>
         </div>
-        <div class="row">
-          <span class="lbl">음성 인식 엔진</span>
-          <div class="ctl"><p class="state-line" id="engineLine"></p></div>
+        <div class="field">
+          <div class="field-text"><b>에코 제거</b><span>스피커 소리가 마이크로 다시 들어갈 때만 켜세요.</span></div>
+          <label class="switch"><input type="checkbox" id="echo" /><i></i></label>
         </div>
-      </section>
-
-      <section class="form-block">
-        <h2>다듬기</h2>
-        <div class="row">
-          <label for="dictCleanup">군말·문장 정리</label>
-          <div class="ctl">
-            <label class="check"><input type="checkbox" id="dictCleanup" /> 입력하기 전에 다듬기</label>
-            <p class="hint">"음, 3시에, 아니 4시에" → "4시에". 긴 글은 나눠서 동시에 다듬습니다.</p>
-          </div>
+        <div class="field">
+          <div class="field-text"><b>음성 인식 엔진</b><span id="engineLine"></span></div>
+          <div class="field-acts" id="engineActs"></div>
         </div>
-        <div class="row" id="providerRow">
-          <span class="lbl">사용할 계정</span>
-          <div class="ctl">
-            <div class="choices" id="providers" role="radiogroup" aria-label="다듬기에 사용할 계정"></div>
-            <button class="line-btn" data-open-conn><svg><use href="#i-key"/></svg>토큰·계정 연결</button>
-          </div>
+        <div class="field">
+          <div class="field-text"><b>녹음 폴더</b><span>~/Documents/MeetingRecorder</span></div>
+          <button class="btn" id="openDir"><svg><use href="#i-folder"/></svg>열기</button>
         </div>
       </section>
 
-      <section class="form-block">
-        <h2>회의</h2>
-        <div class="row">
-          <label for="minutesAuto">회의록</label>
-          <div class="ctl">
-            <label class="check"><input type="checkbox" id="minutesAuto" /> 회의 녹음이 끝나면 녹취와 회의록 만들기</label>
-            <p class="hint">녹취는 이 Mac 안의 Whisper로, 회의록 작성은 위 다듬기와 같은 계정으로 합니다. 녹음 파일은 항상 그대로 남습니다.</p>
+      <section class="set-sec" data-sec="cleanup" hidden>
+        <h3>다듬기</h3>
+        <p class="sec-lead">"음, 3시에, 아니 4시에" → "4시에". 군말을 지우고 문장을 정리합니다. 회의록과 정리본도 같은 계정으로 만듭니다.</p>
+        <div class="field">
+          <div class="field-text"><b>입력하기 전에 다듬기</b><span>끄면 들린 그대로 입력합니다.</span></div>
+          <label class="switch"><input type="checkbox" id="dictCleanup" /><i></i></label>
+        </div>
+        <div class="field column">
+          <div class="field-text"><b>사용할 계정</b><span>로그인된 Claude Code·Codex 구독을 먼저 씁니다. 없으면 API 키를 씁니다.</span></div>
+          <div class="choices" id="providers" role="radiogroup" aria-label="다듬기에 사용할 계정"></div>
+        </div>
+      </section>
+
+      <section class="set-sec" data-sec="meeting" hidden>
+        <h3>회의</h3>
+        <p class="sec-lead">회의는 위쪽 <b>회의 녹음</b> 버튼이나 독·메뉴바로 시작하고 멈춥니다. fn은 받아쓰기 전용입니다.</p>
+        <div class="field">
+          <div class="field-text"><b>끝나면 회의록 만들기</b><span>Whisper large-v3로 녹취한 뒤 요약·결정 사항·할 일을 정리합니다. 2시간 회의는 약 20분 걸립니다.</span></div>
+          <label class="switch"><input type="checkbox" id="minutesAuto" /><i></i></label>
+        </div>
+        <div class="field">
+          <div class="field-text"><b>화자 구분</b><span id="diarizeLine">누가 말했는지 구분합니다 (pyannote, 이 Mac 안에서 처리).</span></div>
+          <label class="switch"><input type="checkbox" id="diarizeOn" /><i></i></label>
+        </div>
+        <div class="field">
+          <div class="field-text"><b>화상 회의 상대방 소리</b><span>시스템 오디오를 따로 녹음합니다. 대면 회의에서는 꺼 두세요.</span></div>
+          <label class="switch"><input type="checkbox" id="meetingSystem" /><i></i></label>
+        </div>
+      </section>
+
+      <section class="set-sec" data-sec="accounts" hidden>
+        <h3>계정·토큰</h3>
+        <p class="sec-lead">토큰과 키는 이 Mac의 키체인으로 암호화해 저장하고, 저장한 뒤에는 다시 보여 주지 않습니다.</p>
+
+        <div class="group">
+          <div class="group-head"><b>로그인된 계정</b><button class="btn small" id="connRefresh"><svg><use href="#i-redo"/></svg>다시 확인</button></div>
+          <div class="accounts" id="connAccounts"></div>
+          <p class="hint">로그인은 터미널에서 <code>claude</code> 또는 <code>codex login</code>으로 합니다.</p>
+        </div>
+
+        <div class="group conn-block" data-kind="hf">
+          <div class="group-head"><b>Hugging Face 토큰</b><span class="pill" data-state></span></div>
+          <p class="hint">회의 화자 구분 모델을 처음 받을 때 씁니다.</p>
+          <ol class="steps">
+            <li>모델 약관에 동의 <button class="link" data-link="https://huggingface.co/pyannote/speaker-diarization-community-1">모델 페이지</button></li>
+            <li>Read 권한 토큰 만들기 <button class="link" data-link="https://huggingface.co/settings/tokens">토큰 페이지</button></li>
+            <li>아래에 붙여 넣고 저장</li>
+          </ol>
+          <div class="key-row">
+            <input type="password" placeholder="hf_…" autocomplete="off" spellcheck="false" data-input />
+            <button class="btn" data-toggle>보기</button>
+            <button class="btn primary" data-save>저장</button>
+          </div>
+          <div class="key-acts">
+            <button class="btn small" data-verify>확인</button>
+            <button class="btn small" data-clear>앱에 저장한 토큰 지우기</button>
+            <span class="result" data-result role="status"></span>
           </div>
         </div>
-        <div class="row">
-          <label for="diarizeOn">화자 구분</label>
-          <div class="ctl">
-            <label class="check"><input type="checkbox" id="diarizeOn" /> 누가 말했는지 구분 (pyannote, 이 Mac 안에서 처리)</label>
-            <p class="state-line" id="diarizeLine"></p>
-            <p class="hint">처음 한 번 Hugging Face 토큰이 필요합니다. 모델을 받은 뒤에는 인터넷 없이 동작합니다. 스크립트에서 "화자 1"을 누르면 이름을 바꿀 수 있습니다.</p>
+
+        <div class="group conn-block" data-kind="anthropic">
+          <div class="group-head"><b>Anthropic API 키</b><span class="pill" data-state></span></div>
+          <p class="hint">Claude Code·Codex 로그인이 없을 때만 씁니다.</p>
+          <ol class="steps">
+            <li>API 키 만들기 <button class="link" data-link="https://console.anthropic.com/settings/keys">키 페이지</button></li>
+            <li>아래에 붙여 넣고 저장</li>
+          </ol>
+          <div class="key-row">
+            <input type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" data-input />
+            <button class="btn" data-toggle>보기</button>
+            <button class="btn primary" data-save>저장</button>
           </div>
-        </div>
-        <div class="row">
-          <label for="meetingSystem">화상 회의</label>
-          <div class="ctl">
-            <label class="check"><input type="checkbox" id="meetingSystem" /> 상대방 소리도 따로 녹음 (시스템 오디오)</label>
-            <p class="hint">오프라인 회의에는 필요 없습니다. 켜면 "시스템 오디오 녹음" 권한이 필요하고, 녹취에 [나]와 [상대방]이 구분됩니다.</p>
+          <div class="key-acts">
+            <button class="btn small" data-verify>확인</button>
+            <button class="btn small" data-clear>키 지우기</button>
+            <span class="result" data-result role="status"></span>
           </div>
         </div>
       </section>
 
-      <section class="form-block">
-        <h2>녹음</h2>
-        <div class="row">
-          <label for="micSelect">마이크</label>
-          <div class="ctl">
-            <select id="micSelect"><option value="">시스템 기본값</option></select>
-            <p class="hint warn" id="micHint" hidden></p>
-          </div>
-        </div>
-        <div class="row">
-          <label for="echo">스피커로 듣는 중</label>
-          <div class="ctl">
-            <label class="check"><input type="checkbox" id="echo" /> 에코 제거 켜기</label>
-            <p class="hint">이어폰 없이 회의할 때만 켜세요. 켜면 음질이 조금 떨어집니다.</p>
-          </div>
-        </div>
-        <div class="row">
-          <span class="lbl">저장 위치</span>
-          <div class="ctl"><button class="line-btn" id="openDir"><svg><use href="#i-folder"/></svg>녹음 폴더 열기</button></div>
-        </div>
+      <section class="set-sec" data-sec="perms" hidden>
+        <h3>macOS 권한</h3>
+        <p class="sec-lead">시스템 설정에서 바꾸고 돌아오면 바로 반영됩니다.</p>
+        <div class="perms" id="permList"></div>
       </section>
-
-      <section class="form-block">
-        <h2>macOS 권한</h2>
-        <ul class="perms" id="permList"></ul>
-      </section>
-    </section>
-  </main>
-
-  <!-- 연결: 토큰·키는 여기서만 넣고 지운다 -->
-  <dialog class="conn" id="conn" aria-labelledby="connTitle">
-    <header class="conn-head">
-      <h2 id="connTitle">토큰·계정 연결</h2>
-      <button class="ink-btn" id="connClose">닫기</button>
-    </header>
-    <p class="conn-lead">토큰과 키는 이 Mac의 키체인으로 암호화해 저장하고, 저장한 뒤에는 화면에 다시 보여 주지 않습니다.</p>
-
-    <section class="conn-block" data-kind="hf">
-      <div class="conn-title">
-        <h3>Hugging Face 토큰</h3>
-        <span class="conn-state" data-state></span>
-      </div>
-      <p class="hint">회의 화자 구분(pyannote) 모델을 처음 받을 때 씁니다.</p>
-      <ol class="steps">
-        <li>모델 약관에 동의합니다. <button class="link-btn" data-link="https://huggingface.co/pyannote/speaker-diarization-community-1">모델 페이지 열기</button></li>
-        <li>Read 권한 토큰을 만듭니다. <button class="link-btn" data-link="https://huggingface.co/settings/tokens">토큰 페이지 열기</button></li>
-        <li>만든 토큰을 아래에 붙여 넣고 저장합니다.</li>
-      </ol>
-      <div class="key-row">
-        <input type="password" placeholder="hf_…" autocomplete="off" spellcheck="false" data-input autofocus />
-        <button class="line-btn" data-toggle>보기</button>
-        <button class="line-btn primary" data-save>저장</button>
-      </div>
-      <div class="conn-acts">
-        <button class="line-btn" data-verify>확인</button>
-        <button class="line-btn" data-clear>앱에 저장한 토큰 지우기</button>
-        <span class="conn-result" data-result role="status"></span>
-      </div>
-    </section>
-
-    <section class="conn-block" data-kind="anthropic">
-      <div class="conn-title">
-        <h3>Anthropic API 키</h3>
-        <span class="conn-state" data-state></span>
-      </div>
-      <p class="hint">Claude Code·Codex 로그인이 없을 때 다듬기와 회의록 작성에 씁니다. 로그인이 있으면 넣지 않아도 됩니다.</p>
-      <ol class="steps">
-        <li>API 키를 만듭니다. <button class="link-btn" data-link="https://console.anthropic.com/settings/keys">키 페이지 열기</button></li>
-        <li>만든 키를 아래에 붙여 넣고 저장합니다.</li>
-      </ol>
-      <div class="key-row">
-        <input type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" data-input />
-        <button class="line-btn" data-toggle>보기</button>
-        <button class="line-btn primary" data-save>저장</button>
-      </div>
-      <div class="conn-acts">
-        <button class="line-btn" data-verify>확인</button>
-        <button class="line-btn" data-clear>키 지우기</button>
-        <span class="conn-result" data-result role="status"></span>
-      </div>
-    </section>
-
-    <section class="conn-block">
-      <div class="conn-title">
-        <h3>로그인된 계정</h3>
-        <button class="line-btn" id="connRefresh">다시 확인</button>
-      </div>
-      <p class="hint">다듬기와 회의록은 이 계정들을 먼저 씁니다. 로그인은 터미널에서 <code>claude</code> 또는 <code>codex login</code>으로 합니다.</p>
-      <dl class="accounts" id="connAccounts"></dl>
-    </section>
+    </div>
   </dialog>
+
   <script type="module" src="app.js"></script>
 </body>
 </html>

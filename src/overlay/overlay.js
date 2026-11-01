@@ -51,6 +51,7 @@ let levels = [];
 let clockTimer;
 let hideTimer;
 let recording = null;
+let clockBase = { elapsedMs: 0, at: Date.now(), paused: false }; // 메인 프로세스가 알려 주는 녹음 시간 (회의 일시정지 반영)
 
 function setStrip(mode, text = '') {
   clearTimeout(hideTimer);
@@ -62,11 +63,11 @@ function setStrip(mode, text = '') {
 function startListening(mode) {
   levels = [];
   draw();
-  const t0 = Date.now();
   setStrip('listen', mode === 'meeting' ? '회의' : '');
   clearInterval(clockTimer);
   const tick = () => {
-    const s = Math.floor((Date.now() - t0) / 1000);
+    const ms = clockBase.paused ? clockBase.elapsedMs : clockBase.elapsedMs + Date.now() - clockBase.at;
+    const s = Math.floor(ms / 1000);
     time.textContent = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
   };
   tick();
@@ -143,8 +144,10 @@ api.onStage((s) => {
 api.onState((state) => {
   const prev = recording;
   recording = state.recording;
+  if (state.clock) clockBase = { elapsedMs: state.clock.elapsedMs, at: Date.now(), paused: state.clock.paused };
   dock.dataset.state = recording ?? (state.transcribing ? 'working' : 'idle');
   if (recording && recording !== prev) startListening(recording);
+  if (recording === 'meeting') label.textContent = clockBase.paused ? '일시정지' : '회의';
   if (!recording) clearInterval(clockTimer);
   if (!recording && prev) {
     // 받아쓰기는 단계 표시로 넘어가고, 회의·취소는 띠를 거둔다
