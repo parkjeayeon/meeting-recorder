@@ -148,6 +148,7 @@ api.onState((state) => {
   dock.dataset.state = recording ?? (state.transcribing ? 'working' : 'idle');
   if (recording && recording !== prev) startListening(recording);
   if (recording === 'meeting') label.textContent = clockBase.paused ? '일시정지' : '회의';
+  if (recording === 'memo') label.textContent = state.handsfree ? 'fn 누르면 끝' : '';
   if (!recording) clearInterval(clockTimer);
   if (!recording && prev) {
     // 받아쓰기는 단계 표시로 넘어가고, 회의·취소는 띠를 거둔다

@@ -10,6 +10,8 @@ const minutes = require('./minutes');
 
 const SELFTEST = process.argv.includes('--selftest');
 const TAP_MAX_MS = 300; // 이보다 짧게 눌렀다 떼면 실수로 누른 것으로 보고 버린다
+const DEBOUNCE_MS = 500; // 두 번 누르기·짧은 탭 판단 (Wispr Flow DICTATION_DEBOUNCE_DELAY와 같은 값)
+const DICTATION_MAX_MS = 20 * 60 * 1000; // 받아쓰기 한 번의 최대 길이 (Wispr Flow와 같은 20분)
 const RECORDINGS_DIR = path.join(os.homedir(), 'Documents', 'MeetingRecorder');
 // 받아쓰기는 음성을 남기지 않는다: 임시 폴더에 녹음 → 변환·입력 → 음성 삭제, 데이터만 이 파일에 한 줄씩 쌓는다
 const DICTATION_LOG = path.join(RECORDINGS_DIR, 'dictations.jsonl');
@@ -69,26 +71,42 @@ function installDisplayMediaHandler() {
 // ── fn 키 동작: 받아쓰기 전용 (회의 녹음은 창·독·메뉴바 버튼으로만) ────────────
 // 꾹 누르기 : 누르는 동안 녹음, 떼면 받아써서 커서 위치에 입력
 // 짧게 눌렀다 떼거나 fn+다른 키 단축키를 쓰면 녹음을 버린다
-let fnState = 'idle'; // idle | holding | handsfree(버튼으로 시작한 녹음)
+let fnState = 'idle'; // idle | holding | tapped(짧게 뗀 뒤 두 번째 누름 대기) | handsfree(잠금·버튼으로 시작한 녹음)
 let handsfreeMode = null;
 let fnDownAt = 0;
 let ignoreNextUp = false;
+let dictationStartAt = 0;
+let tapTimer = null;
 
 function command(action, mode) {
   send('rec:cmd', { action, mode });
 }
 
+// Wispr Flow와 같은 규칙 (DICTATION_DEBOUNCE_DELAY = 500ms):
+// - 누르면 바로 듣기 시작. 0.5초 이상 누르고 있다 떼면 받아써서 입력
+// - 0.5초 안에 뗐다면 0.5초 더 기다렸다가 두 번째 누름이 없으면 버린다
+// - 시작 후 0.5초 안에 다시 누르면 지금 녹음을 그대로 이어서 잠금(손을 떼도 계속 듣기)
+// - 잠긴 상태에서 다시 누르면 끝내고 입력, 시작 후 0.5초 안에 세 번째로 누르면 취소
 function onFnDown() {
   fnDownAt = Date.now();
   if (fnState === 'handsfree') {
     // 버튼으로 시작한 받아쓰기는 fn으로도 끝낼 수 있지만, 회의 녹음은 fn에 반응하지 않는다
     if (handsfreeMode !== 'memo') return;
-    command('stop');
+    command(fnDownAt - dictationStartAt < DEBOUNCE_MS ? 'cancel' : 'stop');
     fnState = 'idle';
     handsfreeMode = null;
     ignoreNextUp = true;
+  } else if (fnState === 'tapped') {
+    if (fnDownAt - dictationStartAt < DEBOUNCE_MS) {
+      clearTimeout(tapTimer);
+      fnState = 'handsfree';
+      handsfreeMode = 'memo';
+      ignoreNextUp = true;
+      sendOverlayState();
+    }
   } else if (fnState === 'idle' && dictation.getSettings().enabled) {
     command('start', 'memo'); // 누르는 즉시 시작해야 첫 음절이 잘리지 않는다
+    dictationStartAt = fnDownAt;
     fnState = 'holding';
   }
 }
@@ -99,9 +117,21 @@ function onFnUp({ chord }) {
     return;
   }
   if (fnState !== 'holding') return;
-  fnState = 'idle';
-  if (chord || Date.now() - fnDownAt < TAP_MAX_MS) command('cancel');
-  else command('stop');
+  if (chord) {
+    fnState = 'idle';
+    command('cancel');
+  } else if (Date.now() - dictationStartAt < DEBOUNCE_MS) {
+    fnState = 'tapped'; // 두 번째 누름을 기다린다
+    clearTimeout(tapTimer);
+    tapTimer = setTimeout(() => {
+      if (fnState !== 'tapped') return;
+      fnState = 'idle';
+      command('cancel');
+    }, DEBOUNCE_MS);
+  } else {
+    fnState = 'idle';
+    command('stop');
+  }
 }
 
 // 회의 녹음 일시정지: 그동안 들어오는 소리를 파일에 쓰지 않는다 (재개하면 바로 이어서 기록)
@@ -149,7 +179,8 @@ async function confirmCancel() {
 }
 
 function uiToggle(mode) {
-  if (fnState === 'holding' || fnState === 'handsfree') {
+  clearTimeout(tapTimer);
+  if (fnState === 'holding' || fnState === 'tapped' || fnState === 'handsfree') {
     command('stop');
     fnState = 'idle';
     handsfreeMode = null;
@@ -202,14 +233,16 @@ function runFnSimulation() {
   const steps = [
     [500, 'down'], [2000, 'up'], // 꾹 누르기 1.5초 → 받아쓰기
     [3000, 'down'], [3100, 'up'], // 짧은 탭 → 버림
-    [4500, 'down'], [4600, 'up'], [4750, 'down'], [4850, 'up'], // 두 번 탭 → 아무 일도 없어야 한다
+    [4500, 'down'], [4600, 'up'], [4750, 'down'], [4850, 'up'], // 두 번 탭 → 손을 떼도 계속 받아쓰기
+    [6200, 'down'], [6300, 'up'], // 한 번 더 누르면 끝내고 받아쓰기
+    [7000, 'down'], [7100, 'up'], [7250, 'down'], [7350, 'up'], [7400, 'down'], [7450, 'up'], // 빠르게 세 번 → 취소
   ];
   for (const [t, line] of steps) setTimeout(() => handleFnLine(line), t);
   // 회의는 버튼으로만 시작/정지하고, 녹음 중 fn은 무시돼야 한다
-  setTimeout(() => uiToggle('meeting'), 5500);
-  setTimeout(() => { handleFnLine('down'); handleFnLine('up'); }, 7000);
-  setTimeout(() => uiToggle('meeting'), 8500);
-  setTimeout(() => app.quit(), 10000);
+  setTimeout(() => uiToggle('meeting'), 9000);
+  setTimeout(() => { handleFnLine('down'); handleFnLine('up'); }, 10500);
+  setTimeout(() => uiToggle('meeting'), 12000);
+  setTimeout(() => app.quit(), 13500);
 }
 
 function fnUsageWarning() {
@@ -237,6 +270,16 @@ ipcMain.handle('rec:start', (_e, { mode, sampleRate, tracks, devices }) => {
   for (const t of tracks) writers[t] = new WavWriter(path.join(dir, `${t}.wav`), { sampleRate });
   recording = { dir, mode, writers, sampleRate, devices, startedAt: new Date(), micPeak: 0, app: null, pausedMs: 0, pausedAt: null, speakers: mode === 'meeting' ? nextSpeakers : null };
   if (mode === 'meeting') nextSpeakers = null;
+  if (mode === 'memo') {
+    // 받아쓰기가 너무 길어지면 20분에서 끝내고 입력한다
+    const rec = recording;
+    setTimeout(() => {
+      if (recording !== rec) return;
+      command('stop');
+      fnState = 'idle';
+      handsfreeMode = null;
+    }, DICTATION_MAX_MS);
+  }
   if (mode === 'memo') {
     // 통계용: 어느 앱에 입력하려고 했는지 (fn을 누른 순간 앞에 있던 앱)
     const rec = recording;
@@ -713,7 +756,7 @@ function sendOverlay(channel, payload) {
 
 function sendOverlayState() {
   if (overlay && !overlay.isDestroyed()) {
-    overlay.webContents.send('overlay:state', { recording: recording?.mode ?? null, transcribing: transcribing > 0, clock: clockInfo() });
+    overlay.webContents.send('overlay:state', { recording: recording?.mode ?? null, transcribing: transcribing > 0, clock: clockInfo(), handsfree: recording?.mode === 'memo' && fnState === 'handsfree' });
   }
 }
 
