@@ -658,8 +658,8 @@ ipcMain.on('app:log', (_e, msg) => {
 // ── 메뉴바 (창을 닫아도 앱은 여기서 계속 실행된다) ─────────────────────────
 let trayTimer;
 
+// 플로팅 독은 앱이 켜져 있는 동안 창을 열든 닫든 항상 보인다
 function showWindow() {
-  overlay?.hide();
   win.show();
   win.focus();
 }
@@ -811,6 +811,7 @@ async function init() {
   dictation.init({ onEngineStatus: (status) => send('dict:engine', status) });
 
   createOverlay();
+  if (!SELFTEST) overlay.once('ready-to-show', showOverlay);
   tray = new Tray(nativeImage.createEmpty());
   updateTray();
 
