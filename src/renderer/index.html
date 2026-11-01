@@ -16,6 +16,7 @@
     <symbol id="i-paste" viewBox="0 0 20 20"><path d="M7 3.5h6v2.5H7zM13 4.5h1.5a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1H7"/><path d="M8 12l2 2 2-2M10 8.5V14"/></symbol>
     <symbol id="i-list" viewBox="0 0 20 20"><path d="M7 5.5h10M7 10h10M7 14.5h10M3 5.5h.5M3 10h.5M3 14.5h.5"/></symbol>
     <symbol id="i-people" viewBox="0 0 20 20"><circle cx="7.5" cy="7" r="2.75"/><path d="M2.5 16c.6-2.6 2.6-4 5-4s4.4 1.4 5 4"/><path d="M13 4.6a2.6 2.6 0 0 1 0 4.9M14.6 12.3c1.5.5 2.5 1.8 2.9 3.7"/></symbol>
+    <symbol id="i-key" viewBox="0 0 20 20"><circle cx="7" cy="12.5" r="3.5"/><path d="M9.5 10l7-7M14 5.5l2 2M12 7.5l1.5 1.5"/></symbol>
     <symbol id="i-gear" viewBox="0 0 20 20"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4"/></symbol>
   </svg>
 
@@ -30,7 +31,9 @@
     <dl class="engine-state">
       <div><dt>음성 인식</dt><dd id="sideEngine">확인 중</dd></div>
       <div><dt>다듬기</dt><dd id="sideCleanup">확인 중</dd></div>
+      <div><dt>화자 구분</dt><dd id="sideDiarize">확인 중</dd></div>
     </dl>
+    <button class="side-link" id="openConnSide"><svg><use href="#i-key"/></svg>토큰·계정 연결</button>
   </aside>
 
   <main class="sheet">
@@ -119,10 +122,7 @@
           <span class="lbl">사용할 계정</span>
           <div class="ctl">
             <div class="choices" id="providers" role="radiogroup" aria-label="다듬기에 사용할 계정"></div>
-            <div class="key-row" id="keyRow" hidden>
-              <input id="apiKey" type="password" placeholder="sk-ant-…" autocomplete="off" />
-              <button class="line-btn" id="saveKey">저장</button>
-            </div>
+            <button class="line-btn" data-open-conn><svg><use href="#i-key"/></svg>토큰·계정 연결</button>
           </div>
         </div>
       </section>
@@ -141,11 +141,7 @@
           <div class="ctl">
             <label class="check"><input type="checkbox" id="diarizeOn" /> 누가 말했는지 구분 (pyannote, 이 Mac 안에서 처리)</label>
             <p class="state-line" id="diarizeLine"></p>
-            <div class="key-row" id="hfRow" hidden>
-              <input id="hfToken" type="password" placeholder="hf_…" autocomplete="off" />
-              <button class="line-btn" id="saveHf">저장</button>
-            </div>
-            <p class="hint">처음 한 번 huggingface.co에서 pyannote/speaker-diarization-community-1 약관에 동의하고 Read 토큰을 넣어 주세요. 모델을 받은 뒤에는 인터넷 없이 동작합니다. 스크립트에서 "화자 1"을 누르면 이름을 바꿀 수 있습니다.</p>
+            <p class="hint">처음 한 번 Hugging Face 토큰이 필요합니다. 모델을 받은 뒤에는 인터넷 없이 동작합니다. 스크립트에서 "화자 1"을 누르면 이름을 바꿀 수 있습니다.</p>
           </div>
         </div>
         <div class="row">
@@ -185,6 +181,69 @@
       </section>
     </section>
   </main>
+
+  <!-- 연결: 토큰·키는 여기서만 넣고 지운다 -->
+  <dialog class="conn" id="conn" aria-labelledby="connTitle">
+    <header class="conn-head">
+      <h2 id="connTitle">토큰·계정 연결</h2>
+      <button class="ink-btn" id="connClose">닫기</button>
+    </header>
+    <p class="conn-lead">토큰과 키는 이 Mac의 키체인으로 암호화해 저장하고, 저장한 뒤에는 화면에 다시 보여 주지 않습니다.</p>
+
+    <section class="conn-block" data-kind="hf">
+      <div class="conn-title">
+        <h3>Hugging Face 토큰</h3>
+        <span class="conn-state" data-state></span>
+      </div>
+      <p class="hint">회의 화자 구분(pyannote) 모델을 처음 받을 때 씁니다.</p>
+      <ol class="steps">
+        <li>모델 약관에 동의합니다. <button class="link-btn" data-link="https://huggingface.co/pyannote/speaker-diarization-community-1">모델 페이지 열기</button></li>
+        <li>Read 권한 토큰을 만듭니다. <button class="link-btn" data-link="https://huggingface.co/settings/tokens">토큰 페이지 열기</button></li>
+        <li>만든 토큰을 아래에 붙여 넣고 저장합니다.</li>
+      </ol>
+      <div class="key-row">
+        <input type="password" placeholder="hf_…" autocomplete="off" spellcheck="false" data-input autofocus />
+        <button class="line-btn" data-toggle>보기</button>
+        <button class="line-btn primary" data-save>저장</button>
+      </div>
+      <div class="conn-acts">
+        <button class="line-btn" data-verify>확인</button>
+        <button class="line-btn" data-clear>앱에 저장한 토큰 지우기</button>
+        <span class="conn-result" data-result role="status"></span>
+      </div>
+    </section>
+
+    <section class="conn-block" data-kind="anthropic">
+      <div class="conn-title">
+        <h3>Anthropic API 키</h3>
+        <span class="conn-state" data-state></span>
+      </div>
+      <p class="hint">Claude Code·Codex 로그인이 없을 때 다듬기와 회의록 작성에 씁니다. 로그인이 있으면 넣지 않아도 됩니다.</p>
+      <ol class="steps">
+        <li>API 키를 만듭니다. <button class="link-btn" data-link="https://console.anthropic.com/settings/keys">키 페이지 열기</button></li>
+        <li>만든 키를 아래에 붙여 넣고 저장합니다.</li>
+      </ol>
+      <div class="key-row">
+        <input type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false" data-input />
+        <button class="line-btn" data-toggle>보기</button>
+        <button class="line-btn primary" data-save>저장</button>
+      </div>
+      <div class="conn-acts">
+        <button class="line-btn" data-verify>확인</button>
+        <button class="line-btn" data-clear>키 지우기</button>
+        <span class="conn-result" data-result role="status"></span>
+      </div>
+    </section>
+
+    <section class="conn-block">
+      <div class="conn-title">
+        <h3>로그인된 계정</h3>
+        <button class="line-btn" id="connRefresh">다시 확인</button>
+      </div>
+      <p class="hint">다듬기와 회의록은 이 계정들을 먼저 씁니다. 로그인은 터미널에서 <code>claude</code> 또는 <code>codex login</code>으로 합니다.</p>
+      <dl class="accounts" id="connAccounts"></dl>
+    </section>
+  </dialog>
   <script type="module" src="app.js"></script>
 </body>
 </html>

@@ -772,8 +772,8 @@ async function renderProviders(fresh = false) {
     ['api', 'Anthropic API 키', providers.api],
   ];
   for (const [id, name, info] of rows) {
-    const usable = typeof info === 'string' || info.loggedIn || id === 'api';
-    const who = typeof info === 'string' ? info : !info.installed ? '설치 안 됨' : info.loggedIn ? info.account ?? '로그인됨' : id === 'api' ? '키 없음' : '로그인 필요';
+    const usable = typeof info === 'string' || info.loggedIn;
+    const who = typeof info === 'string' ? info : !info.installed ? '설치 안 됨' : info.loggedIn ? info.account ?? (id === 'api' ? '키 저장됨' : '로그인됨') : id === 'api' ? '키 없음 · 연결에서 입력' : '로그인 필요';
     const label = document.createElement('label');
     label.className = `choice${usable ? '' : ' off'}`;
     label.innerHTML = '<input type="radio" name="provider" /><span></span><span class="who"></span>';
@@ -786,7 +786,7 @@ async function renderProviders(fresh = false) {
     label.querySelector('.who').textContent = who;
     box.append(label);
   }
-  $('keyRow').hidden = settings.provider !== 'api';
+
   renderSideCleanup();
 }
 
@@ -815,17 +815,23 @@ function renderDictSettings(s) {
     st.textContent = 'Hugging Face 토큰이 필요합니다.';
   } else st.textContent = 'pyannote community-1 · 준비됨';
   dl.append(st);
-  $('hfRow').hidden = !s.diarize || !s.diarizeReady;
-  $('hfToken').placeholder = s.hasHfToken ? '저장됨 · 바꾸려면 새 토큰 입력' : 'hf_…';
+  $('sideDiarize').textContent = !s.diarize ? '꺼짐' : !s.diarizeReady ? '설치 필요' : s.hasHfToken ? '준비됨' : '토큰 필요';
+  $('sideDiarize').classList.toggle('bad', s.diarize && (!s.diarizeReady || !s.hasHfToken));
+  if (s.diarize && s.diarizeReady && !s.hasHfToken) {
+    setNotice('hf', {
+      title: '화자 구분에 Hugging Face 토큰이 필요합니다.',
+      detail: '토큰을 넣기 전까지 회의 스크립트에 화자가 표시되지 않습니다.',
+      action: '토큰 넣기',
+      onAction: openConnections,
+    });
+  } else setNotice('hf', null);
   $('meetingSystem').checked = s.meetingSystemAudio;
   $('dictEnabled').checked = s.enabled;
   $('dictLanguage').value = s.language;
   $('dictCleanup').checked = s.cleanup;
   $('providerRow').hidden = !s.cleanup && !s.minutes; // 회의록도 같은 계정을 쓴다
   if (document.activeElement !== $('dictVocab')) $('dictVocab').value = s.vocabulary;
-  $('apiKey').value = '';
-  $('apiKey').placeholder = s.hasApiKey ? '저장됨 · 바꾸려면 새 키 입력' : 'sk-ant-…';
-  $('keyRow').hidden = s.provider !== 'api';
+
   renderEngine(s.engine);
   renderSideCleanup();
 }
@@ -840,16 +846,13 @@ $('dictLanguage').onchange = (e) => saveDict({ language: e.target.value });
 $('dictCleanup').onchange = (e) => saveDict({ cleanup: e.target.checked });
 $('minutesAuto').onchange = (e) => saveDict({ minutes: e.target.checked });
 $('diarizeOn').onchange = (e) => saveDict({ diarize: e.target.checked });
-$('saveHf').onclick = () => {
-  saveDict({ hfToken: $('hfToken').value.trim() });
-  $('hfToken').value = '';
-};
+
 $('meetingSystem').onchange = async (e) => {
   await saveDict({ meetingSystemAudio: e.target.checked });
   renderPerms();
 };
 $('dictVocab').onchange = (e) => saveDict({ vocabulary: e.target.value.trim() });
-$('saveKey').onclick = () => saveDict({ apiKey: $('apiKey').value.trim() });
+
 $('openDir').onclick = () => api.openRecordings();
 
 api.onDictEngine(renderEngine);
@@ -957,6 +960,88 @@ window.addEventListener('focus', () => {
   loadHistory();
 });
 api.onPermChanged(() => renderPerms());
+
+// ── 토큰·계정 연결 창 ──────────────────────────────────────────────────
+const SOURCE_TEXT = {
+  hf: (s) => (s.app ? '앱에 저장됨' : s.cli ? '터미널 로그인(hf auth login) 토큰 사용 중' : '없음'),
+  anthropic: (s) => (s.app ? '앱에 저장됨' : s.env ? '환경 변수 ANTHROPIC_API_KEY 사용 중' : '없음'),
+};
+
+async function renderConnections(status) {
+  status ??= await api.tokenStatus();
+  for (const block of $('conn').querySelectorAll('.conn-block[data-kind]')) {
+    const kind = block.dataset.kind;
+    const s = status[kind];
+    const state = block.querySelector('[data-state]');
+    state.textContent = SOURCE_TEXT[kind](s);
+    state.classList.toggle('bad', !s.app && !s.cli && !s.env);
+    block.querySelector('[data-clear]').disabled = !s.app;
+    block.querySelector('[data-verify]').disabled = !s.app && !s.cli && !s.env;
+  }
+  const acc = $('connAccounts');
+  const p = await api.providers({ fresh: true });
+  acc.replaceChildren();
+  for (const [id, name] of [['claude-code', 'Claude Code'], ['codex', 'Codex']]) {
+    const info = p[id];
+    const dt = document.createElement('dt');
+    dt.textContent = name;
+    const dd = document.createElement('dd');
+    dd.textContent = !info.installed ? '설치 안 됨' : info.loggedIn ? `로그인됨 · ${info.account ?? ''}` : '로그인 안 됨';
+    dd.classList.toggle('bad', !info.loggedIn);
+    acc.append(dt, dd);
+  }
+}
+
+for (const block of $('conn').querySelectorAll('.conn-block[data-kind]')) {
+  const kind = block.dataset.kind;
+  const input = block.querySelector('[data-input]');
+  const result = block.querySelector('[data-result]');
+  const show = (ok, text) => {
+    result.textContent = text;
+    result.className = `conn-result ${ok ? 'ok' : 'bad'}`;
+  };
+  block.querySelector('[data-toggle]').onclick = (e) => {
+    input.type = input.type === 'password' ? 'text' : 'password';
+    e.target.textContent = input.type === 'password' ? '보기' : '숨기기';
+  };
+  const save = async () => {
+    if (!input.value.trim()) return input.focus();
+    await renderConnections(await api.saveToken(kind, input.value));
+    input.value = '';
+    input.type = 'password';
+    block.querySelector('[data-toggle]').textContent = '보기';
+    show(true, '저장했습니다. 확인 중…');
+    const r = await api.verifyToken(kind);
+    show(r.ok, r.message);
+    renderDictSettings(await api.dictSettings());
+    renderProviders(true);
+  };
+  block.querySelector('[data-save]').onclick = save;
+  input.onkeydown = (e) => e.key === 'Enter' && save();
+  block.querySelector('[data-verify]').onclick = async () => {
+    show(true, '확인 중…');
+    const r = await api.verifyToken(kind);
+    show(r.ok, r.message);
+  };
+  block.querySelector('[data-clear]').onclick = async () => {
+    await renderConnections(await api.clearToken(kind));
+    show(true, '지웠습니다.');
+    renderDictSettings(await api.dictSettings());
+    renderProviders(true);
+  };
+}
+for (const b of $('conn').querySelectorAll('[data-link]')) b.onclick = () => api.openExternal(b.dataset.link);
+$('connRefresh').onclick = () => renderConnections();
+$('connClose').onclick = () => $('conn').close();
+$('conn').addEventListener('click', (e) => e.target === $('conn') && $('conn').close()); // 바깥(배경) 클릭으로 닫기
+
+function openConnections() {
+  for (const r of $('conn').querySelectorAll('[data-result]')) r.textContent = '';
+  $('conn').showModal();
+  renderConnections();
+}
+$('openConnSide').onclick = openConnections;
+for (const b of document.querySelectorAll('[data-open-conn]')) b.onclick = openConnections;
 
 // ── 시작 ────────────────────────────────────────────────────────────────
 setRecording(null);

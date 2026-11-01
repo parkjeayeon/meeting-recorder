@@ -433,6 +433,64 @@ ipcMain.handle('dict:repaste', async (_e, text) => {
 });
 ipcMain.handle('dict:providers', (_e, opts) => dictation.cleanupProviders(opts));
 
+// ── 연결 설정 창: 토큰·키 저장, 삭제, 확인 ─────────────────────────────────
+const DIARIZE_MODEL = 'pyannote/speaker-diarization-community-1';
+const EXTERNAL_LINKS = new Set([
+  'https://huggingface.co/settings/tokens',
+  `https://huggingface.co/${DIARIZE_MODEL}`,
+  'https://console.anthropic.com/settings/keys',
+]);
+
+ipcMain.handle('tokens:status', () => dictation.tokenSources());
+ipcMain.handle('tokens:save', (_e, kind, value) => {
+  const v = String(value ?? '').trim();
+  if (!v) return dictation.tokenSources();
+  dictation.saveSettings(kind === 'hf' ? { hfToken: v } : { apiKey: v });
+  return dictation.tokenSources();
+});
+ipcMain.handle('tokens:clear', (_e, kind) => {
+  dictation.saveSettings(kind === 'hf' ? { hfToken: '' } : { apiKey: '' });
+  return dictation.tokenSources();
+});
+ipcMain.handle('tokens:verify', async (_e, kind) => {
+  try {
+    if (kind === 'hf') {
+      const token = dictation.hfToken() ?? dictation.hfCliToken();
+      if (!token) return { ok: false, message: '저장된 토큰이 없습니다' };
+      const headers = { Authorization: `Bearer ${token}` };
+      const who = await fetch('https://huggingface.co/api/whoami-v2', { headers, signal: AbortSignal.timeout(10000) });
+      if (!who.ok) return { ok: false, message: '토큰이 맞지 않습니다 (만료되었거나 잘못 입력됨)' };
+      const user = (await who.json()).name;
+      // 약관에 동의하지 않은 계정은 모델 파일을 받을 수 없다 (403)
+      const model = await fetch(`https://huggingface.co/${DIARIZE_MODEL}/resolve/main/config.yaml`, {
+        method: 'HEAD',
+        headers,
+        redirect: 'manual',
+        signal: AbortSignal.timeout(10000),
+      });
+      const access = model.status < 400;
+      return {
+        ok: access,
+        user,
+        message: access ? `${user} 계정 · 화자 구분 모델 사용 가능` : `${user} 계정 · 모델 약관에 아직 동의하지 않았습니다`,
+      };
+    }
+    const key = dictation.apiKey();
+    if (!key) return { ok: false, message: '저장된 API 키가 없습니다' };
+    const Anthropic = require('@anthropic-ai/sdk').default;
+    await new Anthropic({ apiKey: key, timeout: 10000, maxRetries: 0 }).models.list({ limit: 1 });
+    return { ok: true, message: 'API 키 사용 가능' };
+  } catch (err) {
+    const status = err?.status;
+    if (status === 401) return { ok: false, message: 'API 키가 맞지 않습니다' };
+    if (status === 403) return { ok: false, message: '이 키로는 접근 권한이 없습니다' };
+    return { ok: false, message: `확인하지 못했습니다: ${err.message}` };
+  }
+});
+ipcMain.on('app:openExternal', (_e, url) => {
+  if (EXTERNAL_LINKS.has(url)) shell.openExternal(url);
+});
+
 function pasteLast() {
   const text = lastTranscript ?? listHistory(50).find((r) => r.transcript?.text || r.transcript?.raw)?.transcript;
   const value = typeof text === 'string' ? text : text?.text ?? text?.raw;

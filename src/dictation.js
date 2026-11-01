@@ -55,6 +55,24 @@ function hfToken() {
   return hfTokenEnc ? safeStorage.decryptString(Buffer.from(hfTokenEnc, 'base64')) : null;
 }
 
+// `hf auth login`으로 저장된 토큰 (앱에 저장한 토큰이 없을 때 pyannote가 이걸 쓴다)
+function hfCliToken() {
+  try {
+    return fs.readFileSync(path.join(require('os').homedir(), '.cache', 'huggingface', 'token'), 'utf8').trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+// 연결 설정 창용: 값은 넘기지 않고 어디에 저장돼 있는지만 알려 준다
+function tokenSources() {
+  const { apiKeyEnc, hfTokenEnc } = readStored();
+  return {
+    hf: { app: Boolean(hfTokenEnc), cli: Boolean(hfCliToken()) },
+    anthropic: { app: Boolean(apiKeyEnc), env: Boolean(process.env.ANTHROPIC_API_KEY) },
+  };
+}
+
 function saveSettings(patch) {
   const stored = readStored();
   const { apiKey, hfToken: hf, ...rest } = patch;
@@ -351,4 +369,4 @@ function cleanupProviders(opts) {
   return cleanupText.providerStatus({ hasApiKey: getSettings().hasApiKey }, opts);
 }
 
-module.exports = { init, dictate, paste, transcribeSegments, startDedicatedServer, apiKey, hfToken, cleanupProviders, downloadModel, engineStatus, startServer, stopServer, getSettings, saveSettings };
+module.exports = { init, dictate, paste, transcribeSegments, startDedicatedServer, apiKey, hfToken, hfCliToken, tokenSources, cleanupProviders, downloadModel, engineStatus, startServer, stopServer, getSettings, saveSettings };

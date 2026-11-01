@@ -111,6 +111,48 @@ kbd {
 .engine-state dt { color: var(--ink-3); }
 .engine-state dd { margin: 0; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .engine-state dd.bad { color: var(--red); }
+.side-link { display: flex; align-items: center; gap: 7px; margin: 12px 0 0; padding: 6px 8px; border: 0; background: none; color: var(--ink-2); font-size: 12px; text-align: left; }
+.side-link svg { width: 14px; height: 14px; }
+.side-link:hover { color: var(--ink); background: var(--fill); }
+
+/* ── 토큰·계정 연결 창: 괘선 친 서식 한 장 ─────────────────────── */
+dialog.conn {
+  width: min(560px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  padding: 0;
+  border: 1px solid var(--rule-2);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.22), 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow-y: auto;
+}
+dialog.conn::backdrop { background: rgba(22, 24, 27, 0.32); }
+dialog.conn[open] { animation: rise 0.18s cubic-bezier(0.16, 1, 0.3, 1); }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+.conn-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 10px 24px; border-bottom: 1px solid var(--rule-2); position: sticky; top: 0; background: var(--paper); }
+.conn-head h2 { margin: 0; font-size: 15px; font-weight: 650; }
+.conn-lead { margin: 12px 24px 4px; font-size: 12px; color: var(--ink-3); text-wrap: pretty; }
+.conn-block { padding: 14px 24px 16px; border-bottom: 1px solid var(--rule); display: grid; gap: 8px; }
+.conn-block:last-child { border-bottom: 0; }
+.conn-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.conn-title h3 { margin: 0; font-size: 13px; font-weight: 650; }
+.conn-state { font-size: 12px; color: var(--ink-2); }
+.conn-state.bad { color: var(--red); }
+.steps { margin: 0; padding-left: 18px; display: grid; gap: 3px; font-size: 12.5px; color: var(--ink-2); }
+.link-btn { border: 0; background: none; padding: 0 2px; color: var(--ink); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.link-btn:hover { color: var(--red); }
+.conn .key-row { width: 100%; }
+.conn .key-row input { flex: 1; width: auto; font-family: var(--mono); font-size: 12px; }
+.conn-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-left: -9px; }
+.conn-result { font-size: 12px; margin-left: 6px; }
+.conn-result.ok { color: var(--ink-2); }
+.conn-result.bad { color: var(--red); }
+.accounts { margin: 0; display: grid; grid-template-columns: 110px 1fr; row-gap: 6px; font-size: 12.5px; }
+.accounts dt { color: var(--ink-2); }
+.accounts dd { margin: 0; }
+.accounts dd.bad { color: var(--ink-3); }
+.conn code { font: 12px var(--mono); background: var(--fill); padding: 1px 5px; border-radius: 4px; white-space: nowrap; }
 
 /* ── 본문 용지 ─────────────────────────────────────────────── */
 .sheet { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100vh; }
