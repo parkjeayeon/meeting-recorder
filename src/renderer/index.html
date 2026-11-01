@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:" />
+  <title>Meeting Recorder</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-mic" viewBox="0 0 20 20"><rect x="7" y="2.5" width="6" height="10" rx="3"/><path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5"/></symbol>
+    <symbol id="i-rec" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.5"/><circle cx="10" cy="10" r="2.5" class="fill"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 20 20"><rect x="5.5" y="5.5" width="9" height="9" rx="1.5" class="fill"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 20 20"><rect x="7" y="7" width="9.5" height="9.5" rx="1.5"/><path d="M13 7V4.5A1 1 0 0 0 12 3.5H4.5a1 1 0 0 0-1 1V12a1 1 0 0 0 1 1H7"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 20 20"><path d="M2.5 5.5a1 1 0 0 1 1-1h4l1.5 2h7.5a1 1 0 0 1 1 1v7.5a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-paste" viewBox="0 0 20 20"><path d="M7 3.5h6v2.5H7zM13 4.5h1.5a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1H7"/><path d="M8 12l2 2 2-2M10 8.5V14"/></symbol>
+    <symbol id="i-list" viewBox="0 0 20 20"><path d="M7 5.5h10M7 10h10M7 14.5h10M3 5.5h.5M3 10h.5M3 14.5h.5"/></symbol>
+    <symbol id="i-people" viewBox="0 0 20 20"><circle cx="7.5" cy="7" r="2.75"/><path d="M2.5 16c.6-2.6 2.6-4 5-4s4.4 1.4 5 4"/><path d="M13 4.6a2.6 2.6 0 0 1 0 4.9M14.6 12.3c1.5.5 2.5 1.8 2.9 3.7"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 20 20"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4"/></symbol>
+  </svg>
+
+  <aside class="side">
+    <div class="drag"></div>
+    <div class="brand">Meeting Recorder</div>
+    <nav class="toc" aria-label="목차">
+      <button class="toc-item" data-page="records" aria-current="page"><svg><use href="#i-list"/></svg><span>기록</span><span class="num" id="countRecords"></span></button>
+      <button class="toc-item" data-page="meetings"><svg><use href="#i-people"/></svg><span>회의</span><span class="num" id="countMeetings"></span></button>
+      <button class="toc-item" data-page="settings"><svg><use href="#i-gear"/></svg><span>설정</span><span class="flag" id="settingsFlag" hidden></span></button>
+    </nav>
+    <dl class="engine-state">
+      <div><dt>음성 인식</dt><dd id="sideEngine">확인 중</dd></div>
+      <div><dt>다듬기</dt><dd id="sideCleanup">확인 중</dd></div>
+    </dl>
+  </aside>
+
+  <main class="sheet">
+    <header class="sheet-head">
+      <h1 id="pageTitle">기록</h1>
+      <div class="head-actions">
+        <button class="ink-btn" id="memoBtn"><svg><use href="#i-mic"/></svg><span>받아쓰기</span></button>
+        <button class="ink-btn" id="meetingBtn"><svg><use href="#i-rec"/></svg><span>회의 녹음</span></button>
+      </div>
+    </header>
+
+    <!-- 지금 상태: 대기 / 듣는 중 / 회의 녹음 중 / 변환 단계 -->
+    <section class="live" id="live" data-state="idle" aria-live="polite">
+      <span class="live-mark"></span>
+      <span class="live-text" id="liveText">대기 중</span>
+      <span class="live-sub" id="liveSub"></span>
+      <ol class="route" id="route" hidden>
+        <li data-stage="listen">듣기</li>
+        <li data-stage="transcribe">인식</li>
+        <li data-stage="cleanup">다듬기</li>
+        <li data-stage="paste">입력</li>
+      </ol>
+      <canvas class="tape" id="tape" width="360" height="28" hidden></canvas>
+      <span class="live-time" id="liveTime"></span>
+    </section>
+
+    <ul class="corrections" id="corrections"></ul>
+
+    <section class="page" id="page-records">
+      <div class="ledger" id="records"></div>
+      <div class="empty" id="recordsEmpty" hidden>
+        <p><kbd>fn</kbd>을 누른 채 말하고 손을 떼세요.</p>
+        <p class="empty-sub">말한 내용이 지금 커서가 있는 곳에 입력되고, 여기에 첫 줄이 적힙니다. 다듬기가 지운 군말은 취소선, 넣은 말은 밑줄로 표시됩니다. 음성은 남기지 않습니다.</p>
+      </div>
+    </section>
+
+    <section class="page" id="page-meetings" hidden>
+      <div class="ledger" id="meetings"></div>
+      <div class="empty" id="meetingsEmpty" hidden>
+        <p>오른쪽 위 회의 녹음 버튼으로 시작하세요.</p>
+        <p class="empty-sub">화면 왼쪽 독의 녹음 버튼이나 메뉴바에서도 시작할 수 있습니다. 멈추면 녹음 파일(48kHz WAV)을 남긴 뒤 녹취와 회의록(요약 · 결정 사항 · 할 일)을 만들어 여기에 적습니다. 음성 인식은 이 Mac 안에서 처리합니다.</p>
+      </div>
+    </section>
+
+    <section class="page settings" id="page-settings" hidden>
+      <section class="form-block">
+        <h2>받아쓰기</h2>
+        <div class="row">
+          <label for="dictEnabled">fn 꾹 누르기</label>
+          <div class="ctl">
+            <label class="check"><input type="checkbox" id="dictEnabled" /> 말한 내용을 커서 위치에 입력</label>
+            <p class="hint">받아쓴 음성은 글로 바꾼 뒤 바로 지우고, 글과 통계용 데이터(길이·글자 수·입력한 앱)만 남깁니다.</p>
+          </div>
+        </div>
+        <div class="row">
+          <label for="dictLanguage">언어</label>
+          <div class="ctl"><select id="dictLanguage">
+            <option value="ko">한국어</option>
+            <option value="auto">자동 감지</option>
+            <option value="en">English</option>
+          </select></div>
+        </div>
+        <div class="row">
+          <label for="dictVocab">자주 쓰는 단어</label>
+          <div class="ctl">
+            <textarea id="dictVocab" rows="2" placeholder="Wispr Flow, PJY, Electron"></textarea>
+            <p class="hint">회사·제품 이름, 전문 용어를 쉼표로 적으면 더 정확히 알아듣습니다.</p>
+          </div>
+        </div>
+        <div class="row">
+          <span class="lbl">음성 인식 엔진</span>
+          <div class="ctl"><p class="state-line" id="engineLine"></p></div>
+        </div>
+      </section>
+
+      <section class="form-block">
+        <h2>다듬기</h2>
+        <div class="row">
+          <label for="dictCleanup">군말·문장 정리</label>
+          <div class="ctl">
+            <label class="check"><input type="checkbox" id="dictCleanup" /> 입력하기 전에 다듬기</label>
+            <p class="hint">"음, 3시에, 아니 4시에" → "4시에". 긴 글은 나눠서 동시에 다듬습니다.</p>
+          </div>
+        </div>
+        <div class="row" id="providerRow">
+          <span class="lbl">사용할 계정</span>
+          <div class="ctl">
+            <div class="choices" id="providers" role="radiogroup" aria-label="다듬기에 사용할 계정"></div>
+            <div class="key-row" id="keyRow" hidden>
+              <input id="apiKey" type="password" placeholder="sk-ant-…" autocomplete="off" />
+              <button class="line-btn" id="saveKey">저장</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="form-block">
+        <h2>회의</h2>
+        <div class="row">
+          <label for="minutesAuto">회의록</label>
+          <div class="ctl">
+            <label class="check"><input type="checkbox" id="minutesAuto" /> 회의 녹음이 끝나면 녹취와 회의록 만들기</label>
+            <p class="hint">녹취는 이 Mac 안의 Whisper로, 회의록 작성은 위 다듬기와 같은 계정으로 합니다. 녹음 파일은 항상 그대로 남습니다.</p>
+          </div>
+        </div>
+        <div class="row">
+          <label for="diarizeOn">화자 구분</label>
+          <div class="ctl">
+            <label class="check"><input type="checkbox" id="diarizeOn" /> 누가 말했는지 구분 (pyannote, 이 Mac 안에서 처리)</label>
+            <p class="state-line" id="diarizeLine"></p>
+            <div class="key-row" id="hfRow" hidden>
+              <input id="hfToken" type="password" placeholder="hf_…" autocomplete="off" />
+              <button class="line-btn" id="saveHf">저장</button>
+            </div>
+            <p class="hint">처음 한 번 huggingface.co에서 pyannote/speaker-diarization-community-1 약관에 동의하고 Read 토큰을 넣어 주세요. 모델을 받은 뒤에는 인터넷 없이 동작합니다. 스크립트에서 "화자 1"을 누르면 이름을 바꿀 수 있습니다.</p>
+          </div>
+        </div>
+        <div class="row">
+          <label for="meetingSystem">화상 회의</label>
+          <div class="ctl">
+            <label class="check"><input type="checkbox" id="meetingSystem" /> 상대방 소리도 따로 녹음 (시스템 오디오)</label>
+            <p class="hint">오프라인 회의에는 필요 없습니다. 켜면 "시스템 오디오 녹음" 권한이 필요하고, 녹취에 [나]와 [상대방]이 구분됩니다.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="form-block">
+        <h2>녹음</h2>
+        <div class="row">
+          <label for="micSelect">마이크</label>
+          <div class="ctl">
+            <select id="micSelect"><option value="">시스템 기본값</option></select>
+            <p class="hint warn" id="micHint" hidden></p>
+          </div>
+        </div>
+        <div class="row">
+          <label for="echo">스피커로 듣는 중</label>
+          <div class="ctl">
+            <label class="check"><input type="checkbox" id="echo" /> 에코 제거 켜기</label>
+            <p class="hint">이어폰 없이 회의할 때만 켜세요. 켜면 음질이 조금 떨어집니다.</p>
+          </div>
+        </div>
+        <div class="row">
+          <span class="lbl">저장 위치</span>
+          <div class="ctl"><button class="line-btn" id="openDir"><svg><use href="#i-folder"/></svg>녹음 폴더 열기</button></div>
+        </div>
+      </section>
+
+      <section class="form-block">
+        <h2>macOS 권한</h2>
+        <ul class="perms" id="permList"></ul>
+      </section>
+    </section>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

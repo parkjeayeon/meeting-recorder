@@ -1,0 +1,174 @@
+/* 독은 쇠먹 잉크 덩어리, 진행 띠는 기록 테이프 (메인 창과 같은 잉크·주홍) */
+:root {
+  --ink: #16181b;
+  --ink-2: #464c54;
+  --ink-3: #69707a;
+  --paper: #fbfcfd;
+  --rule: #d5dbe2;
+  --red: #c7361b;
+  --hair: rgba(255, 255, 255, 0.55);
+  --strip-ink: #16181b;
+  --mono: "SF Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #1b1e22;
+    --ink-2: #b3bac3;
+    --ink-3: #8b939d;
+    --rule: #353b43;
+    --red: #ff6b4f;
+    --strip-ink: #e8ebee;
+  }
+}
+
+* { box-sizing: border-box; margin: 0; }
+html, body {
+  background: transparent;
+  overflow: hidden;
+  font: 600 12.5px -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  word-break: keep-all; /* 한글을 어절 단위로 줄바꿈 */
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+/* ── 독 (화면 왼쪽 가장자리) ──────────────────────────────── */
+.dock {
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 6px 6px 0;
+  z-index: 2;
+}
+.handle {
+  width: 8px;
+  height: 40px;
+  border-radius: 4px;
+  background: var(--ink);
+  border: 1px solid var(--hair);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  transition: opacity 0.15s ease-out, transform 0.15s ease-out, background-color 0.15s ease-out;
+}
+.dock[data-state="memo"] .handle,
+.dock[data-state="meeting"] .handle { background: var(--red); border-color: var(--red); }
+.dock[data-state="working"] .handle { background: var(--paper); border-color: var(--ink-3); }
+
+.buttons {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%) scale(0.6);
+  transform-origin: left center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.14s ease-out, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.dock.open .handle { visibility: hidden; transform: scale(0.7); }
+.dock.open .buttons { opacity: 1; transform: translateY(-50%) scale(1); pointer-events: auto; }
+
+.btn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: var(--ink);
+  color: #eef0f2;
+  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.4);
+  transition: background-color 0.12s ease-out, border-color 0.12s ease-out;
+}
+.btn:hover { background: #2a2d32; border-color: rgba(255, 255, 255, 0.32); }
+.btn svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 2.1; stroke-linecap: round; stroke-linejoin: round; }
+.btn.mic { height: 62px; }
+.btn.mic svg rect { fill: currentColor; stroke: none; }
+.btn.note { width: 24px; height: 24px; }
+.btn.note svg { width: 12px; height: 12px; }
+.ring { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid currentColor; display: grid; place-items: center; }
+.core { width: 6px; height: 6px; border-radius: 50%; background: currentColor; transition: border-radius 0.15s ease-out, background-color 0.15s ease-out; }
+.dock[data-state="memo"] .btn.mic { background: var(--red); border-color: var(--red); }
+.dock[data-state="meeting"] .core { border-radius: 1.5px; background: var(--red); }
+.dock[data-state="meeting"] .btn.rec { border-color: var(--red); }
+
+.tip {
+  position: absolute;
+  left: 40px;
+  top: 0;
+  padding: 6px 11px;
+  border-radius: 7px;
+  background: var(--ink);
+  color: #eef0f2;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 0.12s ease-out, transform 0.12s ease-out;
+  pointer-events: none;
+}
+.tip kbd { font: 600 10.5px var(--mono); color: #aeb5be; margin-left: 6px; }
+.tip.show { opacity: 1; transform: none; }
+
+/* ── 진행 띠 ─────────────────────────────────────────────── */
+.strip {
+  position: absolute;
+  left: 0; /* 화면 가장자리에서, 독 손잡이 밑으로 빠져나온다 */
+  top: 50%;
+  height: 34px;
+  max-width: 290px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 12px 0 24px;
+  border-radius: 0 8px 8px 0;
+  background: var(--paper);
+  color: var(--strip-ink);
+  border: 1px solid var(--rule);
+  border-left: 0;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18), 0 1px 2px rgba(0, 0, 0, 0.12);
+  transform: translateY(-50%);
+  clip-path: inset(-20px -20px -20px 0);
+  transition: clip-path 0.26s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease-out;
+  z-index: 1;
+}
+.strip[data-mode="hidden"] { clip-path: inset(-20px 100% -20px 0); opacity: 0; }
+.dock.open ~ .strip { opacity: 0; }
+
+.mark { width: 8px; height: 8px; border-radius: 50%; background: var(--red); flex: none; }
+.levels { width: 120px; height: 22px; flex: none; }
+.time { font: 500 11.5px var(--mono); font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+.route { display: flex; align-items: center; padding: 0; list-style: none; }
+.route li { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--ink-3); flex: none; }
+.route li + li { margin-left: 12px; position: relative; }
+.route li + li::before { content: ""; position: absolute; right: 100%; top: 50%; width: 12px; height: 1px; background: var(--ink-3); margin-top: -0.5px; }
+.route li.done { background: var(--ink-2); border-color: var(--ink-2); }
+.route li.done + li::before { background: var(--ink-2); height: 1.5px; }
+/* 지금 역은 선명한 주홍 그대로, 둘레의 고리만 퍼진다 */
+.route li.now { background: var(--red); border-color: var(--red); animation: ping 1.1s ease-out infinite; }
+@keyframes ping { from { box-shadow: 0 0 0 0 var(--red); } to { box-shadow: 0 0 0 5px transparent; } }
+
+/* 모드별로 보이는 것 */
+.strip:not([data-mode="listen"]) .levels,
+.strip:not([data-mode="listen"]) .time { display: none; }
+.strip:not([data-mode="working"]) .route { display: none; }
+.strip[data-mode="listen"] .mark { animation: beat 1.1s ease-in-out infinite; }
+.strip[data-mode="working"] .mark,
+.strip[data-mode="done"] .mark { display: none; }
+.strip[data-mode="done"] .label { font-weight: 500; }
+.strip[data-mode="done"] .label b { font-weight: 650; margin-right: 6px; }
+.strip.fail .label b { color: var(--red); }
+.strip[data-mode="working"] .label { color: var(--ink-2); font-weight: 500; }
+
+@keyframes beat { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) {
+  .strip, .mark, .route li { animation: none !important; transition: none !important; }
+}

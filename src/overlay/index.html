@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'" />
+  <link rel="stylesheet" href="overlay.css" />
+</head>
+<body>
+  <div class="dock" id="dock" data-state="idle">
+    <div class="handle"></div>
+    <div class="buttons">
+      <button class="btn mic" data-action="memo" aria-label="받아쓰기">
+        <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" fill="none"/></svg>
+      </button>
+      <button class="btn rec" data-action="meeting" aria-label="회의 녹음">
+        <span class="ring"><span class="core"></span></span>
+      </button>
+      <button class="btn note" data-action="open" aria-label="기록 열기">
+        <svg viewBox="0 0 24 24"><path d="M9 6.5h10M9 12h10M9 17.5h10M4.5 6.5h.5M4.5 12h.5M4.5 17.5h.5" fill="none"/></svg>
+      </button>
+    </div>
+    <div class="tip" id="tip"></div>
+  </div>
+
+  <!-- 받아쓰기 진행 띠: 독에서 기록 테이프처럼 빠져나온다 -->
+  <div class="strip" id="strip" data-mode="hidden" aria-live="polite">
+    <span class="mark"></span>
+    <canvas class="levels" id="levels" width="120" height="22"></canvas>
+    <ol class="route" id="route">
+      <li data-stage="listen"></li>
+      <li data-stage="transcribe"></li>
+      <li data-stage="cleanup"></li>
+      <li data-stage="paste"></li>
+    </ol>
+    <span class="label" id="label"></span>
+    <span class="time" id="time"></span>
+  </div>
+  <script src="overlay.js"></script>
+</body>
+</html>

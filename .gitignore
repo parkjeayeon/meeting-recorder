@@ -1,0 +1,5 @@
+node_modules/
+dist/
+native/fn-listener
+native/permissions
+.DS_Store
