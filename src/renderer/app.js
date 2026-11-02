@@ -1997,7 +1997,7 @@ $('openDir').onclick = () => api.openRecordings();
 // 녹음 폴더: 기본은 ~/Documents/MeetingRecorder, 사용자가 고르면 바꾼다
 const tilde = (p) => p?.replace(/^\/Users\/[^/]+/, '~') ?? '';
 function showRecordingsDir(dir, def) {
-  $('recDirPath').textContent = `${tilde(dir)}${dir === def ? ' (기본값)' : ''}`;
+  $('recDirPath').textContent = tilde(dir);
   $('recDirPath').title = dir;
   $('resetDir').hidden = dir === def;
 }
