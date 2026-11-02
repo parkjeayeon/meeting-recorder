@@ -13,9 +13,15 @@ const TAP_MAX_MS = 300; // 이보다 짧게 눌렀다 떼면 실수로 누른 �
 const DEBOUNCE_MS = 500; // 두 번 누르기·짧은 탭 판단 (Wispr Flow DICTATION_DEBOUNCE_DELAY와 같은 값)
 const VOICE_RMS = 0.003; // 이 크기 이상이면 말소리로 센다 (-50dBFS, 조용한 방 잡음 -63dBFS보다 13dB 위)
 const DICTATION_MAX_MS = 20 * 60 * 1000; // 받아쓰기 한 번의 최대 길이 (Wispr Flow와 같은 20분)
-const RECORDINGS_DIR = path.join(os.homedir(), 'Documents', 'MeetingRecorder');
+const DEFAULT_RECORDINGS_DIR = path.join(os.homedir(), 'Documents', 'MeetingRecorder');
+let RECORDINGS_DIR = DEFAULT_RECORDINGS_DIR; // 설정 › 받아쓰기 › 녹음 폴더에서 바꿀 수 있다
 // 받아쓰기는 음성을 남기지 않는다: 임시 폴더에 녹음 → 변환·입력 → 음성 삭제, 데이터만 이 파일에 한 줄씩 쌓는다
-const DICTATION_LOG = path.join(RECORDINGS_DIR, 'dictations.jsonl');
+let DICTATION_LOG = path.join(RECORDINGS_DIR, 'dictations.jsonl');
+
+function setRecordingsDir(dir) {
+  RECORDINGS_DIR = dir;
+  DICTATION_LOG = path.join(dir, 'dictations.jsonl');
+}
 
 // ── 시스템 오디오 캡처 경로 (Wispr Flow와 같은 분기) ──────────────────────
 // macOS 14.4+ : Core Audio Process Tap / 13~14.3 : ScreenCaptureKit / 그 이하 : 미지원
@@ -682,6 +688,7 @@ ipcMain.handle('app:info', async () => ({
   fnWarning: fnUsageWarning(),
   micAccess: process.platform === 'darwin' ? systemPreferences.getMediaAccessStatus('microphone') : 'granted',
   recordingsDir: RECORDINGS_DIR,
+  defaultRecordingsDir: DEFAULT_RECORDINGS_DIR,
   selftest: SELFTEST,
 }));
 
@@ -733,6 +740,86 @@ ipcMain.handle('perm:request', async (_e, kind) => {
 ipcMain.on('perm:openSettings', (_e, kind) => openPrivacySettings(kind));
 
 ipcMain.on('app:reveal', (_e, p) => shell.showItemInFolder(p));
+// ── 녹음 폴더 바꾸기: 고른 폴더로 기존 녹음을 옮기거나, 옮기지 않고 새 폴더만 쓴다 ──
+const RECORDING_ENTRY = /^\d{4}-\d{2}-\d{2}_/;
+
+async function moveEntry(from, to) {
+  try {
+    await fs.promises.rename(from, to);
+  } catch (err) {
+    if (err.code !== 'EXDEV') throw err;
+    // 다른 디스크면 복사한 뒤 지운다
+    await fs.promises.cp(from, to, { recursive: true, errorOnExist: true, force: false });
+    await fs.promises.rm(from, { recursive: true, force: true });
+  }
+}
+
+ipcMain.handle('recordings:choose', async () => {
+  if (recording || activeMinutes.size) throw new Error('녹음 중이거나 회의록을 만드는 중에는 바꿀 수 없습니다');
+  const picked = await dialog.showOpenDialog(win, {
+    title: '녹음 폴더 고르기',
+    defaultPath: RECORDINGS_DIR,
+    buttonLabel: '이 폴더 사용',
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (picked.canceled || !picked.filePaths[0]) return null;
+  const next = path.resolve(picked.filePaths[0]);
+  const prev = RECORDINGS_DIR;
+  if (next === prev) return { dir: prev, moved: 0, skipped: 0 };
+  try {
+    fs.accessSync(next, fs.constants.W_OK);
+  } catch {
+    throw new Error('이 폴더에는 쓸 수 없습니다');
+  }
+  let entries = [];
+  try {
+    entries = fs.readdirSync(prev).filter((n) => RECORDING_ENTRY.test(n) || n === 'dictations.jsonl');
+  } catch {}
+  let move = false;
+  if (entries.length) {
+    const meetings = entries.filter((n) => n.endsWith('_meeting')).length;
+    const { response } = await dialog.showMessageBox(win, {
+      type: 'question',
+      buttons: ['옮기기', '옮기지 않고 바꾸기', '취소'],
+      defaultId: 0,
+      cancelId: 2,
+      message: '지금까지의 녹음을 새 폴더로 옮길까요?',
+      detail: `회의 ${meetings}개${entries.includes('dictations.jsonl') ? '와 받아쓰기 기록' : ''}을 옮깁니다. 옮기지 않으면 이전 녹음은 원래 폴더에 남고 앱에서는 보이지 않습니다.`,
+    });
+    if (response === 2) return null;
+    move = response === 0;
+  }
+  let moved = 0;
+  let skipped = 0;
+  if (move) {
+    for (const name of entries) {
+      const to = path.join(next, name);
+      if (fs.existsSync(to)) {
+        skipped++; // 같은 이름이 이미 있으면 덮어쓰지 않는다
+        continue;
+      }
+      try {
+        await moveEntry(path.join(prev, name), to);
+        moved++;
+      } catch {
+        skipped++;
+      }
+    }
+  }
+  setRecordingsDir(next);
+  dictation.saveSettings({ recordingsDir: next === DEFAULT_RECORDINGS_DIR ? null : next });
+  updateTray();
+  return { dir: next, moved, skipped, total: entries.length, isDefault: next === DEFAULT_RECORDINGS_DIR };
+});
+
+ipcMain.handle('recordings:reset', async () => {
+  if (recording || activeMinutes.size) throw new Error('녹음 중이거나 회의록을 만드는 중에는 바꿀 수 없습니다');
+  fs.mkdirSync(DEFAULT_RECORDINGS_DIR, { recursive: true });
+  setRecordingsDir(DEFAULT_RECORDINGS_DIR);
+  dictation.saveSettings({ recordingsDir: null });
+  return { dir: DEFAULT_RECORDINGS_DIR, isDefault: true };
+});
+
 ipcMain.on('app:openRecordings', () => {
   fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
   shell.openPath(RECORDINGS_DIR);
@@ -893,6 +980,8 @@ if (!SELFTEST && !app.requestSingleInstanceLock()) {
 
 async function init() {
   protocol.handle('rec', serveRecording);
+  const saved = dictation.getSettings().recordingsDir;
+  if (saved && fs.existsSync(saved)) setRecordingsDir(saved); // 지정한 폴더가 사라졌으면(외장 디스크 분리 등) 기본 폴더를 쓴다
   // 권한 대화상자를 기다리느라 fn 감지·독·로그인 항목 설정이 멈추지 않게 await하지 않는다
   if (process.platform === 'darwin') systemPreferences.askForMediaAccess('microphone');
   fs.mkdirSync(RECORDINGS_DIR, { recursive: true });

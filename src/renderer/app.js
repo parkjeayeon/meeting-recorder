@@ -1994,6 +1994,37 @@ $('meetingSystem').onchange = async (e) => {
 };
 $('openDir').onclick = () => api.openRecordings();
 
+// 녹음 폴더: 기본은 ~/Documents/MeetingRecorder, 사용자가 고르면 바꾼다
+const tilde = (p) => p?.replace(/^\/Users\/[^/]+/, '~') ?? '';
+function showRecordingsDir(dir, def) {
+  $('recDirPath').textContent = `${tilde(dir)}${dir === def ? ' (기본값)' : ''}`;
+  $('recDirPath').title = dir;
+  $('resetDir').hidden = dir === def;
+}
+$('chooseDir').onclick = async () => {
+  try {
+    const r = await api.chooseRecordings();
+    if (!r) return;
+    showRecordingsDir(r.dir, (await api.info()).defaultRecordingsDir);
+    toast('녹음 폴더를 바꿨습니다', r.total ? (r.moved ? `기존 녹음 ${r.moved}개를 옮겼습니다${r.skipped ? ` · ${r.skipped}개는 같은 이름이 있거나 옮기지 못해 남겨 두었습니다` : ''}` : '기존 녹음은 원래 폴더에 남겨 두었습니다') : tilde(r.dir));
+    docCache.clear();
+    loadHistory();
+  } catch (err) {
+    toast('녹음 폴더를 바꾸지 못했습니다', err.message, { bad: true });
+  }
+};
+$('resetDir').onclick = async () => {
+  try {
+    const r = await api.resetRecordings();
+    showRecordingsDir(r.dir, r.dir);
+    toast('기본 녹음 폴더로 돌렸습니다', '바꾼 폴더의 녹음은 그 자리에 남아 있습니다');
+    docCache.clear();
+    loadHistory();
+  } catch (err) {
+    toast('바꾸지 못했습니다', err.message, { bad: true });
+  }
+};
+
 api.onDictEngine(renderEngine);
 api.onDictStage(({ stage }) => showStage(stage));
 
@@ -2148,6 +2179,7 @@ $('connRefresh').onclick = () => renderConnections();
 // ── 시작 ────────────────────────────────────────────────────────────────
 setRecording(null);
 const info = await api.info();
+showRecordingsDir(info.recordingsDir, info.defaultRecordingsDir);
 renderDictSettings(await api.dictSettings());
 renderPerms();
 renderProviders();

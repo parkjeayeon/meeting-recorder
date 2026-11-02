@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('recorderApi', {
   log: (msg) => ipcRenderer.send('app:log', msg),
   reveal: (p) => ipcRenderer.send('app:reveal', p),
   openRecordings: () => ipcRenderer.send('app:openRecordings'),
+  chooseRecordings: () => ipcRenderer.invoke('recordings:choose'),
+  resetRecordings: () => ipcRenderer.invoke('recordings:reset'),
   permStatus: () => ipcRenderer.invoke('perm:status'),
   permRequest: (kind) => ipcRenderer.invoke('perm:request', kind),
   permOpenSettings: (kind) => ipcRenderer.send('perm:openSettings', kind),

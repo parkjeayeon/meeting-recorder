@@ -184,8 +184,12 @@
           <div class="field-acts" id="engineActs"></div>
         </div>
         <div class="field">
-          <div class="field-text"><b>녹음 폴더</b><span>~/Documents/MeetingRecorder</span></div>
-          <button class="btn" id="openDir"><svg><use href="#i-folder"/></svg>열기</button>
+          <div class="field-text"><b>녹음 폴더</b><span id="recDirPath">~/Documents/MeetingRecorder</span></div>
+          <div class="field-acts">
+            <button class="btn small" id="openDir"><svg><use href="#i-folder"/></svg>열기</button>
+            <button class="btn small" id="chooseDir">변경…</button>
+            <button class="btn small ghost" id="resetDir" hidden>기본값으로</button>
+          </div>
         </div>
       </section>
 
