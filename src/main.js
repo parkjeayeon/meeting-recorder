@@ -457,8 +457,12 @@ ipcMain.handle('speaker:rename', (_e, dir, from, to) => minutes.renameSpeaker(re
 ipcMain.handle('minutes:read', (_e, dir) => {
   const d = recordingDir(dir);
   const read = (f) => (fs.existsSync(path.join(d, f)) ? fs.readFileSync(path.join(d, f), 'utf8') : null);
-  return { minutes: read('minutes.md'), transcript: read('transcript.txt'), scriptClean: read('script-clean.txt') };
+  return { minutes: read('minutes.md'), transcript: read('transcript.txt'), scriptClean: read('script-clean.txt'), review: minutes.readReview(d) };
 });
+ipcMain.handle('review:make', (_e, dir) => minutes.makeReview(recordingDir(dir)));
+ipcMain.handle('review:apply', (_e, dir, fixes) => minutes.applyReview(recordingDir(dir), fixes));
+ipcMain.handle('review:status', (_e, dir, ids, status) => minutes.setReviewStatus(recordingDir(dir), ids, status === 'open' ? 'open' : 'kept'));
+ipcMain.handle('review:chat', (_e, dir, ids, messages) => minutes.chatReview(recordingDir(dir), ids, messages));
 // 회의록의 할 일 체크: minutes.md에서 n번째 "- [ ]" 줄을 뒤집는다
 ipcMain.handle('minutes:todo', (_e, dir, index, done) => {
   const file = path.join(recordingDir(dir), 'minutes.md');
@@ -548,7 +552,7 @@ function listFolders(limit) {
       const durationSec = Math.max(0, ...Object.values(meta.files ?? {}).map((f) => f.durationSec ?? 0));
       let summary = null;
       try {
-        summary = /^## 요약\s*\n([\s\S]*?)(?=\n## |$)/m.exec(fs.readFileSync(path.join(dir, 'minutes.md'), 'utf8'))?.[1].trim() ?? null;
+        summary = /^## 요약\s*\n([\s\S]*?)(?=\n## |(?![\s\S]))/m.exec(fs.readFileSync(path.join(dir, 'minutes.md'), 'utf8'))?.[1].trim() ?? null;
       } catch {}
       return {
         id: name,

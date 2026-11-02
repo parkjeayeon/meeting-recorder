@@ -782,9 +782,15 @@ function speakerStats(lines, total) {
   return [...map.values()].sort((a, b) => b.sec - a.sec);
 }
 
+const REVIEW_KIND = { word: '오인식', name: '이름', meaning: '의미 불명', lost: '유실' };
+
 function pageMeeting(id) {
   const el = h('div', { class: 'page' });
   let tab = null;
+  const reviewSel = new Set(); // 확인 필요에서 고른 항목
+  const guessDraft = new Map(); // 항목별로 고쳐 쓴 '고칠 말'
+  let reviewFilter = 'open';
+  let chat = null; // { ids, messages: [{ role, text, proposals }], busy }
   let lastKey = null;
   let lineEls = [];
   let lineTimes = [];
@@ -831,6 +837,8 @@ function pageMeeting(id) {
 
     const tabs = [];
     if (doc.minutes) tabs.push(['minutes', '회의록']);
+    const reviewOpen = doc.review?.items?.filter((it) => it.status === 'open').length ?? 0;
+    if (doc.review?.items?.length || /^## 확인 필요/m.test(doc.minutes ?? '')) tabs.push(['review', '확인 필요', doc.review ? `${reviewOpen}` : null]);
     if (doc.transcript) tabs.push(['clean', '정리본'], ['raw', '원본'], ['speakers', '화자', order.length ? `${order.length}명` : null]);
     if (!tabs.some((t) => t[0] === tab)) tab = tabs[0]?.[0] ?? null;
 
@@ -853,7 +861,8 @@ function pageMeeting(id) {
     player = r.firstFile ? playerBar(r, raw, color) : null;
 
     const body = h('div');
-    if (tab === 'minutes') body.append(minutesDoc(r, doc.minutes));
+    if (tab === 'minutes') body.append(minutesDoc(r, doc.minutes, reviewOpen, () => { tab = 'review'; draw(); }));
+    else if (tab === 'review') body.append(reviewView(r, doc));
     else if (tab === 'clean' || tab === 'raw') {
       const text = tab === 'clean' ? doc.scriptClean : doc.transcript;
       const bar = h('div', { class: 'tab-bar' },
@@ -876,11 +885,13 @@ function pageMeeting(id) {
 
     fill(el, 
       head,
+      order.length > 0 && speakerBar(r, order, color),
       player?.el,
       s !== 'done' && stateCard(r),
       tabs.length > 0 && h('div', { class: 'tabs', role: 'tablist' }, tabs.map(([tid, label, n]) =>
         h('button', { class: 'tab', role: 'tab', 'aria-selected': String(tid === tab), onclick: () => { tab = tid; draw(); } }, label, n && num(n)))),
-      body);
+      body,
+      chat && chatDrawer(r, doc));
     syncPlaying(true);
   }
 
@@ -938,10 +949,11 @@ function pageMeeting(id) {
   }
 
   // 회의록 마크다운: 소제목, 목록, 할 일(체크 가능), 문단, **굵게**, (12:34) 시각은 눌러서 듣기
-  function minutesDoc(r, md) {
+  function minutesDoc(r, md, reviewOpen = 0, openReview = null) {
     const box = h('article', { class: 'doc' });
     let list = null;
     let todoIndex = 0;
+    let skipping = false; // 확인 필요 섹션은 '확인 필요' 탭에서 하나씩 처리한다
     const inline = (el, text) => {
       text.split(/\*\*(.+?)\*\*/g).forEach((part, i) => {
         if (!part) return;
@@ -961,6 +973,8 @@ function pageMeeting(id) {
       const todo = line.match(/^\s*- \[( |x)\]\s+(.*)$/i);
       const item = line.match(/^\s*[-*]\s+(.*)$/);
       const heading = line.match(/^(#{1,3})\s+(.*)$/);
+      if (heading) skipping = heading[1] === '##' && heading[2].trim() === '확인 필요';
+      if (skipping) continue;
       if (todo || item) {
         if (!list) box.append((list = h('ul')));
         if (todo) {
@@ -996,7 +1010,201 @@ function pageMeeting(id) {
         box.append(p);
       }
     }
+    if (openReview && /^## 확인 필요/m.test(md)) {
+      box.append(h('div', { class: 'review-callout' }, icon('i-alert'),
+        h('span', null, reviewOpen ? `확인이 필요한 부분이 ${reviewOpen}개 남아 있습니다.` : '확인 필요 항목을 모두 처리했습니다.'),
+        h('button', { class: 'btn small', onclick: openReview }, '확인하기')));
+    }
     return box;
+  }
+
+  // 화자 이름 정하기: 회의록·스크립트의 '화자 N'을 실제 이름으로 바꾼다
+  function speakerBar(r, order, color) {
+    const generic = order.some((w) => /^화자 \d+$/.test(w));
+    return h('div', { class: 'spk-bar' },
+      h('span', { class: 'spk-bar-label' }, '화자'),
+      order.map((who) => h('button', { class: 'spk-chip', title: '눌러서 이름 바꾸기', onclick: (e) => renameSpeaker(e.currentTarget, r, who) },
+        h('i', { style: `background:${color(who)}` }), h('span', null, who), icon('i-pencil'))),
+      generic && h('span', { class: 'spk-bar-hint' }, '이름을 누르면 바꿀 수 있습니다. 회의록과 스크립트에 모두 반영됩니다.'));
+  }
+
+  async function refreshDoc(r) {
+    docCache.set(r.id, await api.readMinutes(r.dir));
+    draw();
+  }
+
+  async function applyFixes(r, fixes) {
+    if (!fixes.length) return;
+    try {
+      const review = await api.applyReview(r.dir, fixes);
+      const applied = review.items.filter((it) => fixes.some((f) => f.id === it.id) && it.status === 'applied');
+      const kept = fixes.filter((f) => f.keep).length;
+      for (const f of fixes) reviewSel.delete(f.id);
+      toast(applied.length ? `${applied.length}개를 고쳤습니다` : `${kept}개를 그대로 두었습니다`, applied.length ? `녹취·정리본·회의록에서 ${applied.reduce((n, it) => n + (it.count ?? 0), 0)}곳을 바꿨습니다` : '');
+      await refreshDoc(r);
+    } catch (err) {
+      toast('적용하지 못했습니다', err.message, { bad: true });
+    }
+  }
+
+  async function keepItems(r, ids) {
+    await api.setReviewStatus(r.dir, ids, 'kept');
+    ids.forEach((i) => reviewSel.delete(i));
+    toast(`${ids.length}개를 그대로 두었습니다`, '나중에 다시 열 수 있습니다');
+    refreshDoc(r);
+  }
+
+  function openChat(ids) {
+    if (!ids.length) return;
+    chat = { ids: [...ids], messages: [], busy: false };
+    draw();
+    setTimeout(() => document.querySelector('.chat textarea')?.focus(), 50);
+  }
+
+  // 확인 필요: 항목마다 추정 적용 · 직접 고치기 · 채팅 · 그대로 두기, 여러 개 골라 한 번에
+  function reviewView(r, doc) {
+    const box = h('div', { class: 'review' });
+    if (!doc.review) {
+      const make = h('button', { class: 'btn primary' }, '정리하기');
+      make.onclick = async () => {
+        make.disabled = true;
+        make.textContent = '정리하는 중…';
+        try {
+          await api.makeReview(r.dir);
+          refreshDoc(r);
+        } catch (err) {
+          toast('정리하지 못했습니다', err.message, { bad: true });
+          make.disabled = false;
+          make.textContent = '정리하기';
+        }
+      };
+      box.append(h('div', { class: 'state' }, h('b', null, '확인 필요 항목을 하나씩 처리할 수 있게 정리합니다'), h('p', null, '회의록의 "확인 필요"를 항목별로 나누고, 고칠 말 추정이 있으면 채워 둡니다.'), h('div', { class: 'row' }, make)));
+      return box;
+    }
+    const items = doc.review.items;
+    const open = items.filter((it) => it.status === 'open');
+    const done = items.filter((it) => it.status !== 'open');
+    const shown = reviewFilter === 'open' ? open : done;
+    for (const id of [...reviewSel]) if (!open.some((it) => it.id === id)) reviewSel.delete(id);
+    const guessOf = (it) => (guessDraft.has(it.id) ? guessDraft.get(it.id) : it.guess ?? '');
+    const sel = open.filter((it) => reviewSel.has(it.id));
+    const applicable = sel.filter((it) => it.heard && guessOf(it).trim());
+
+    const all = h('input', { type: 'checkbox', checked: open.length > 0 && sel.length === open.length, 'aria-label': '모두 고르기' });
+    all.indeterminate = sel.length > 0 && sel.length < open.length;
+    all.onchange = () => {
+      if (all.checked) open.forEach((it) => reviewSel.add(it.id));
+      else reviewSel.clear();
+      draw();
+    };
+    box.append(
+      h('div', { class: 'tab-bar' }, h('span', null, '들린 말을 고칠 말로 바꾸면 녹취·정리본·회의록에 모두 반영됩니다. 처음 고칠 때 원본을 따로 보관합니다.')),
+      h('div', { class: 'review-bar' },
+        reviewFilter === 'open' && open.length > 0 && h('label', { class: 'review-all' }, all, sel.length ? `${sel.length}개 선택` : '모두 고르기'),
+        reviewFilter === 'open' && sel.length > 0 && [
+          h('button', { class: 'btn small primary', disabled: !applicable.length, title: '고칠 말이 있는 항목만 적용됩니다', onclick: () => applyFixes(r, applicable.map((it) => ({ id: it.id, guess: guessOf(it) }))) }, icon('i-check'), `추정대로 적용${applicable.length ? ` ${applicable.length}` : ''}`),
+          h('button', { class: 'btn small', onclick: () => openChat(sel.map((it) => it.id)) }, icon('i-chat'), '채팅으로 확인'),
+          h('button', { class: 'btn small', onclick: () => keepItems(r, sel.map((it) => it.id)) }, '그대로 두기'),
+        ],
+        h('span', { style: 'flex:1' }),
+        h('div', { class: 'chips', style: 'margin:0' },
+          h('button', { class: 'chip', 'aria-pressed': String(reviewFilter === 'open'), onclick: () => { reviewFilter = 'open'; draw(); } }, '남은 것', num(open.length)),
+          h('button', { class: 'chip', 'aria-pressed': String(reviewFilter === 'done'), onclick: () => { reviewFilter = 'done'; draw(); } }, '처리함', num(done.length)))));
+
+    if (!shown.length) {
+      box.append(h('div', { class: 'empty' }, h('b', null, reviewFilter === 'open' ? '확인할 항목이 없습니다' : '아직 처리한 항목이 없습니다'), reviewFilter === 'open' && items.length ? '모두 처리했습니다.' : ''));
+      return box;
+    }
+    for (const it of shown) {
+      const atBtn = it.at && r.firstFile && h('button', { class: 'seek', title: '여기부터 듣기', onclick: () => seek(parseStamp(it.at)) }, it.at);
+      const card = h('div', { class: `ritem${reviewSel.has(it.id) ? ' on' : ''} ${it.status}` });
+      const head = h('div', { class: 'ritem-head' },
+        it.status === 'open' && h('input', { type: 'checkbox', checked: reviewSel.has(it.id), 'aria-label': '고르기', onchange: (e) => { e.target.checked ? reviewSel.add(it.id) : reviewSel.delete(it.id); draw(); } }),
+        h('span', { class: `tag kind-${it.kind}` }, REVIEW_KIND[it.kind] ?? '확인'),
+        atBtn,
+        h('span', { class: 'ritem-note' }, it.note));
+      card.append(head);
+      if (it.status === 'open') {
+        if (it.kind === 'lost') {
+          // 유실 구간은 고칠 글자가 아니라 반복된 문장이다. 들어 보고 채팅하거나 그대로 둔다
+          if (it.heardNote) card.append(h('div', { class: 'ritem-fix muted' }, h('span', { class: 'hint', style: 'margin:0' }, '반복된 문장'), h('span', { class: 'quote' }, it.heardNote)));
+        } else if (it.heard) {
+          const input = h('input', { type: 'text', value: guessOf(it), placeholder: '고칠 말 (기억나는 대로)', spellcheck: false });
+          input.oninput = () => guessDraft.set(it.id, input.value);
+          input.onkeydown = (e) => e.key === 'Enter' && !e.isComposing && input.value.trim() && applyFixes(r, [{ id: it.id, guess: input.value }]);
+          card.append(h('div', { class: 'ritem-fix' },
+            h('span', { class: 'heard' }, it.heard), icon('i-right'), input,
+            h('button', { class: 'btn small primary', onclick: () => input.value.trim() && applyFixes(r, [{ id: it.id, guess: input.value }]) }, '적용')));
+        } else if (it.heardNote) card.append(h('div', { class: 'ritem-fix muted' }, h('span', { class: 'heard' }, it.heardNote), h('span', { class: 'hint', style: 'margin:0' }, '녹취에서 같은 글자를 찾지 못해 자동으로 고칠 수 없습니다. 채팅으로 확인하거나 그대로 두세요.')));
+        card.append(h('div', { class: 'ritem-acts' },
+          h('button', { class: 'btn small ghost', onclick: () => openChat([it.id]) }, icon('i-chat'), '채팅'),
+          h('button', { class: 'btn small ghost', onclick: () => keepItems(r, [it.id]) }, it.kind === 'lost' ? '유실 그대로 두기' : '그대로 두기')));
+      } else {
+        card.append(h('div', { class: 'ritem-done' },
+          it.status === 'applied' ? [h('span', { class: 'heard' }, it.heard), icon('i-right'), h('b', null, it.applied), h('span', { class: 'hint', style: 'margin:0' }, `${it.count ?? 0}곳 고침`)] : h('span', null, '그대로 둠'),
+          it.status === 'kept' && h('button', { class: 'btn small ghost', onclick: async () => { await api.setReviewStatus(r.dir, [it.id], 'open'); refreshDoc(r); } }, '다시 열기')));
+      }
+      box.append(card);
+    }
+    return box;
+  }
+
+  function chatDrawer(r, doc) {
+    const items = (doc.review?.items ?? []).filter((it) => chat.ids.includes(it.id));
+    const log = h('div', { class: 'chat-log' });
+    if (!chat.messages.length) log.append(h('p', { class: 'chat-empty' }, '기억나는 것, 그때 상황, 맞는 이름 등을 알려 주세요. 녹취 앞뒤를 같이 보고 고칠 말을 제안합니다. 기억이 안 나면 "그대로 두자"고 하면 됩니다.'));
+    for (const m of chat.messages) {
+      const textEl = h('div', { class: 'msg-text' });
+      m.text.split(/\*\*(.+?)\*\*/g).forEach((part, i) => part && textEl.append(i % 2 ? h('b', null, part) : part));
+      const bubble = h('div', { class: `msg ${m.role}` }, textEl);
+      if (m.proposals?.length) {
+        const fixes = m.proposals.filter((p) => !p.keep);
+        bubble.append(h('div', { class: 'proposals' },
+          m.proposals.map((p) => {
+            const it = items.find((x) => x.id === p.id);
+            return h('div', { class: 'proposal' },
+              p.keep ? h('span', null, `${it?.heard ?? it?.heardNote ?? p.id}: 그대로 두기`) : [h('span', { class: 'heard' }, p.heard), icon('i-right'), h('b', null, p.guess)],
+              h('button', { class: 'btn small', onclick: () => applyFixes(r, [p.keep ? { id: p.id, keep: true } : { id: p.id, heard: p.heard, guess: p.guess }]) }, p.keep ? '그대로 두기' : '적용'));
+          }),
+          fixes.length > 1 && h('button', { class: 'btn small primary', onclick: () => applyFixes(r, fixes.map((p) => ({ id: p.id, heard: p.heard, guess: p.guess }))) }, `${fixes.length}개 모두 적용`)));
+      }
+      log.append(bubble);
+    }
+    if (chat.busy) log.append(h('div', { class: 'msg assistant busy' }, h('div', { class: 'msg-text' }, '녹취를 보고 있습니다…')));
+    const input = h('textarea', { rows: 2, placeholder: '예: 화자 1 이름은 박재현이에요 / 그 부분은 기억 안 나요', spellcheck: false });
+    input.value = chat.draft ?? '';
+    input.oninput = () => (chat.draft = input.value); // 화면을 다시 그려도 쓰던 글이 남게
+    const send = async () => {
+      const text = input.value.trim();
+      if (!text || chat.busy) return;
+      chat.messages.push({ role: 'user', text });
+      chat.draft = '';
+      chat.busy = true;
+      draw();
+      try {
+        const res = await api.chatReview(r.dir, chat.ids, chat.messages.map(({ role, text: t }) => ({ role, text: t })));
+        chat?.messages.push({ role: 'assistant', text: res.text, proposals: res.proposals });
+      } catch (err) {
+        chat?.messages.push({ role: 'assistant', text: `답을 받지 못했습니다: ${err.message}` });
+      }
+      if (chat) chat.busy = false;
+      draw();
+      setTimeout(() => document.querySelector('.chat textarea')?.focus(), 30);
+    };
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        send();
+      }
+    };
+    const drawer = h('aside', { class: 'chat', 'aria-label': '확인 필요 채팅' },
+      h('header', { class: 'chat-head' }, icon('i-chat'), h('b', null, '확인 필요 채팅'), h('span', { style: 'flex:1' }),
+        h('button', { class: 'icon-btn', 'aria-label': '닫기', onclick: () => { chat = null; draw(); } }, icon('i-x'))),
+      h('div', { class: 'chat-ctx' }, items.map((it) => h('span', { class: 'tag' }, it.at ? `${it.at} ` : '', it.heard ?? it.heardNote ?? REVIEW_KIND[it.kind]))),
+      log,
+      h('div', { class: 'chat-input' }, input, h('button', { class: 'icon-btn send', 'aria-label': '보내기', disabled: chat.busy, onclick: send }, icon('i-send'))));
+    requestAnimationFrame(() => (log.scrollTop = log.scrollHeight));
+    return drawer;
   }
 
   function speakersSelect() {
