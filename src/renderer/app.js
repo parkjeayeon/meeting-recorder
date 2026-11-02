@@ -1131,7 +1131,9 @@ function pageMeeting(id) {
         } else if (it.heard) {
           const input = h('input', { type: 'text', value: guessOf(it), placeholder: '고칠 말 (기억나는 대로)', spellcheck: false });
           input.oninput = () => guessDraft.set(it.id, input.value);
-          input.onkeydown = (e) => e.key === 'Enter' && !e.isComposing && input.value.trim() && applyFixes(r, [{ id: it.id, guess: input.value }]);
+          input.onkeydown = (e) => {
+            if (e.key === 'Enter' && !e.isComposing && input.value.trim()) applyFixes(r, [{ id: it.id, guess: input.value }]);
+          };
           card.append(h('div', { class: 'ritem-fix' },
             h('span', { class: 'heard' }, it.heard), icon('i-right'), input,
             h('button', { class: 'btn small primary', onclick: () => input.value.trim() && applyFixes(r, [{ id: it.id, guess: input.value }]) }, '적용')));
@@ -1454,7 +1456,10 @@ function pageDictionary() {
     input.focus();
     update();
   };
-  input.onkeydown = (e) => e.key === 'Enter' && !e.isComposing && add();
+  // onkeydown 처리기가 false를 돌려주면 키 입력이 막히므로(영문·지우기 안 됨) 값을 돌려주지 않는다
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter' && !e.isComposing) add();
+  };
   const update = () => {
     const list = vocabWords();
     $('countWords').textContent = list.length || '';
@@ -1990,7 +1995,9 @@ for (const block of $('settings').querySelectorAll('.conn-block[data-kind]')) {
     renderProviders(true);
   };
   block.querySelector('[data-save]').onclick = save;
-  input.onkeydown = (e) => e.key === 'Enter' && save();
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter' && !e.isComposing) save();
+  };
   block.querySelector('[data-verify]').onclick = async () => {
     show(true, '확인 중…');
     const r = await api.verifyToken(kind);
