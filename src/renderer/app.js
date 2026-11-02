@@ -1,4 +1,5 @@
 import { Recorder } from './recorder.js';
+import { startOnboarding } from './onboarding.js';
 
 const api = window.recorderApi;
 const $ = (id) => document.getElementById(id);
@@ -2045,7 +2046,7 @@ async function loadDevices() {
   const cur = select.value;
   select.replaceChildren(new Option('시스템 기본값', ''));
   for (const d of devices.filter((d) => d.kind === 'audioinput' && d.deviceId !== 'default')) select.append(new Option(d.label || '알 수 없는 마이크', d.deviceId));
-  select.value = cur;
+  select.value = cur || store('micId', ''); // 없는 장치면 브라우저가 알아서 '시스템 기본값'으로 돌린다
   updateMicHint();
 }
 
@@ -2056,7 +2057,10 @@ function updateMicHint() {
   $('micHint').textContent = bt ? '블루투스 마이크는 16kHz 이하로 녹음되고 스피커 음질도 떨어집니다. 내장·유선 마이크를 권장합니다.' : '받아쓰기와 회의 녹음에 쓰는 장치';
   $('micHint').classList.toggle('bad', bt);
 }
-$('micSelect').onchange = updateMicHint;
+$('micSelect').onchange = () => {
+  remember('micId', $('micSelect').value);
+  updateMicHint();
+};
 navigator.mediaDevices.addEventListener('devicechange', loadDevices);
 
 // ── 권한 ────────────────────────────────────────────────────────────────
@@ -2152,7 +2156,11 @@ function renderSetup(list) {
   if (setupWasRunning && !running) api.dictSettings().then(renderDictSettings);
   setupWasRunning = running;
 }
-api.onSetup((list) => $('settings').open && renderSetup(list));
+const setupListeners = new Set();
+api.onSetup((list) => {
+  if ($('settings').open) renderSetup(list);
+  setupListeners.forEach((fn) => fn(list));
+});
 
 // ── 계정·토큰 ───────────────────────────────────────────────────────────
 const SOURCE_TEXT = {
@@ -2234,4 +2242,34 @@ navigate();
 if (info.capability === 'unsupported') toast('이 macOS에서는 상대방 소리를 녹음할 수 없습니다', '회의도 마이크만 녹음합니다.', { ms: 7000 });
 if (info.fnWarning) setIssue('fnUsage', { title: 'fn 키가 다른 동작과 겹칩니다', detail: info.fnWarning, sec: 'general', dismiss: true });
 await loadDevices();
+
+// 처음 설정: 끝내기 전까지는 본 화면 대신 온보딩을 보여 준다
+const fnListeners = new Set();
+const tapListeners = new Set();
+api.onOnboardingFn((s) => fnListeners.forEach((fn) => fn(s)));
+api.onOnboardingTap(() => tapListeners.forEach((fn) => fn()));
+const onboardingCtx = {
+  api, h, icon, toast, setupListeners, fnListeners, tapListeners,
+  getMic: () => $('micSelect').value,
+  setMic: (id) => {
+    $('micSelect').value = id;
+    remember('micId', id);
+    updateMicHint();
+  },
+  onDone: async () => {
+    renderDictSettings(await api.dictSettings());
+    renderPerms();
+    renderProviders(true);
+    location.hash = '#home';
+    loadHistory();
+    toast('준비가 끝났습니다', 'fn을 꾹 누른 채 말해 보세요');
+  },
+};
+$('rerunOnboarding').onclick = async () => {
+  $('settings').close();
+  startOnboarding(onboardingCtx, { ...(await api.onboardingGet()), step: 'welcome' });
+};
+const onboarding = await api.onboardingGet();
+if (!onboarding.completed) startOnboarding(onboardingCtx, onboarding);
+
 recorder.prepare().catch((err) => toast('오디오 엔진 준비 실패', err.message, { bad: true }));

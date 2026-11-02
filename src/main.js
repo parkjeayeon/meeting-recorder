@@ -133,7 +133,16 @@ function dictationBusy() {
   return transcribing > 0 || memoStopping;
 }
 
+// 처음 설정 중에는 fn 받아쓰기를 막는다 (연습 단계만 예외). fn 키 확인 단계에서는 누름만 알린다
+let fnTestMode = false;
+function onboardingAllowsFn() {
+  const ob = dictation.storedSettings().onboarding;
+  return SELFTEST || !ob || ob.completed || ob.step === 'practice';
+}
+
 function onFnDown() {
+  if (fnTestMode) return send('onboarding:fn', { down: true });
+  if (!onboardingAllowsFn()) return;
   fnDownAt = Date.now();
   if (fnState === 'idle' && dictationBusy()) {
     if (fnDownAt - lastBusyNotice > DEBOUNCE_MS) sendOverlay('overlay:stage', { stage: 'busy' });
@@ -165,6 +174,7 @@ function onFnDown() {
 }
 
 function onFnUp({ chord }) {
+  if (fnTestMode) return send('onboarding:fn', { down: false });
   if (ignoreNextUp) {
     ignoreNextUp = false;
     return;
@@ -180,6 +190,7 @@ function onFnUp({ chord }) {
       if (fnState !== 'tapped') return;
       fnState = 'idle';
       command('cancel');
+      send('onboarding:tap'); // 톡 누르기만 했다 → 연습 단계에서 '꾹 누르세요' 안내
     }, DEBOUNCE_MS);
   } else {
     fnState = 'idle';
@@ -258,9 +269,24 @@ function helperPath(name) {
     : path.join(__dirname, '..', 'native', name);
 }
 
+// before-quit 없이 끝나면(강제 종료·크래시) fn-listener가 고아로 남는다. 종료 때 끄고, 시작할 때 남은 것을 정리한다
+process.on('exit', () => fnProc?.kill());
+let orphanFnChecked = false;
+function killOrphanFnListeners(bin) {
+  if (orphanFnChecked) return;
+  orphanFnChecked = true;
+  try {
+    for (const line of execFileSync('ps', ['-axo', 'pid=,ppid=,command=']).toString().split('\n')) {
+      const m = line.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/);
+      if (m && m[2] === '1' && m[3].trim() === bin) process.kill(Number(m[1]));
+    }
+  } catch {}
+}
+
 function startFnListener() {
   if (fnProc) return;
   const bin = helperPath('fn-listener');
+  killOrphanFnListeners(bin);
   if (!fs.existsSync(bin)) {
     send('fn:status', { ok: false, reason: 'fn-listener 바이너리가 없습니다. npm run build:fn 을 실행하세요.' });
     return;
@@ -759,6 +785,24 @@ function openPrivacySettings(kind) {
 }
 
 ipcMain.handle('perm:status', permissionStatus);
+// 🌐(fn) 키가 다른 동작(입력 소스 변경·이모지·받아쓰기)과 겹치는지
+ipcMain.handle('perm:fnKey', () => fnUsageWarning());
+ipcMain.on('perm:openKeyboard', () => shell.openExternal('x-apple.systempreferences:com.apple.Keyboard-Settings.extension'));
+
+// ── 처음 설정(온보딩): 어디까지 했는지 저장해 두고, 끝나면 본 화면으로 ─────────
+ipcMain.handle('onboarding:get', () => dictation.storedSettings().onboarding ?? { completed: false, step: 0 });
+ipcMain.on('onboarding:fnTest', (_e, on) => (fnTestMode = Boolean(on)));
+// 권한을 허용하고 돌아왔을 때 창을 앞으로
+ipcMain.on('app:focus', () => {
+  win.show();
+  app.focus({ steal: true });
+  win.focus();
+});
+ipcMain.handle('onboarding:set', (_e, patch) => {
+  const next = { ...(dictation.storedSettings().onboarding ?? {}), ...patch };
+  dictation.saveSettings({ onboarding: next });
+  return next;
+});
 ipcMain.handle('perm:request', async (_e, kind) => {
   const before = (await permissionStatus())[kind];
   if (kind === 'microphone' && before === 'not-determined') await systemPreferences.askForMediaAccess('microphone');

@@ -96,6 +96,8 @@
     </div>
   </div>
 
+  <div class="onboard" id="onboard" hidden></div>
+
   <div class="toasts" id="toasts" aria-live="polite"></div>
 
   <dialog class="palette" id="palette" aria-label="빠른 검색">
@@ -183,6 +185,10 @@
         <div class="field">
           <div class="field-text"><b>음성 인식 엔진</b><span id="engineLine"></span></div>
           <div class="field-acts" id="engineActs"></div>
+        </div>
+        <div class="field">
+          <div class="field-text"><b>처음 설정</b><span>권한·엔진·계정·마이크·fn 연습을 처음부터 다시 진행합니다.</span></div>
+          <button class="btn small" id="rerunOnboarding">다시 보기</button>
         </div>
         <div class="field">
           <div class="field-text"><b>녹음 폴더</b><span id="recDirPath">~/Documents/MeetingRecorder</span></div>
