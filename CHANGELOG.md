@@ -11,6 +11,7 @@
 - **앱 아이콘**: Electron 기본 아이콘 대신 앱 안 브랜드 마크(주홍 둥근 사각형 + 흰 마이크)를 macOS 아이콘 규격(1024 캔버스, 824 둥근 사각형, 그림자)으로. 원본 `build/icon.svg` → `build/icon.png`·`build/icon.icns`. 개발 모드에서도 Dock에 같은 아이콘.
 
 ### 문서·개발 도구
+- README에 아키텍처 그림(Mermaid) 3개: 전체 구조(프로세스·샌드박스·저장소·외부 통신), 받아쓰기 흐름, 회의록 흐름.
 - `docs/decisions.md`(판단·트레이드오프), `docs/known-issues.md`(한계·남은 일), `docs/research/wispr-flow.md`(Wispr Flow 분석), `docs/measurements.md`(실측값), `docs/testing.md`(테스트 방법) 추가.
 - `scripts/dev/`: 가짜 데이터로 화면 캡처(`screens.js`, `stub-preload.js`), 샌드박스 확인(`sandbox-check.js`), 고아 프로세스 점검(`orphans.js`). 예시 데이터를 스스로 만들어 실제 회의 내용·개인 경로가 들어가지 않는다.
 
