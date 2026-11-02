@@ -34,105 +34,30 @@ npm run install-app  # .app 빌드 → ad-hoc 서명 → /Applications 설치
 
 ## 아키텍처
 
+선 색은 흐르는 것을 뜻한다: 주홍 음성 · 파랑 글 · 회색 이벤트·데이터 · 점선 설치할 때만/선택. 그림은 `docs/images/diagrams.py`로 만든다 (고친 뒤 `python3 docs/images/diagrams.py`).
+
 ### 전체 구조
 
-```mermaid
-flowchart LR
-  subgraph Mac["이 Mac"]
-    direction LR
-    subgraph App["Meeting Recorder (Electron)"]
-      Main["메인 프로세스<br/>src/main.js<br/>fn 상태 머신 · 녹음 저장 · IPC<br/>메뉴바 · rec:// 재생"]
-      UI["메인 창<br/>src/renderer<br/>화면 · 처음 설정 · 녹음(AudioWorklet)"]
-      Dock["플로팅 독<br/>src/overlay"]
-      UI <-- "IPC" --> Main
-      Dock <-- "IPC" --> Main
-    end
-
-    subgraph Native["네이티브 도우미 (Swift)"]
-      FN["fn-listener<br/>CGEventTap"]
-      PERM["permissions<br/>권한 · ⌘V 입력 · 앞 앱"]
-    end
-
-    subgraph Box["샌드박스 (sandbox-exec)"]
-      WS["whisper-server<br/>받아쓰기 turbo / 회의 large-v3<br/>127.0.0.1만"]
-      DIA["diarize.py (pyannote)<br/>네트워크 차단"]
-    end
-
-    REC[("녹음 폴더<br/>~/Documents/MeetingRecorder<br/>회의 · dictations.jsonl · settings.json")]
-    SUP[("앱 폴더<br/>~/Library/Application Support<br/>모델 · 파이썬 환경 · 설정")]
-    CLI["Claude Code / Codex CLI<br/>(로그인된 구독)"]
-  end
-
-  FN -- "down / up (stdout)" --> Main
-  Main --> PERM
-  Main -- "HTTP 127.0.0.1" --> WS
-  Main -- "spawn" --> DIA
-  Main --> REC
-  WS --> SUP
-  DIA --> SUP
-  Main -- "다듬기 · 회의록 (글만)" --> CLI
-  CLI --> Cloud["Anthropic / OpenAI"]
-  Main -. "키가 있을 때만" .-> API["Anthropic API"]
-  Main -. "설치할 때만" .-> HF["Hugging Face · GitHub(uv) · Homebrew"]
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/architecture-dark.svg">
+  <img alt="전체 구조" src="docs/images/architecture-light.svg" width="100%">
+</picture>
 
 음성은 이 Mac 밖으로 나가지 않는다. 바깥으로 나가는 것은 다듬기·회의록 작성에 쓰는 **글**(로그인된 Claude Code·Codex 또는 API 키)과 설치할 때의 내려받기뿐이다.
 
 ### 받아쓰기 흐름
 
-```mermaid
-sequenceDiagram
-  actor U as 사용자
-  participant FN as fn-listener
-  participant M as 메인 프로세스
-  participant R as 메인 창 (녹음)
-  participant W as whisper-server (turbo)
-  participant C as Claude Code / Codex
-  participant P as permissions (⌘V)
-
-  U->>FN: fn 꾹 누르기
-  FN->>M: down
-  M->>R: 녹음 시작
-  R-->>M: 100ms 소리 조각 (WAV로 저장, 말소리 길이 측정)
-  U->>FN: 떼기 (0.5초 이상)
-  FN->>M: up
-  M->>R: 녹음 정지
-  alt 말소리 0.3초 미만
-    M-->>U: 들린 말 없음 (Whisper에 넘기지 않음)
-  else
-    M->>W: WAV 보내기 (약 0.3초)
-    W-->>M: 받아쓴 글
-    M->>C: 다듬기 (약 2.5~5초)
-    C-->>M: 다듬은 글
-    M->>P: 클립보드 + ⌘V
-    P-->>U: 커서 위치에 입력 (0.6초 뒤 클립보드 복원)
-  end
-  M->>M: 음성 삭제, dictations.jsonl에 데이터만
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/dictation-flow-dark.svg">
+  <img alt="받아쓰기 흐름" src="docs/images/dictation-flow-light.svg" width="100%">
+</picture>
 
 ### 회의록 흐름
 
-```mermaid
-flowchart TD
-  A["회의 녹음 종료<br/>mic.wav (48kHz) · meta.json(참석 인원)"] --> B{"10초 이상?"}
-  B -- 아니오 --> S["짧은 녹음으로 저장만"]
-  B -- 예 --> C["16kHz로 변환"]
-  C --> D["Whisper large-v3<br/>10분 조각 · 조용한 곳에서 자름"]
-  C --> E["pyannote 화자 구분<br/>파일 전체 · 참석 인원"]
-  D --> F["원본 스크립트 조립<br/>겹치는 화자 붙이기 · 반복 합치기<br/>transcript.txt"]
-  E --> F
-  F --> G["정리본<br/>script-clean.txt"]
-  F --> H["회의록 초안<br/>minutes.md"]
-  H --> I["확인 필요 목록<br/>review.json"]
-  I --> J{"사용자 확인"}
-  J -- "추정 적용 / 직접 고치기" --> K["녹취 · 정리본 · 회의록 글자 바꾸기"]
-  J -- "채팅" --> L["앞뒤 녹취로 LLM과 확인"]
-  J -- "그대로 두기" --> M2["유실 · 기억 안 남"]
-  K --> N["확인 마치기"]
-  L --> N
-  M2 --> N
-  N --> O["확정된 회의록<br/>문장에 영향 있을 때만 해당 부분 고쳐 씀"]
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/meeting-flow-dark.svg">
+  <img alt="회의록 흐름" src="docs/images/meeting-flow-light.svg" width="100%">
+</picture>
 
 ## 처음 설정
 
