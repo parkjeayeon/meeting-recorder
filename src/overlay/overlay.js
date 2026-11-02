@@ -129,6 +129,7 @@ function showResult({ status, text, error }) {
   };
   if (status === 'pasted') done('입력함', text);
   else if (status === 'meeting-saved') done('회의 녹음 저장함', '회의록을 만드는 중입니다', false, 3000);
+  else if (status === 'meeting-short') done('회의 녹음 저장함', '10초 미만이라 회의록은 만들지 않습니다', false, 3000);
   else if (status === 'minutes-done') done('회의록 완료', text ?? '', false, 4000);
   else if (status === 'minutes-error') done('회의록 실패', error ?? '', true, 4500);
   else if (status === 'no-permission' || status === 'failed') done('클립보드에 복사함', '⌘V로 붙여 넣으세요', true, 4500);

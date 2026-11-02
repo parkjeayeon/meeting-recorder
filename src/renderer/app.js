@@ -263,7 +263,8 @@ async function run({ action, mode }) {
   if (action === 'cancel' && wasMode === 'meeting') toast('회의 녹음을 취소했습니다', '녹음은 저장하지 않았습니다');
   if (!result) return;
   if (wasMode === 'memo' && settings?.enabled) showStage('transcribe');
-  if (wasMode === 'meeting') toast('회의 녹음을 저장했습니다', settings?.minutes ? '회의록을 만들기 시작합니다' : '');
+  const savedSec = Math.max(0, ...Object.values(result.files ?? {}).map((f) => f.durationSec ?? 0));
+  if (wasMode === 'meeting' && savedSec >= 10) toast('회의 녹음을 저장했습니다', settings?.minutes ? '회의록을 만들기 시작합니다' : '');
   loadHistory();
   // 권한이 없으면 macOS는 에러 없이 완전한 무음(0)을 넘겨준다
   if (result.files.system && peakDb.system < -150) {
@@ -348,6 +349,7 @@ api.onMinutes(({ id, status }) => {
       });
     });
   }
+  if (status === 'short') toast('회의 녹음을 저장했습니다', '10초 미만이라 회의록은 만들지 않았습니다');
   if (status === 'error') toast('회의록을 만들지 못했습니다', '', { bad: true, action: '보기', onAction: () => (location.hash = `#meeting/${encodeURIComponent(id)}`) });
   loadHistory();
 });
@@ -593,6 +595,7 @@ function statusText(m) {
   if (s === 'write') return '회의록 쓰는 중';
   if (s === 'error') return m.error ?? '실패';
   if (s === 'empty') return '들린 말이 없어 회의록을 만들지 않았습니다';
+  if (s === 'short') return '10초 미만이라 회의록을 만들지 않았습니다';
   return '녹음만 저장됨';
 }
 
@@ -642,8 +645,8 @@ function meetingRow(r) {
   const s = r.minutes?.status;
   return h('a', { class: `mrow${s === 'error' ? ' err' : ''}`, href: `#meeting/${encodeURIComponent(r.id)}` },
     h('time', null, TIME.format(new Date(r.startedAt))), num(clock(r.durationSec)),
-    h('span', { class: 'status' }, s === 'error' ? `회의록 실패 · ${r.minutes.error ?? ''}` : s === 'empty' ? '들린 말 없음' : '녹음만 저장됨'),
-    h('span', { class: 'go' }, s === 'empty' ? '열기' : '회의록 만들기'),
+    h('span', { class: 'status' }, s === 'error' ? `회의록 실패 · ${r.minutes.error ?? ''}` : s === 'empty' ? '들린 말 없음' : s === 'short' ? '짧은 녹음 (10초 미만)' : '녹음만 저장됨'),
+    h('span', { class: 'go' }, s === 'empty' || s === 'short' ? '열기' : '회의록 만들기'),
     h('button', { class: 'icon-btn', title: '휴지통으로', 'aria-label': '휴지통으로', onclick: (e) => { e.preventDefault(); e.stopPropagation(); trashMeetings([r]); } }, icon('i-trash')));
 }
 
@@ -770,7 +773,7 @@ function pageMeetings() {
     ['all', '전체', () => true],
     ['done', '회의록 있음', (m) => m.minutes?.status === 'done'],
     ['busy', '만드는 중', (m) => BUSY.includes(m.minutes?.status)],
-    ['rest', '녹음만 · 실패', (m) => !m.minutes || ['error', 'empty'].includes(m.minutes.status)],
+    ['rest', '녹음만 · 실패', (m) => !m.minutes || ['error', 'empty', 'short'].includes(m.minutes.status)],
   ];
   const chips = h('div', { class: 'chips' });
   const bulk = h('div', { class: 'bulk-row' });
@@ -1358,6 +1361,9 @@ function pageMeeting(id) {
       return h('div', { class: 'state' }, h('b', null, '회의록을 만드는 중입니다'), h('p', null, `${statusText(m)} · 2시간 회의는 약 20분 걸립니다. 창을 닫아도 계속됩니다.`),
         h('div', { class: `bar${p === null ? ' indeterminate' : ''}`, style: 'margin-top:14px' }, h('i', { style: `width:${Math.round((p ?? 0.3) * 100)}%` })));
     }
+    if (s === 'short' || r.durationSec < 10) {
+      return h('div', { class: 'state' }, h('b', null, '짧은 녹음입니다'), h('p', null, '10초 미만 녹음은 회의록을 만들지 않습니다. 필요 없으면 오른쪽 위 ⋯ 메뉴에서 휴지통으로 옮기세요.'));
+    }
     const sel = speakersSelect();
     const go = h('button', { class: 'btn primary', onclick: () => remake(r, sel.value) }, s === 'error' ? '다시 만들기' : '회의록 만들기');
     return h('div', { class: 'state' },
@@ -1388,7 +1394,7 @@ function pageMeeting(id) {
       toast('회의록을 복사했습니다', '마크다운 형식');
       e.currentTarget.blur();
     } }, icon('i-copy'), '회의록 복사'));
-    if (!busy && s) {
+    if (!busy && s && s !== 'short') {
       wrap.append(h('button', { class: 'btn', onclick: () => {
         const sel = speakersSelect();
         openMenu([h('label', null, '참석 인원', sel), h('button', { class: 'btn primary', onclick: () => { closeMenu(); remake(r, sel.value); } }, '녹취부터 다시 만들기')]);

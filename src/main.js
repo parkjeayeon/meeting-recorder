@@ -429,7 +429,17 @@ async function runDictation({ dir, peak, voicedMs, startedAt, durationSec, rec }
 // ── 회의록 ──────────────────────────────────────────────────────────────
 const activeMinutes = new Set(); // 지금 이 실행에서 만들고 있는 회의 폴더
 
+const MIN_MEETING_SEC = 10; // 이보다 짧은 회의 녹음은 회의록을 만들지 않는다 (시험·실수 녹음)
+
 function runMinutes(dir, speakers = null) {
+  const meta = readJson(path.join(dir, 'meta.json'));
+  const durationSec = Math.max(0, ...Object.values(meta?.files ?? {}).map((f) => f.durationSec ?? 0));
+  if (durationSec < MIN_MEETING_SEC) {
+    fs.writeFileSync(path.join(dir, 'minutes.json'), JSON.stringify({ status: 'short', durationSec, updatedAt: new Date() }, null, 2));
+    send('minutes:status', { id: path.basename(dir), status: 'short' });
+    sendOverlay('overlay:stage', { stage: 'done', status: 'meeting-short' });
+    return Promise.resolve();
+  }
   activeMinutes.add(dir);
   return minutes.makeMinutes(dir, {
     speakers,
