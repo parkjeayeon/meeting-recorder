@@ -436,7 +436,10 @@ function runMinutes(dir, speakers = null) {
     onStage: (s) => {
       send('minutes:status', { id: path.basename(dir), ...s });
       if (s.status === 'queued') sendOverlay('overlay:stage', { stage: 'done', status: 'meeting-saved' });
-      if (s.status === 'done') sendOverlay('overlay:stage', { stage: 'done', status: 'minutes-done', text: s.title });
+      if (s.status === 'done') {
+        const rv = reviewSummary(dir);
+        sendOverlay('overlay:stage', { stage: 'done', status: 'minutes-done', text: `${s.title ?? ''}${rv?.open ? ` · 확인 필요 ${rv.open}개` : ''}` });
+      }
       if (s.status === 'error') sendOverlay('overlay:stage', { stage: 'done', status: 'minutes-error', error: s.error });
       if (['done', 'error', 'empty'].includes(s.status)) activeMinutes.delete(dir);
     },
@@ -462,6 +465,7 @@ ipcMain.handle('minutes:read', (_e, dir) => {
 ipcMain.handle('review:make', (_e, dir) => minutes.makeReview(recordingDir(dir)));
 ipcMain.handle('review:apply', (_e, dir, fixes) => minutes.applyReview(recordingDir(dir), fixes));
 ipcMain.handle('review:status', (_e, dir, ids, status) => minutes.setReviewStatus(recordingDir(dir), ids, status === 'open' ? 'open' : 'kept'));
+ipcMain.handle('review:finalize', (_e, dir) => minutes.finalizeReview(recordingDir(dir)));
 ipcMain.handle('review:chat', (_e, dir, ids, messages) => minutes.chatReview(recordingDir(dir), ids, messages));
 // 회의록의 할 일 체크: minutes.md에서 n번째 "- [ ]" 줄을 뒤집는다
 ipcMain.handle('minutes:todo', (_e, dir, index, done) => {
@@ -525,6 +529,13 @@ function readDictationLog() {
     }));
 }
 
+// 회의 목록에 '초안 · 확인 N개' / '확정'을 표시하기 위한 요약
+function reviewSummary(dir) {
+  const review = readJson(path.join(dir, 'review.json'));
+  if (!review) return null;
+  return { open: review.items.filter((it) => it.status === 'open').length, total: review.items.length, finalized: Boolean(review.finalizedAt) };
+}
+
 function listHistory(limit = 300) {
   const items = [...readDictationLog(), ...listFolders(limit)];
   return items.sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt)).slice(0, limit);
@@ -566,6 +577,7 @@ function listFolders(limit) {
         transcript,
         minutes: minutesState,
         summary,
+        review: reviewSummary(dir),
       };
     })
     .filter(Boolean);
@@ -914,6 +926,7 @@ async function init() {
     e.preventDefault();
     hideWindow();
   });
+  win.on('swipe', (_e, dir) => send('nav:swipe', dir)); // 트랙패드로 페이지 넘기기 (시스템 설정에서 켠 경우)
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.webContents.once('did-finish-load', () => {
     if (SELFTEST) runFnSimulation();

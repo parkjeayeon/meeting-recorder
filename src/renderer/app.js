@@ -335,8 +335,18 @@ async function loadHistory() {
 api.onMinutes(({ id, status }) => {
   if (status === 'done') {
     docCache.delete(id);
-    const r = history.find((m) => m.id === id);
-    toast('회의록을 만들었습니다', r ? clock(r.durationSec) : '', { action: '열기', onAction: () => (location.hash = `#meeting/${encodeURIComponent(id)}`), ms: 8000 });
+    // 회의록은 바로 쓸 수 있는 초안이다. 확인할 항목이 있으면 같이 알린다
+    api.history().then((list) => {
+      const r = list.find((m) => m.id === id);
+      const open = r?.review?.open ?? 0;
+      toast('회의록 초안을 만들었습니다', open ? `확인 필요 ${open}개 · 확인하면 회의록을 확정합니다` : r ? clock(r.durationSec) : '', {
+        action: open ? '확인하기' : '열기', ms: 10000,
+        onAction: () => {
+          if (open) openReviewNext = id;
+          location.hash = `#meeting/${encodeURIComponent(id)}`;
+        },
+      });
+    });
   }
   if (status === 'error') toast('회의록을 만들지 못했습니다', '', { bad: true, action: '보기', onAction: () => (location.hash = `#meeting/${encodeURIComponent(id)}`) });
   loadHistory();
@@ -409,7 +419,54 @@ function parseHash() {
   return { name: ROUTES[name] ? name : 'home', arg: rest.length ? decodeURIComponent(rest.join('/')) : null };
 }
 
+// 뒤로·앞으로: 해시 이동마다 window.history.state에 순번을 붙여 지금 어디쯤인지 안다
+let navIndex = 0;
+let navMax = 0;
+let navStarted = false;
+function trackHistory() {
+  const idx = window.history.state?.idx;
+  if (typeof idx === 'number') navIndex = idx;
+  else if (!navStarted) window.history.replaceState({ idx: 0 }, ''); // 앱을 연 첫 화면
+  else {
+    navIndex += 1;
+    navMax = navIndex; // 새로 이동하면 앞으로 갈 곳은 사라진다
+    window.history.replaceState({ idx: navIndex }, '');
+  }
+  navMax = Math.max(navMax, navIndex);
+  navStarted = true;
+  $('navBack').disabled = navIndex <= 0;
+  $('navFwd').disabled = navIndex >= navMax;
+}
+$('navBack').onclick = () => window.history.back();
+$('navFwd').onclick = () => window.history.forward();
+document.addEventListener('keydown', (e) => {
+  if (!e.metaKey || e.target.closest?.('input, textarea')) return;
+  if (e.key === '[') {
+    e.preventDefault();
+    if (navIndex > 0) window.history.back();
+  } else if (e.key === ']') {
+    e.preventDefault();
+    if (navIndex < navMax) window.history.forward();
+  }
+});
+// 마우스 옆 버튼(뒤로·앞으로)
+window.addEventListener('mouseup', (e) => {
+  if (e.button === 3 && navIndex > 0) window.history.back();
+  if (e.button === 4 && navIndex < navMax) window.history.forward();
+});
+api.onSwipe?.((dir) => {
+  if (dir === 'left' && navIndex > 0) window.history.back();
+  if (dir === 'right' && navIndex < navMax) window.history.forward();
+});
+
+// 지운 회의에서 벗어날 때는 기록을 바꿔치워 뒤로 가기로 다시 오지 않게 한다
+function replaceRoute(hash) {
+  window.history.replaceState({ idx: navIndex }, '', hash);
+  navigate();
+}
+
 function navigate() {
+  trackHistory();
   route = parseHash();
   const navName = route.name === 'meeting' ? 'meetings' : route.name;
   for (const a of document.querySelectorAll('.nav a.nav-item')) {
@@ -565,9 +622,20 @@ function meetingCard(r) {
     h('div', { class: 'mcard-foot' },
       busy && h('span', { class: 'tag accent busy' }, statusText(m)),
       s === 'error' && h('span', { class: 'tag accent' }, '실패'),
+      reviewTag(r),
       m?.speakers && h('span', { class: 'tag' }, `화자 ${m.speakers}명`),
       s === 'done' && m.provider && h('span', { class: 'tag' }, PROVIDER_NAME[m.provider] ?? m.provider),
       r.tracks?.includes('system') && h('span', { class: 'tag' }, '상대방 소리 포함')));
+}
+
+async function trashMeetings(list) {
+  const total = list.reduce((n, m) => n + m.durationSec, 0);
+  const title = list.length > 1 ? `녹음 ${list.length}개를 휴지통으로 옮길까요?` : '이 녹음을 휴지통으로 옮길까요?';
+  if (!(await confirmBox(title, `녹음 폴더째(총 ${clock(total)}) 휴지통으로 옮깁니다. Finder 휴지통에서 되살릴 수 있습니다.`, '휴지통으로'))) return;
+  let failed = 0;
+  for (const m of list) await api.trashMeeting(m.dir).catch(() => failed++);
+  toast(failed ? `${list.length - failed}개를 옮기고 ${failed}개는 옮기지 못했습니다` : `${list.length}개를 휴지통으로 옮겼습니다`, failed ? '회의록을 만드는 중인 녹음은 옮길 수 없습니다' : '', { bad: Boolean(failed) });
+  loadHistory();
 }
 
 function meetingRow(r) {
@@ -575,7 +643,8 @@ function meetingRow(r) {
   return h('a', { class: `mrow${s === 'error' ? ' err' : ''}`, href: `#meeting/${encodeURIComponent(r.id)}` },
     h('time', null, TIME.format(new Date(r.startedAt))), num(clock(r.durationSec)),
     h('span', { class: 'status' }, s === 'error' ? `회의록 실패 · ${r.minutes.error ?? ''}` : s === 'empty' ? '들린 말 없음' : '녹음만 저장됨'),
-    h('span', { class: 'go' }, s === 'empty' ? '열기' : '회의록 만들기'));
+    h('span', { class: 'go' }, s === 'empty' ? '열기' : '회의록 만들기'),
+    h('button', { class: 'icon-btn', title: '휴지통으로', 'aria-label': '휴지통으로', onclick: (e) => { e.preventDefault(); e.stopPropagation(); trashMeetings([r]); } }, icon('i-trash')));
 }
 
 // ── 받아쓰기 ────────────────────────────────────────────────────────────
@@ -704,6 +773,7 @@ function pageMeetings() {
     ['rest', '녹음만 · 실패', (m) => !m.minutes || ['error', 'empty'].includes(m.minutes.status)],
   ];
   const chips = h('div', { class: 'chips' });
+  const bulk = h('div', { class: 'bulk-row' });
   const list = h('div');
   const count = num('');
   const update = () => {
@@ -716,6 +786,11 @@ function pageMeetings() {
     }).filter(Boolean));
     const fn = FILTERS.find((f) => f[0] === filter)[2];
     const items = all.filter(fn).filter((m) => !q || `${m.minutes?.title ?? ''} ${m.summary ?? ''}`.toLowerCase().includes(q));
+    const failedOnes = items.filter((m) => !BUSY.includes(m.minutes?.status) && m.minutes?.status !== 'done');
+    bulk.replaceChildren(...(filter === 'rest' && failedOnes.length > 1 ? [
+      h('span', null, `회의록이 없는 녹음 ${failedOnes.length}개`),
+      h('button', { class: 'btn small', onclick: () => trashMeetings(failedOnes) }, icon('i-trash'), '모두 휴지통으로'),
+    ] : []));
     if (!all.length) list.replaceChildren(h('div', { class: 'empty' }, h('b', null, '아직 회의 녹음이 없습니다'), '회의를 시작할 때 위쪽 회의 녹음을 누르세요. 끝나면 녹취와 회의록이 만들어집니다.', h('br'), h('button', { class: 'btn rec', onclick: openMeetingStart }, icon('i-rec'), '회의 녹음 시작')));
     else if (!items.length) list.replaceChildren(h('div', { class: 'empty' }, h('b', null, '맞는 회의가 없습니다'), '검색어나 필터를 바꿔 보세요.'));
     else {
@@ -742,7 +817,7 @@ function pageMeetings() {
       q = v.trim().toLowerCase();
       update();
     })),
-    chips, list);
+    chips, bulk, list);
   update();
   return { el, update };
 }
@@ -782,6 +857,15 @@ function speakerStats(lines, total) {
   return [...map.values()].sort((a, b) => b.sec - a.sec);
 }
 
+let openReviewNext = null; // 알림에서 '확인하기'로 들어오면 확인 필요 탭을 연다
+
+function reviewTag(r) {
+  const rv = r.review;
+  if (!rv || r.minutes?.status !== 'done') return null;
+  if (rv.finalized) return h('span', { class: 'tag' }, '확정');
+  return h('span', { class: 'tag accent' }, rv.open ? `초안 · 확인 ${rv.open}개` : '초안 · 확인 마치기 전');
+}
+
 const REVIEW_KIND = { word: '오인식', name: '이름', meaning: '의미 불명', lost: '유실' };
 
 function pageMeeting(id) {
@@ -791,6 +875,10 @@ function pageMeeting(id) {
   const guessDraft = new Map(); // 항목별로 고쳐 쓴 '고칠 말'
   let reviewFilter = 'open';
   let chat = null; // { ids, messages: [{ role, text, proposals }], busy }
+  if (openReviewNext === id) {
+    tab = 'review';
+    openReviewNext = null;
+  }
   let lastKey = null;
   let lineEls = [];
   let lineTimes = [];
@@ -799,7 +887,11 @@ function pageMeeting(id) {
 
   const r0 = history.find((m) => m.id === id);
   if (!r0) {
-    el.append(h('div', { class: 'empty' }, h('b', null, '회의를 찾을 수 없습니다'), '지웠거나 폴더를 옮긴 회의입니다.', h('br'), h('a', { class: 'btn', href: '#meetings' }, '회의 목록')));
+    el.append(h('div', { class: 'empty gone' }, h('b', null, '삭제된 녹음입니다'), '휴지통으로 옮겼거나 폴더를 옮긴 회의입니다. Finder 휴지통에서 되살리면 다시 보입니다.', h('br'),
+      h('div', { style: 'display:flex;gap:8px;justify-content:center' },
+        navIndex > 0 && h('button', { class: 'btn', onclick: () => window.history.back() }, icon('i-left'), '뒤로'),
+        h('button', { class: 'btn', onclick: () => replaceRoute('#meetings') }, '회의 목록'))));
+    setTimeout(() => setCrumbs('삭제된 녹음'));
     return { el };
   }
 
@@ -850,6 +942,8 @@ function pageMeeting(id) {
           h('span', { class: 'tag' }, num(clock(r.durationSec))),
           m?.speakers && h('span', { class: 'tag' }, `화자 ${m.speakers}명`),
           r.speakersHint && h('span', { class: 'tag' }, `참석 인원 ${speakerLabel(String(r.speakersHint))}로 지정`),
+          s === 'done' && r.review && h('button', { class: `tag tag-btn${r.review.finalized ? '' : ' accent'}`, title: '확인 필요 보기', onclick: () => { tab = 'review'; draw(); } },
+            r.review.finalized ? '확정된 회의록' : r.review.open ? `초안 · 확인 ${r.review.open}개 남음` : '초안 · 확인 마치기 전'),
           s === 'done' && m.provider && h('span', { class: 'tag' }, `${PROVIDER_NAME[m.provider] ?? m.provider}로 작성`),
           m?.timing?.model && h('span', { class: 'tag' }, `Whisper ${m.timing.model}`),
           m?.diarizeError && h('span', { class: 'tag accent' }, `화자 구분 실패: ${m.diarizeError}`))),
@@ -1011,9 +1105,10 @@ function pageMeeting(id) {
       }
     }
     if (openReview && /^## 확인 필요/m.test(md)) {
-      box.append(h('div', { class: 'review-callout' }, icon('i-alert'),
-        h('span', null, reviewOpen ? `확인이 필요한 부분이 ${reviewOpen}개 남아 있습니다.` : '확인 필요 항목을 모두 처리했습니다.'),
-        h('button', { class: 'btn small', onclick: openReview }, '확인하기')));
+      const finalized = Boolean(docCache.get(r.id)?.review?.finalizedAt);
+      box.append(h('div', { class: 'review-callout' }, icon(finalized ? 'i-check' : 'i-alert'),
+        h('span', null, finalized ? '확인을 마친 회의록입니다.' : reviewOpen ? `초안입니다. 확인이 필요한 부분이 ${reviewOpen}개 남아 있습니다.` : '확인 필요 항목을 모두 처리했습니다. 확인을 마치면 회의록이 확정됩니다.'),
+        h('button', { class: 'btn small', onclick: openReview }, finalized ? '확인 결과 보기' : '확인하기')));
     }
     return box;
   }
@@ -1111,6 +1206,7 @@ function pageMeeting(id) {
           h('button', { class: 'chip', 'aria-pressed': String(reviewFilter === 'open'), onclick: () => { reviewFilter = 'open'; draw(); } }, '남은 것', num(open.length)),
           h('button', { class: 'chip', 'aria-pressed': String(reviewFilter === 'done'), onclick: () => { reviewFilter = 'done'; draw(); } }, '처리함', num(done.length)))));
 
+    box.append(finalizePanel(r, doc.review, open.length));
     if (!shown.length) {
       box.append(h('div', { class: 'empty' }, h('b', null, reviewFilter === 'open' ? '확인할 항목이 없습니다' : '아직 처리한 항목이 없습니다'), reviewFilter === 'open' && items.length ? '모두 처리했습니다.' : ''));
       return box;
@@ -1149,6 +1245,36 @@ function pageMeeting(id) {
       box.append(card);
     }
     return box;
+  }
+
+  // 확인 마치기: 남은 항목은 그대로 둔 것으로 하고, 채팅·이름 등 문장에 영향이 있는 결과만 회의록에 반영한다
+  function finalizePanel(r, review, openCount) {
+    if (review.finalizedAt) {
+      const f = review.finalize ?? {};
+      return h('div', { class: 'finalize done' }, icon('i-check'),
+        h('div', { class: 'finalize-text' }, h('b', null, '확인을 마쳤습니다'),
+          h('span', null, `고침 ${f.applied ?? 0} · 그대로 둠 ${f.kept ?? 0}${f.rewritten ? ' · 회의록의 해당 부분을 고쳐 썼습니다 (이전 회의록은 minutes.before-finalize.md로 보관)' : ' · 회의록 문장은 그대로입니다'}`)));
+    }
+    const needsRewrite = review.items.some((it) => it.chat?.length || (it.status === 'applied' && it.kind !== 'word'));
+    const go = h('button', { class: 'btn primary' }, icon('i-check'), openCount ? `남은 ${openCount}개는 그대로 두고 확인 마치기` : '확인 마치기');
+    go.onclick = async () => {
+      go.disabled = true;
+      go.lastChild.textContent = needsRewrite ? '회의록에 반영하는 중…' : '마치는 중…';
+      try {
+        const res = await api.finalizeReview(r.dir);
+        toast('회의록을 확정했습니다', res.finalize?.rewritten ? '확인 결과에 맞춰 회의록의 해당 부분을 고쳤습니다' : '고친 단어는 이미 반영되어 있어 회의록 문장은 그대로입니다');
+        await refreshDoc(r);
+        loadHistory();
+      } catch (err) {
+        toast('확인을 마치지 못했습니다', err.message, { bad: true });
+        go.disabled = false;
+        go.lastChild.textContent = '다시 시도';
+      }
+    };
+    return h('div', { class: 'finalize' },
+      h('div', { class: 'finalize-text' }, h('b', null, openCount ? `확인 필요 ${openCount}개 남음` : '모두 처리했습니다'),
+        h('span', null, needsRewrite ? '채팅으로 밝혀진 내용이나 고친 이름은 회의록의 해당 문장에 반영합니다. 나머지 문장은 그대로 둡니다.' : '고친 단어는 이미 녹취·정리본·회의록에 반영되어 있습니다. 마치면 회의록이 확정됩니다.')),
+      go);
   }
 
   function chatDrawer(r, doc) {
@@ -1279,7 +1405,7 @@ function pageMeeting(id) {
           audio.pause();
           await api.trashMeeting(r.dir);
           toast('휴지통으로 옮겼습니다');
-          location.hash = '#meetings';
+          replaceRoute('#meetings');
           loadHistory();
         } catch (err) {
           toast('옮기지 못했습니다', err.message, { bad: true });

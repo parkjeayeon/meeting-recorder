@@ -143,6 +143,10 @@ code { font: 12px var(--mono); padding: 1px 5px; border-radius: 5px; background:
 .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .topbar { height: 44px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 8px 0 4px; -webkit-app-region: drag; }
 .topbar button, .topbar a, .topbar .live { -webkit-app-region: no-drag; }
+.hist { display: flex; gap: 2px; -webkit-app-region: no-drag; }
+.hist .icon-btn { width: 28px; height: 28px; }
+.hist .icon-btn:disabled { opacity: 0.35; pointer-events: none; }
+.hist .icon-btn:hover { background: var(--shell-hover); }
 .crumbs { display: flex; align-items: center; gap: 4px; min-width: 0; flex: 1; color: var(--ink-3); font-size: 13px; }
 .crumbs a { color: var(--ink-3); text-decoration: none; padding: 3px 6px; border-radius: 6px; -webkit-app-region: no-drag; }
 .crumbs a:hover { background: var(--shell-hover); color: var(--ink); }
@@ -300,6 +304,11 @@ code { font: 12px var(--mono); padding: 1px 5px; border-radius: 5px; background:
 .mrow:hover { background: var(--panel-2); color: var(--ink-2); }
 .mrow time, .mrow .num { font-size: 12px; }
 .mrow .go { font-size: 12.5px; color: var(--ink-2); }
+.mrow { grid-template-columns: 52px 64px 1fr auto 30px; }
+.mrow .icon-btn { width: 30px; height: 30px; opacity: 0; }
+.mrow:hover .icon-btn, .mrow .icon-btn:focus-visible { opacity: 1; }
+.mrow .icon-btn:hover { color: var(--accent); }
+.bulk-row { display: flex; align-items: center; gap: 10px; margin: -6px 0 16px; font-size: 13px; color: var(--ink-3); }
 .mrow.err .status { color: var(--accent); }
 .tag { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 6px; background: var(--panel-3); color: var(--ink-2); font-size: 11.5px; font-weight: 550; }
 .tag.accent { background: var(--accent-wash); color: var(--accent); }
@@ -462,6 +471,15 @@ button.who:hover { color: var(--ink); text-decoration: underline; text-underline
 .ritem-done { display: flex; align-items: center; gap: 8px; margin: 10px 0 0 0; font-size: 13.5px; color: var(--ink-2); }
 .ritem-done svg { width: 14px; height: 14px; color: var(--ink-3); }
 .ritem.applied, .ritem.kept { background: var(--panel-2); }
+
+.finalize { display: flex; align-items: center; gap: 14px; padding: 14px 16px; margin-bottom: 4px; border-radius: 12px; background: var(--panel-2); border: 1px solid var(--line); }
+.finalize.done { background: color-mix(in srgb, var(--ok) 8%, var(--panel)); border-color: color-mix(in srgb, var(--ok) 25%, var(--line)); }
+.finalize.done > svg { color: var(--ok); width: 18px; height: 18px; }
+.finalize-text { flex: 1; min-width: 0; }
+.finalize-text b { display: block; font-weight: 650; }
+.finalize-text span { display: block; margin-top: 2px; font-size: 12.5px; color: var(--ink-2); }
+.tag-btn { border: 0; cursor: pointer; font: inherit; font-size: 11.5px; font-weight: 550; }
+.tag-btn:hover { filter: brightness(0.96); }
 
 /* 확인 필요 채팅 (오른쪽 서랍) */
 .chat { position: fixed; top: 52px; right: 16px; bottom: 16px; width: 400px; z-index: 40; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); box-shadow: var(--shadow-pop); animation: pop .22s cubic-bezier(.16, 1, .3, 1); user-select: text; }

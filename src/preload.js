@@ -44,7 +44,9 @@ contextBridge.exposeInMainWorld('recorderApi', {
   applyReview: (dir, fixes) => ipcRenderer.invoke('review:apply', dir, fixes),
   setReviewStatus: (dir, ids, status) => ipcRenderer.invoke('review:status', dir, ids, status),
   chatReview: (dir, ids, messages) => ipcRenderer.invoke('review:chat', dir, ids, messages),
+  finalizeReview: (dir) => ipcRenderer.invoke('review:finalize', dir),
   trashMeeting: (dir) => ipcRenderer.invoke('meeting:trash', dir),
   deleteDictation: (id) => ipcRenderer.invoke('dict:delete', id),
+  onSwipe: (cb) => ipcRenderer.on('nav:swipe', (_e, dir) => cb(dir)),
   onMinutes: (cb) => ipcRenderer.on('minutes:status', (_e, s) => cb(s)),
 });
