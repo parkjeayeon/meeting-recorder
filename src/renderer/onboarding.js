@@ -84,7 +84,8 @@ export function startOnboarding(ctx, saved) {
 
   // ── 1. 환영: 무엇에 쓸지 고른다 ─────────────────────────────────────
   function welcome() {
-    const card = (ic, title, text) => h('div', { class: 'ob-use' }, h('span', { class: 'ob-use-ic' }, icon(ic)), h('b', null, title), h('span', null, text));
+    // 둘 다 늘 켜져 있다. 고르는 것은 아니지만 켜진 상태로 보여 준다
+    const card = (ic, title, text) => h('div', { class: 'ob-use on' }, h('span', { class: 'ob-use-ic' }, icon(ic)), h('b', null, title), h('span', null, text), h('i', { class: 'ob-check' }, icon('i-check')));
     frame({
       title: 'Meeting Recorder를 시작합니다',
       lead: '두 가지를 합니다. 몇 단계만 설정하면 바로 쓸 수 있습니다.',

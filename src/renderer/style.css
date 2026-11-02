@@ -685,7 +685,11 @@ dialog[open] { animation: pop .22s cubic-bezier(.16, 1, .3, 1); }
 .ob-next svg { width: 15px; height: 15px; }
 .ob-panel { display: flex; align-items: center; justify-content: center; border-radius: 16px; background: var(--panel-2); border: 1px solid var(--line); padding: 40px; overflow: hidden; }
 .ob-uses { display: grid; gap: 10px; }
-.ob-use { display: grid; grid-template-columns: 44px 1fr; gap: 2px 14px; align-items: center; padding: 18px 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel-2); }
+.ob-use { position: relative; display: grid; grid-template-columns: 44px 1fr; gap: 2px 14px; align-items: center; padding: 18px 52px 18px 20px; border: 1px solid var(--line-2); border-radius: 14px; background: var(--panel); }
+.ob-use.on { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+.ob-use.on .ob-use-ic { background: var(--accent-wash); color: var(--accent); }
+.ob-check { position: absolute; top: 50%; right: 18px; width: 22px; height: 22px; margin-top: -11px; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: var(--panel); }
+.ob-check svg { width: 13px; height: 13px; stroke-width: 2.4; }
 .ob-use-ic { grid-row: span 2; width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--panel-3); }
 .ob-use-ic svg { width: 20px; height: 20px; }
 .ob-use b { font-size: 15.5px; font-weight: 680; }
