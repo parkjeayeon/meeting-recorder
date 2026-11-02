@@ -7,7 +7,7 @@ macOS용 Electron 앱. 두 가지 일을 한다.
 
 음성 인식과 화자 구분은 이 Mac 안에서 돌고(외부 프로그램은 샌드박스 안에서 실행), 다듬기·회의록 작성은 이미 로그인된 Claude Code / Codex 구독(없으면 Anthropic API 키)을 쓴다.
 
-기능 추가·버그 수정 이력은 [CHANGELOG.md](CHANGELOG.md).
+기능 추가·버그 수정 이력은 [CHANGELOG.md](CHANGELOG.md), 왜 그렇게 만들었는지(판단·트레이드오프)는 [docs/decisions.md](docs/decisions.md).
 
 ## 시작하기
 
