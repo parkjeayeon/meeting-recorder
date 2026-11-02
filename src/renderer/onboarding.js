@@ -20,7 +20,7 @@ const BLUETOOTH = /airpods|bluetooth|buds|headset|hands-?free|beats|jabra|bose|w
 export function startOnboarding(ctx, saved) {
   const { api, h, icon, toast } = ctx;
   const root = document.getElementById('onboard');
-  let uses = saved.uses ?? { dictation: true, meetings: true };
+  const uses = { dictation: true, meetings: true }; // 받아쓰기와 회의록은 늘 둘 다 쓴다 (고르지 않는다)
   let stepId = saved.step && STEPS.some((s) => s.id === saved.step) ? saved.step : 'welcome';
   let cleanup = []; // 단계를 떠날 때 정리할 것 (타이머, 마이크, fn 확인 모드)
 
@@ -84,21 +84,13 @@ export function startOnboarding(ctx, saved) {
 
   // ── 1. 환영: 무엇에 쓸지 고른다 ─────────────────────────────────────
   function welcome() {
-    const card = (key, ic, title, text) => {
-      const on = uses[key];
-      return h('button', { class: `ob-use${on ? ' on' : ''}`, 'aria-pressed': String(on), onclick: () => {
-        const nextUses = { ...uses, [key]: !uses[key] };
-        if (!nextUses.dictation && !nextUses.meetings) return;
-        uses = nextUses;
-        render();
-      } }, h('span', { class: 'ob-use-ic' }, icon(ic)), h('b', null, title), h('span', null, text), h('i', { class: 'ob-check' }, icon('i-check')));
-    };
+    const card = (ic, title, text) => h('div', { class: 'ob-use' }, h('span', { class: 'ob-use-ic' }, icon(ic)), h('b', null, title), h('span', null, text));
     frame({
       title: 'Meeting Recorder를 시작합니다',
-      lead: '몇 단계만 설정하면 바로 쓸 수 있습니다. 어디에 쓰실지 골라 주세요. 나중에 바꿀 수 있습니다.',
+      lead: '두 가지를 합니다. 몇 단계만 설정하면 바로 쓸 수 있습니다.',
       body: h('div', { class: 'ob-uses' },
-        card('dictation', 'i-mic', '받아쓰기', 'fn을 꾹 누른 채 말하면, 다듬은 글이 지금 커서 위치에 들어갑니다.'),
-        card('meetings', 'i-people', '회의록', '대면 회의를 녹음하면 녹취·화자 구분·회의록 초안을 만듭니다.')),
+        card('i-mic', '받아쓰기', 'fn을 꾹 누른 채 말하면, 다듬은 글이 지금 커서 위치에 들어갑니다.'),
+        card('i-people', '회의록', '대면 회의를 녹음하면 녹취·화자 구분·회의록 초안을 만듭니다.')),
       primary: primaryBtn('시작하기', next),
       canBack: false,
       panel: h('div', { class: 'ob-promise' },
