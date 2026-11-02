@@ -1,51 +1,80 @@
 # Meeting Recorder (프로토타입)
 
-fn 키로 제어하는 Electron 회의 녹음기 겸 받아쓰기 도구. 회의는 마이크와 시스템 소리를 48kHz/16bit WAV 트랙으로 따로 저장하고,
-fn 꾹 누르기는 Wispr Flow처럼 말한 내용을 지금 커서 위치에 입력한다.
+macOS용 Electron 앱. 두 가지 일을 한다.
+
+1. **받아쓰기**: Wispr Flow처럼 `fn`을 누른 채 말하면 다듬은 글이 지금 커서 위치에 들어간다. 음성은 변환에만 쓰고 지우며, 글과 통계용 데이터만 남긴다.
+2. **오프라인 회의록**: 대면 회의를 맥 마이크로 녹음해 두면 녹취(Whisper large-v3) + 화자 구분(pyannote) → 대화 스크립트·정리본·회의록 초안을 만든다. 확인이 필요한 부분을 하나씩 처리한 뒤 회의록을 확정한다.
+
+음성 인식과 화자 구분은 이 Mac 안에서 돌고, 다듬기·회의록 작성은 이미 로그인된 Claude Code / Codex 구독(없으면 Anthropic API 키)을 쓴다.
 
 ```bash
 brew install whisper-cpp   # 로컬 음성 인식 엔진 (whisper-server)
 npm install
 npm start            # 개발 모드 실행 (fn 감지 헬퍼 빌드 포함)
-npm run selftest     # fn 이벤트를 흉내 내 꾹 누르기/탭 버림/회의 중 fn 무시를 검증
+npm run selftest     # fn 꾹 누르기·탭·두 번·세 번 누르기, 처리 중 무시, 회의 중 fn 무시, 짧은 회의 녹음 검증
 npm run install-app  # .app 빌드 → ad-hoc 서명 → /Applications 설치
 ```
 
+## 조작
+
 | 조작 | 동작 |
 |---|---|
-| `fn` 꾹 누르기 | 누르는 동안 녹음, 떼면 받아써서 커서 위치에 입력 (Wispr Flow와 동일) |
-| `fn` 짧게 (0.3초 미만) / `fn`+다른 키 | 녹음 버림 |
-| 창·독·메뉴바의 회의 녹음 | 회의 녹음 시작/정지 (fn은 회의에 쓰지 않는다) |
+| `fn` 꾹 누르기 (0.5초 이상) | 누르는 동안 녹음, 떼면 받아써서 커서 위치에 입력 |
+| `fn` 짧게 톡 | 0.5초 기다렸다가 두 번째 누름이 없으면 버림 |
+| `fn` 빠르게 두 번 | 손을 떼도 계속 듣기(잠금). 다음 `fn`에서 끝내고 입력 |
+| `fn` 빠르게 세 번 | 취소 |
+| `fn`+다른 키 | 녹음 버림 (단축키를 쓴 것으로 본다) |
+| 회의 녹음 버튼 (창·독·메뉴바) | 시작 시트(참석 인원 · 대면/화상 · 회의록 자동) → 녹음. 녹음 중 **취소 · 일시정지/재개 · 종료하고 저장**, 참석 인원은 녹음 중에도 바꿀 수 있다 |
+| `⌘K` / `⌘,` / `⌘[` `⌘]` | 빠른 검색 / 설정 / 뒤로·앞으로 (마우스 옆 버튼·트랙패드 넘기기도 됨) |
 
-창의 X는 창만 숨긴다. 앱은 메뉴바(🎙)와 화면 왼쪽 플로팅 독으로 계속 실행되고, 종료는 메뉴바 › 종료 또는 ⌘Q.
-패키징된 앱은 첫 실행 때 로그인 항목에 등록된다 (메뉴바에서 끌 수 있음).
-ad-hoc 서명이라 다시 빌드할 때마다 macOS 권한을 다시 허용해야 한다.
+fn 규칙은 Wispr Flow 앱 코드에서 확인한 값을 따른다 (`DICTATION_DEBOUNCE_DELAY` 500ms, 받아쓰기 최대 20분·19분에 경고, 앞 받아쓰기를 처리하는 동안 fn은 무시하고 알림).
+회의 녹음은 fn에 반응하지 않는다.
 
-저장 위치 `~/Documents/MeetingRecorder/`
-- 회의: `<날짜>_meeting/` 안에 `mic.wav`(+ 화상 회의 설정 시 `system.wav`), `meta.json`, `transcript.txt`(원본 대화 스크립트), `script-clean.txt`(대화 흐름과 무관한 말을 쳐낸 정리본), `minutes.md`(회의록), `minutes.json`(상태), `segments.json`·`diarization.json`(녹취·화자 구분 중간 결과)
-- 받아쓰기: 음성은 임시 폴더에 녹음해 변환 후 바로 지운다. 한 건마다 `dictations.jsonl`에 한 줄씩 데이터만 남긴다
-  (시각, 길이, 입력한 앱, 정리 전/후 글, 글자·단어 수, WPM, 다듬기 계정, 단계별 소요 시간) → 나중에 통계·분석용
+창의 X는 창만 숨긴다. 앱은 메뉴바와 화면 왼쪽 플로팅 독(항상 표시)으로 계속 실행되고, 종료는 메뉴바 › 종료 또는 ⌘Q.
+패키징된 앱은 첫 실행 때 로그인 항목에 등록된다 (메뉴바에서 끌 수 있음). ad-hoc 서명이라 다시 빌드할 때마다 macOS 권한을 다시 허용해야 한다.
+
+## 화면
+
+- **홈**: 오늘 받아쓴 글자·평균 WPM·연속 사용일, 확인할 문제(권한·엔진·토큰), 만들고 있는 회의록, 최근 회의·받아쓰기
+- **받아쓰기**: 날짜별 기록, 검색, 다듬기가 지운 말(취소선)·넣은 말(밑줄) 표시, 복사·다시 입력·원문·삭제
+- **회의**: 회의록 있는 회의는 카드, 녹음만·실패·짧은 녹음은 한 줄로 접고 휴지통으로 옮길 수 있다 (폴더째, 한꺼번에도)
+- **회의 페이지**: 녹음 재생(화자 색 띠, 스크립트 줄을 누르면 그 시각부터, 따라가기), 화자 이름 막대, 탭 — 회의록 / 확인 필요 / 정리본 / 원본 / 화자
+- **사전**: 자주 틀리는 이름·용어 목록 (받아쓰기와 회의 녹취에 모두 쓰임)
+- **통계**: 최근 14일 글자 수, 앱별 사용량, 단계별 걸린 시간, 회의 녹음 시간
+- **설정** (모달): 받아쓰기 · 다듬기 · 회의 · 계정·토큰 · 권한
 
 ## 받아쓰기
-1. 녹음한 `mic.wav`를 로컬 Whisper(large-v3-turbo q8_0, 약 0.9GB)로 텍스트 변환. `whisper-server`를 앱이 띄워 모델을 메모리에 올려 두므로 짧은 문장은 0.3초 안팎
-2. (선택) 다듬기: 군말·자기 정정·띄어쓰기 정리. 이미 로그인된 CLI 구독을 그대로 쓴다 (`src/cleanup.js`)
+
+1. 말소리 크기(-50dBFS 이상)가 0.3초 미만이면 무음으로 보고 Whisper에 넘기지 않는다 (무음에서 "감사합니다"를 지어내는 문제 방지)
+2. 로컬 Whisper(large-v3-turbo q8_0, 약 0.9GB)로 변환. `whisper-server`를 앱이 띄워 모델을 메모리에 올려 두므로 짧은 문장은 0.3초 안팎
+3. Whisper가 무음·잡음에서 자주 지어내는 문장("감사합니다", "시청해 주셔서 감사합니다" 등)은 입력하지 않는다
+4. (선택) 다듬기: 군말·자기 정정·띄어쓰기 정리 (`src/cleanup.js`)
    - 자동: Claude Code(`claude -p`, 약 2.5초) → Codex(`codex exec`, 약 3.5~5초) → Anthropic API 키(`claude-opus-5-5`, safeStorage 암호화 저장) 순으로 로그인된 것
    - 600자가 넘으면 문장 단위로 나눠 최대 4개를 동시에 다듬고 다시 잇는다. 실패한 조각은 원문 그대로 둔다
-3. 클립보드에 넣고 ⌘V 입력 후 0.6초 뒤 원래 클립보드 복원
+5. 클립보드에 넣고 ⌘V 입력 후 0.6초 뒤 원래 클립보드 복원. 입력하지 못하면 클립보드에 남긴다
 
-- 모델 위치: `~/Library/Application Support/meeting-recorder/models/` (없으면 앱 화면의 "받기" 버튼)
-- 결과는 녹음 폴더의 `transcript.json`에 정리 전/후 글과 소요 시간으로 남는다
-- 거의 무음이거나 Whisper가 무음에서 자주 지어내는 문장("시청해 주셔서 감사합니다" 등)은 입력하지 않는다
+모델 위치: `~/Library/Application Support/meeting-recorder/models/` (없으면 설정의 "모델 받기")
 
 ## 회의록
-회의 녹음을 멈추면 자동으로 만든다 (설정 › 회의에서 끌 수 있음, 지난 회의는 "회의록 만들기"/"다시 만들기").
-1. 48kHz WAV를 16kHz로 줄이고, 약 10분마다 조용한 지점에서 잘라 **Whisper large-v3**(회의 전용으로 따로 띄움)로 녹취
-2. 같은 시간에 **pyannote speaker-diarization-community-1**로 화자 구분 (파일 전체를 한 번에, Mac GPU)
-3. 녹취 구간마다 가장 많이 겹치는(없으면 2초 안 가장 가까운) 화자를 붙이고, 같은 사람의 같은 말 반복은 합친다
-4. 다듬기와 같은 계정으로 회의록 작성 + 대화 흐름과 무관한 말을 쳐낸 정리본을 동시에 만든다
-5. 스크립트에서 "화자 1"을 누르면 이름을 바꿀 수 있고, 스크립트·정리본·회의록 전체에 반영된다
 
-실측 (2시간 5분 1:1 면담, M5 Pro): 녹취+화자 구분 18분 30초, 회의록 45초, 정리본 1분 46초 → 약 20분. 2명으로 구분됨.
+회의 녹음을 멈추면 끝까지 자동으로 진행해 **초안**을 만든다 (설정 › 회의에서 끌 수 있음). 10초 미만 녹음은 회의록을 만들지 않고 "짧은 녹음"으로 남긴다.
+
+| 단계 | 하는 일 | 2시간 회의 실측 |
+|---|---|---|
+| 1 | 48kHz WAV를 16kHz로 줄이고, 약 10분마다 조용한 지점에서 잘라 **Whisper large-v3**(회의 전용으로 따로 띄움)로 녹취 | 녹취+화자 구분 약 18분 30초 |
+| 2 | 같은 시간에 **pyannote speaker-diarization-community-1**로 화자 구분 (파일 전체, Mac GPU, 참석 인원을 알려 주면 더 정확) | (동시) |
+| 3 | 원본 스크립트 조립: 녹취 구간마다 가장 많이 겹치는(없으면 2초 안 가장 가까운) 화자를 붙이고 같은 말 반복은 합친다 → `[mm:ss] [화자 N] 말` | 1초 미만 |
+| 4 | 정리본(맞장구·하다 만 말·잡담을 쳐내고 같은 사람의 이어진 말을 합침)과 회의록을 동시에 작성 | 약 1분 30초 |
+| 5 | 회의록의 "확인 필요"를 항목별 목록으로 정리 | 약 10초 |
+
+**확인 필요 → 확정**: 회의 페이지의 확인 필요 탭에서 항목마다(또는 여러 개 골라 한꺼번에)
+
+- **추정대로 적용 / 고칠 말 직접 입력**: 녹취·정리본·회의록 본문에서 같은 글자를 모두 바꾼다 (처음 한 번 `*.before-review.*`로 원본 보관)
+- **채팅으로 확인**: 고른 항목과 그 시각 앞뒤 녹취를 근거로 LLM이 고칠 말을 제안, 제안은 바로 적용
+- **그대로 두기**: 기억나지 않거나 유실된 부분
+- **확인 마치기**: 남은 항목은 그대로 둔 것으로 하고, 채팅으로 밝혀진 내용·고친 이름처럼 문장에 영향이 있을 때만 회의록의 해당 문장을 고쳐 쓴다 (이전 회의록은 `minutes.before-finalize.md`). 단어만 고쳤다면 다시 쓰지 않는다
+
+화자 이름은 회의 페이지 제목 아래 막대(또는 스크립트의 화자 이름)를 눌러 바꾸면 스크립트·정리본·회의록 전체에 반영된다.
 
 화자 구분 설치 (한 번만):
 ```bash
@@ -53,24 +82,30 @@ uv venv --python 3.12 ~/Library/Application\ Support/meeting-recorder/diarize-en
 uv pip install --python ~/Library/Application\ Support/meeting-recorder/diarize-env/bin/python pyannote.audio==4.0.7
 ~/Library/Application\ Support/meeting-recorder/diarize-env/bin/hf auth login   # 모델 약관 동의한 계정의 Read 토큰
 ```
-Whisper large-v3 모델(`ggml-large-v3.bin`, 3.1GB)은 `~/Library/Application Support/meeting-recorder/models/`에 둔다. 없으면 turbo로 녹취한다.
+Hugging Face 토큰은 앱의 설정 › 계정·토큰에서 넣어도 된다. Whisper large-v3 모델(`ggml-large-v3.bin`, 3.1GB)은 모델 폴더에 둔다. 없으면 turbo로 녹취한다.
+
+## 저장 위치
+
+`~/Documents/MeetingRecorder/`
+- 회의 `<날짜>_meeting/`: `mic.wav`(+ 화상 회의면 `system.wav`), `meta.json`(참석 인원 포함), `transcript.txt`(원본 스크립트), `script-clean.txt`(정리본), `minutes.md`(회의록), `minutes.json`(상태), `review.json`(확인 필요 항목·처리 결과·채팅 요지), `segments.json`·`diarization.json`(중간 결과)
+- 받아쓰기: 음성은 임시 폴더에 녹음해 변환 후 바로 지운다. 한 건마다 `dictations.jsonl`에 한 줄씩 데이터만 남긴다 (시각, 길이, 실제 말소리 길이, 입력한 앱, 정리 전/후 글, 글자·단어 수, WPM, 다듬기 계정, 단계별 소요 시간)
 
 ## 필요한 macOS 권한 (설치한 앱은 Meeting Recorder에, 개발 모드는 터미널 앱에 부여)
 - 마이크
 - 입력 모니터링: fn 키 감지 (`native/fn-listener`)
 - 손쉬운 사용: 받아쓴 글을 ⌘V로 입력 (`native/permissions paste`)
-- 화면 및 시스템 오디오 녹음 › 시스템 오디오 녹음 전용: 화상 회의 설정을 켠 경우에만
+- 화면 및 시스템 오디오 녹음 › 시스템 오디오 녹음 전용: 화상 회의로 녹음할 때만
 - 키보드 설정 "🌐 키를 누르면" → "아무것도 안 함"
 
 ## 구조
-- `native/fn-listener.swift`: CGEventTap으로 fn down/up을 stdout으로 출력
-- `src/dictation.js`: whisper-server 관리, 모델 다운로드, 붙여 넣기
+- `src/main.js`: fn 상태 머신(받아쓰기 전용), 회의 일시정지·취소·참석 인원, WAV 저장, 회의 녹음 재생용 `rec://` 프로토콜(Range 지원), 메뉴바·플로팅 독
+- `src/dictation.js`: whisper-server 관리, 모델 다운로드, 무음·지어낸 문장 거르기, 붙여 넣기
 - `src/cleanup.js`: 다듬기·회의록 작성 호출 (Claude Code / Codex / API, 긴 글 나누기)
-- `src/minutes.js`: 회의 녹취(16kHz 변환 → 10분 조각 → Whisper large-v3) + 화자 구분 → 스크립트·정리본·회의록
+- `src/minutes.js`: 회의 녹취 + 화자 구분 → 스크립트·정리본·회의록, 확인 필요(목록·적용·채팅·확인 마치기)
+- `native/fn-listener.swift`: CGEventTap(listen-only)으로 fn down/up을 stdout으로 출력
+- `native/permissions.swift`: 권한 확인·요청, ⌘V 입력, 앞에 있는 앱 이름
 - `native/diarize.py`: pyannote 화자 구분 (앱 전용 파이썬 환경에서 실행)
-- `src/renderer/`: 메인 창 (기록 · 회의 · 설정). 다듬기 전/후를 단어 단위로 비교해 교정 부호로 표시
-- `src/main.js`: fn 상태 머신(꾹 누르기 받아쓰기 전용), 시스템 오디오 루프백, WAV 저장, 메뉴바·플로팅 독
-- `src/overlay/`: 화면 가장자리 플로팅 독 (hover 시 메모/회의/목록 버튼)
-- `src/renderer/recorder.js`: getUserMedia + getDisplayMedia → AudioContext(48kHz) → AudioWorklet
-- `src/renderer/recorder-worklet.js`: 트랙별 100ms 청크, 빈 입력은 0으로 채워 동기 유지
+- `src/renderer/`: 메인 창 (홈 · 받아쓰기 · 회의 · 사전 · 통계 · 설정 · ⌘K). Pretendard 글꼴(OFL) 포함. 디자인 규칙은 `DESIGN.md`
+- `src/renderer/recorder.js`, `recorder-worklet.js`: getUserMedia + getDisplayMedia → AudioContext(48kHz) → 트랙별 100ms 청크
+- `src/overlay/`: 화면 왼쪽 플로팅 독 (받아쓰기 진행 띠, 회의 녹음 시간)
 - `src/wav-writer.js`: 스트리밍 기록, 5초마다 헤더 갱신(크래시 대비)
