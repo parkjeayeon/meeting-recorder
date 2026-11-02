@@ -43,7 +43,11 @@
       "extendInfo": {
         "NSMicrophoneUsageDescription": "회의와 메모를 녹음하기 위해 마이크를 사용합니다.",
         "NSAudioCaptureUsageDescription": "회의 상대방의 목소리를 녹음하기 위해 시스템 소리를 사용합니다."
-      }
+      },
+      "icon": "build/icon.icns"
+    },
+    "directories": {
+      "buildResources": "build"
     }
   },
   "dependencies": {

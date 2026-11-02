@@ -1063,6 +1063,8 @@ if (!SELFTEST && !app.requestSingleInstanceLock()) {
 
 async function init() {
   protocol.handle('rec', serveRecording);
+  // 개발 모드에서도 Dock에 앱 아이콘을 쓴다 (설치본은 build/icon.icns가 앱에 들어간다)
+  if (!app.isPackaged && process.platform === 'darwin') app.dock?.setIcon(path.join(__dirname, '..', 'build', 'icon.png'));
   const saved = dictation.getSettings().recordingsDir;
   if (saved && fs.existsSync(saved)) setRecordingsDir(saved); // 지정한 폴더가 사라졌으면(외장 디스크 분리 등) 기본 폴더를 쓴다
   mergePortableSettings();

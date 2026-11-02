@@ -1,0 +1,22 @@
+<!-- 앱 아이콘 원본: 앱 안 브랜드 마크(주홍 둥근 사각형 + 흰 마이크)를 macOS 아이콘 규격(1024 캔버스, 824 둥근 사각형)으로 -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#df4a24"/>
+      <stop offset="1" stop-color="#b8331a"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#000000" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)" filter="url(#shadow)"/>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#sheen)"/>
+  <g transform="translate(512 518) scale(30) translate(-10 -10)" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="7" y="2.5" width="6" height="10" rx="3"/>
+    <path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5"/>
+  </g>
+</svg>
