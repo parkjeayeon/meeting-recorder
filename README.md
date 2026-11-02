@@ -7,7 +7,13 @@ macOS용 Electron 앱. 두 가지 일을 한다.
 
 음성 인식과 화자 구분은 이 Mac 안에서 돌고(외부 프로그램은 샌드박스 안에서 실행), 다듬기·회의록 작성은 이미 로그인된 Claude Code / Codex 구독(없으면 Anthropic API 키)을 쓴다.
 
-기능 추가·버그 수정 이력은 [CHANGELOG.md](CHANGELOG.md), 왜 그렇게 만들었는지(판단·트레이드오프)는 [docs/decisions.md](docs/decisions.md).
+문서:
+- [CHANGELOG.md](CHANGELOG.md) — 기능 추가·버그 수정 이력 (증상·원인·고침·확인)
+- [docs/decisions.md](docs/decisions.md) — 왜 그렇게 만들었는지 (판단·트레이드오프)
+- [docs/known-issues.md](docs/known-issues.md) — 알려진 한계·확인 못 한 것·남은 일
+- [docs/research/wispr-flow.md](docs/research/wispr-flow.md) — Wispr Flow 앱 분석 기록
+- [docs/measurements.md](docs/measurements.md) — 실측값 (속도·크기·정리본 줄 수·소리 크기)
+- [docs/testing.md](docs/testing.md) — 셀프테스트·화면 캡처·샌드박스·고아 프로세스 점검 방법 (`scripts/dev/`)
 
 ## 시작하기
 

@@ -7,6 +7,10 @@
 
 ## 2026-11-03
 
+### 문서·개발 도구
+- `docs/decisions.md`(판단·트레이드오프), `docs/known-issues.md`(한계·남은 일), `docs/research/wispr-flow.md`(Wispr Flow 분석), `docs/measurements.md`(실측값), `docs/testing.md`(테스트 방법) 추가.
+- `scripts/dev/`: 가짜 데이터로 화면 캡처(`screens.js`, `stub-preload.js`), 샌드박스 확인(`sandbox-check.js`), 고아 프로세스 점검(`orphans.js`). 예시 데이터를 스스로 만들어 실제 회의 내용·개인 경로가 들어가지 않는다.
+
 ### 버그
 - **앱을 다시 열면 본 화면이 잠깐 보였다가 처음 설정으로 바뀜**
   - 원인: 창이 먼저 뜨고, 기록·설정·권한을 다 불러온 뒤에야 처음 설정을 띄울지 판단했다.

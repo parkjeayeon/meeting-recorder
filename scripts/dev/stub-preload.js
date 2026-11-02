@@ -1,0 +1,44 @@
+// 화면 확인용 가짜 recorderApi. 메인 프로세스 없이 src/renderer/index.html만 띄워 화면을 본다.
+// src/preload.js의 함수 이름을 그대로 읽어 같은 모양을 만들고, 몇 가지만 예시 데이터를 돌려준다.
+// 녹음·fn·권한·설치는 실제로 하지 않는다. 예시 회의는 STUB_MEETING_DIR(scripts/dev/screens.js가 만든 임시 폴더)에서 읽는다.
+const { contextBridge } = require('electron');
+const fs = require('fs');
+const path = require('path');
+
+const dir = process.env.STUB_MEETING_DIR;
+const read = (f) => {
+  try {
+    return fs.readFileSync(path.join(dir, f), 'utf8');
+  } catch {
+    return null;
+  }
+};
+const meeting = dir && {
+  id: path.basename(dir), dir, mode: 'meeting', startedAt: '2026-11-01T14:00:00Z', durationSec: 1800, tracks: ['mic'], firstFile: 'mic.wav',
+  minutes: { status: 'done', title: '예시 회의: 배포 일정 정리', speakers: 2, provider: 'claude-code' },
+  summary: '배포 일정과 QA 범위를 정리한 예시 회의입니다.',
+  review: { open: 1, total: 1, finalized: false },
+};
+const noop = () => {};
+const impl = {
+  info: async () => ({ recordingsDir: '/Users/me/Documents/MeetingRecorder', defaultRecordingsDir: '/Users/me/Documents/MeetingRecorder' }),
+  history: async () => (meeting ? [meeting] : []),
+  dictSettings: async () => ({ enabled: true, language: 'ko', cleanup: true, provider: 'auto', vocabulary: 'PJY, Whisper', minutes: true, diarize: true, diarizeReady: true, hasHfToken: true, meetingSystemAudio: false, engine: { state: 'ready' } }),
+  providers: async () => ({ 'claude-code': { installed: true, loggedIn: true, account: 'me@example.com' }, codex: { installed: true, loggedIn: false }, api: { installed: true, loggedIn: false } }),
+  permStatus: async () => ({ microphone: 'granted', inputMonitoring: process.env.OB_STEP === 'permissions' ? 'denied' : 'granted', accessibility: 'granted', systemAudio: 'granted' }),
+  fnKeyWarning: async () => null,
+  tokenStatus: async () => ({ hf: { cli: true }, anthropic: {} }),
+  verifyToken: async () => ({ ok: true, message: '예시 계정 · 화자 구분 모델 사용 가능' }),
+  readMinutes: async () => ({ minutes: read('minutes.md'), transcript: read('transcript.txt'), scriptClean: read('script-clean.txt'), review: JSON.parse(read('review.json') ?? 'null') }),
+  onboardingGet: async () => ({ completed: !process.env.OB_STEP, step: process.env.OB_STEP || 'done' }),
+  setupStatus: async () => [
+    { id: 'engine', name: '음성 인식 엔진', desc: 'whisper.cpp (Homebrew로 설치)', installed: true, size: null, removable: false },
+    { id: 'turbo', name: '받아쓰기 모델', desc: 'Whisper large-v3-turbo', installed: true, size: 834e6, removable: true },
+    { id: 'large', name: '회의 모델', desc: 'Whisper large-v3', installed: false, size: 3.1e9, removable: true, job: { running: true, pct: 0.4, text: '1240MB / 3095MB' } },
+    { id: 'diarize', name: '화자 구분', desc: 'pyannote', installed: true, size: 1.17e9, removable: true },
+  ],
+};
+const keys = [...fs.readFileSync(path.join(__dirname, '../../src/preload.js'), 'utf8').matchAll(/^\s{2}(\w+):/gm)].map((m) => m[1]);
+const api = {};
+for (const k of keys) api[k] = impl[k] ?? (k.startsWith('on') ? noop : async () => null);
+contextBridge.exposeInMainWorld('recorderApi', api);
