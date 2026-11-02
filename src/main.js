@@ -1093,7 +1093,7 @@ async function init() {
     height: 820,
     minWidth: 960,
     minHeight: 640,
-    show: !openedAtLogin && !SELFTEST,
+    show: false, // 렌더러가 보여 줄 화면(처음 설정 또는 본 화면)을 정한 뒤 app:ready에서 띄운다
     title: 'Meeting Recorder',
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#111214' : '#eceef1',
     titleBarStyle: 'hidden',
@@ -1104,6 +1104,14 @@ async function init() {
     },
   });
   if (openedAtLogin) hideWindow();
+  let shown = false;
+  const showOnce = () => {
+    if (shown || openedAtLogin || SELFTEST) return;
+    shown = true;
+    win.show();
+  };
+  ipcMain.once('app:ready', showOnce);
+  setTimeout(showOnce, 4000); // 렌더러가 늦거나 오류가 나도 창은 띄운다
   if (SELFTEST) app.dock?.hide();
   // X 버튼은 창만 숨긴다. 종료는 메뉴바 › 종료 또는 ⌘Q
   win.on('close', (e) => {

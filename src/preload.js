@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('recorderApi', {
   onOnboardingFn: (cb) => ipcRenderer.on('onboarding:fn', (_e, s) => cb(s)),
   onOnboardingTap: (cb) => ipcRenderer.on('onboarding:tap', () => cb()),
   focusApp: () => ipcRenderer.send('app:focus'),
+  appReady: () => ipcRenderer.send('app:ready'),
   onPermChanged: (cb) => ipcRenderer.on('perm:changed', () => cb()),
   onCommand: (cb) => ipcRenderer.on('rec:cmd', (_e, cmd) => cb(cmd)),
   onFnStatus: (cb) => ipcRenderer.on('fn:status', (_e, s) => cb(s)),

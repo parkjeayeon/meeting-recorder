@@ -2232,16 +2232,6 @@ $('connRefresh').onclick = () => renderConnections();
 
 // ── 시작 ────────────────────────────────────────────────────────────────
 setRecording(null);
-const info = await api.info();
-showRecordingsDir(info.recordingsDir, info.defaultRecordingsDir);
-renderDictSettings(await api.dictSettings());
-renderPerms();
-renderProviders();
-await loadHistory();
-navigate();
-if (info.capability === 'unsupported') toast('이 macOS에서는 상대방 소리를 녹음할 수 없습니다', '회의도 마이크만 녹음합니다.', { ms: 7000 });
-if (info.fnWarning) setIssue('fnUsage', { title: 'fn 키가 다른 동작과 겹칩니다', detail: info.fnWarning, sec: 'general', dismiss: true });
-await loadDevices();
 
 // 처음 설정: 끝내기 전까지는 본 화면 대신 온보딩을 보여 준다
 const fnListeners = new Set();
@@ -2269,7 +2259,21 @@ $('rerunOnboarding').onclick = async () => {
   $('settings').close();
   startOnboarding(onboardingCtx, { ...(await api.onboardingGet()), step: 'welcome' });
 };
+// 본 화면은 처음에 숨겨 두고(index.html), 처음 설정을 마쳤는지 먼저 본 뒤에 보여 준다 → 본 화면이 잠깐 비쳤다가 바뀌지 않게
 const onboarding = await api.onboardingGet();
 if (!onboarding.completed) startOnboarding(onboardingCtx, onboarding);
+else document.querySelector('.shell').hidden = false;
+api.appReady(); // 보여 줄 화면이 정해졌으니 창을 띄운다
+
+const info = await api.info();
+showRecordingsDir(info.recordingsDir, info.defaultRecordingsDir);
+renderDictSettings(await api.dictSettings());
+renderPerms();
+renderProviders();
+await loadHistory();
+navigate();
+if (info.capability === 'unsupported') toast('이 macOS에서는 상대방 소리를 녹음할 수 없습니다', '회의도 마이크만 녹음합니다.', { ms: 7000 });
+if (info.fnWarning) setIssue('fnUsage', { title: 'fn 키가 다른 동작과 겹칩니다', detail: info.fnWarning, sec: 'general', dismiss: true });
+await loadDevices();
 
 recorder.prepare().catch((err) => toast('오디오 엔진 준비 실패', err.message, { bad: true }));
