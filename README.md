@@ -82,7 +82,7 @@ uv venv --python 3.12 ~/Library/Application\ Support/meeting-recorder/diarize-en
 uv pip install --python ~/Library/Application\ Support/meeting-recorder/diarize-env/bin/python pyannote.audio==4.0.7
 ~/Library/Application\ Support/meeting-recorder/diarize-env/bin/hf auth login   # 모델 약관 동의한 계정의 Read 토큰
 ```
-Hugging Face 토큰은 앱의 설정 › 계정·토큰에서 넣어도 된다. Whisper large-v3 모델(`ggml-large-v3.bin`, 3.1GB)은 모델 폴더에 둔다. 없으면 turbo로 녹취한다.
+화자 구분 모델(약 33MB)은 처음 쓸 때 `~/Library/Application Support/meeting-recorder/hf-cache/`로 받는다 (Hugging Face 기본 캐시 `~/.cache/huggingface`를 쓰지 않음). Hugging Face 토큰은 앱의 설정 › 계정·토큰에서 넣어도 된다. Whisper large-v3 모델(`ggml-large-v3.bin`, 3.1GB)은 모델 폴더에 둔다. 없으면 turbo로 녹취한다.
 
 ## 저장 위치
 

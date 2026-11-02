@@ -238,11 +238,35 @@ function diarizeAvailable() {
   return fs.existsSync(diarizeEnv()) && fs.existsSync(diarizeScript());
 }
 
+// 화자 구분 모델은 앱 폴더 안에 받는다 (기본값 ~/.cache/huggingface는 다른 프로그램과 같이 쓰는 곳이라
+// 앱 데이터와 따로 놀아 크기 확인·삭제·옮기기가 어렵다). 토큰은 그대로 ~/.cache/huggingface/token을 읽는다.
+const DIARIZE_MODEL_DIR = 'models--pyannote--speaker-diarization-community-1';
+
+function hfCacheDir() {
+  const dir = path.join(app.getPath('userData'), 'hf-cache');
+  const target = path.join(dir, DIARIZE_MODEL_DIR);
+  if (!fs.existsSync(target)) {
+    // 예전에 ~/.cache에 받아 둔 모델이 있으면 한 번 복사해 와서 다시 받지 않게 한다 (심볼릭 링크는 실제 파일로)
+    const old = path.join(require('os').homedir(), '.cache', 'huggingface', 'hub', DIARIZE_MODEL_DIR);
+    try {
+      if (fs.existsSync(path.join(old, 'snapshots'))) {
+        fs.mkdirSync(dir, { recursive: true });
+        fs.cpSync(old, `${target}.tmp`, { recursive: true, dereference: true, filter: (src) => !src.includes(`${path.sep}blobs`) });
+        fs.renameSync(`${target}.tmp`, target);
+      }
+    } catch {
+      fs.rmSync(`${target}.tmp`, { recursive: true, force: true });
+    }
+  }
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 function diarize(wavPath, speakers) {
   return new Promise((resolve, reject) => {
     const args = [diarizeScript(), wavPath];
     if (speakers) args.push('--speakers', String(speakers));
-    const env = { ...process.env, PYTORCH_ENABLE_MPS_FALLBACK: '1' };
+    const env = { ...process.env, PYTORCH_ENABLE_MPS_FALLBACK: '1', HF_HUB_CACHE: hfCacheDir() };
     const token = dictation.hfToken();
     if (token) env.HF_TOKEN = token;
     const proc = spawn(diarizeEnv(), args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
