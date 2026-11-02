@@ -14,6 +14,7 @@ const WHISPER_SERVER_CANDIDATES = [
   '/usr/local/bin/whisper-server',
 ].filter(Boolean);
 const CLIPBOARD_RESTORE_MS = 600;
+const sandbox = require('./sandbox');
 
 // provider: auto | claude-code | codex | api
 // meetingSystemAudio: 회의 녹음에 상대방 소리(시스템 오디오)도 함께 녹음 (화상 회의용, 기본은 오프라인 회의라 꺼 둠)
@@ -150,6 +151,27 @@ function pidFile() {
   return path.join(app.getPath('userData'), 'whisper-server.pid');
 }
 
+// 회의용 서버는 회의록을 만드는 동안만 띄우는데, 앱이 그 사이에 꺼지면 고아로 남아 메모리를 차지한다.
+// 띄운 것을 기억해 두었다가 앱이 끝날 때 함께 내리고, 시작할 때는 이 앱 모델을 쓰는 고아 서버를 정리한다.
+const dedicated = new Set();
+
+// SIGTERM 등으로 before-quit 없이 끝나는 경우도 서버를 남기지 않는다
+process.on('exit', () => {
+  serverProc?.kill();
+  for (const proc of dedicated) proc.kill();
+});
+
+function killOrphanServers() {
+  try {
+    const out = require('child_process').execFileSync('ps', ['-axo', 'pid=,ppid=,command=']).toString();
+    const models = path.join(app.getPath('userData'), 'models');
+    for (const line of out.split('\n')) {
+      const m = line.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/);
+      if (m && m[2] === '1' && m[3].includes('whisper-server') && m[3].includes(models)) process.kill(Number(m[1]));
+    }
+  } catch {}
+}
+
 function killStaleServer() {
   try {
     const pid = Number(fs.readFileSync(pidFile(), 'utf8'));
@@ -180,7 +202,8 @@ function startServer() {
   }
   serverReady = (async () => {
     const port = await freePort();
-    serverProc = spawn(bin, ['-m', modelPath(), '--host', '127.0.0.1', '--port', String(port), '-sns', '-t', '8'], {
+    // 샌드박스: 이 컴퓨터 안(127.0.0.1) 연결만, 쓰기는 임시 폴더만 → 받아쓰기 음성이 밖으로 나갈 길이 없다
+    serverProc = spawn(...sandbox.wrap(bin, ['-m', modelPath(), '--host', '127.0.0.1', '--port', String(port), '-sns', '-t', '8'], { network: 'local' }), {
       stdio: ['ignore', 'ignore', 'pipe'],
     });
     const proc = serverProc;
@@ -225,10 +248,12 @@ async function startDedicatedServer(modelFile) {
   const bin = whisperServerBin();
   if (!bin || !fs.existsSync(modelFile)) return null;
   const port = await freePort();
-  const proc = spawn(bin, ['-m', modelFile, '--host', '127.0.0.1', '--port', String(port), '-sns', '-t', '8'], {
+  const proc = spawn(...sandbox.wrap(bin, ['-m', modelFile, '--host', '127.0.0.1', '--port', String(port), '-sns', '-t', '8'], { network: 'local' }), {
     stdio: ['ignore', 'ignore', 'pipe'],
   });
   proc.stderr.on('data', () => {});
+  dedicated.add(proc);
+  proc.on('exit', () => dedicated.delete(proc));
   const stop = () => proc.kill();
   for (let i = 0; i < 480 && proc.exitCode === null; i++) {
     try {
@@ -366,7 +391,8 @@ async function dictate(wavPath, { helperBin, peak, voicedMs = Infinity, onStage 
 function init({ onEngineStatus }) {
   onStatus = onEngineStatus;
   killStaleServer();
-  process.on('exit', () => serverProc?.kill()); // SIGTERM 등으로 before-quit 없이 끝나는 경우
+  killOrphanServers();
+
   if (getSettings().enabled) startServer()?.catch(() => {}); // 실패는 engineStatus로 화면에 표시된다
 }
 
@@ -374,4 +400,6 @@ function cleanupProviders(opts) {
   return cleanupText.providerStatus({ hasApiKey: getSettings().hasApiKey }, opts);
 }
 
-module.exports = { init, dictate, paste, transcribeSegments, startDedicatedServer, apiKey, hfToken, hfCliToken, tokenSources, cleanupProviders, downloadModel, engineStatus, startServer, stopServer, getSettings, saveSettings };
+const engineInstalled = () => whisperServerBin();
+
+module.exports = { init, engineInstalled, dictate, paste, transcribeSegments, startDedicatedServer, apiKey, hfToken, hfCliToken, tokenSources, cleanupProviders, downloadModel, engineStatus, startServer, stopServer, getSettings, saveSettings };

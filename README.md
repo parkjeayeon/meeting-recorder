@@ -76,13 +76,30 @@ fn 규칙은 Wispr Flow 앱 코드에서 확인한 값을 따른다 (`DICTATION_
 
 화자 이름은 회의 페이지 제목 아래 막대(또는 스크립트의 화자 이름)를 눌러 바꾸면 스크립트·정리본·회의록 전체에 반영된다.
 
-화자 구분 설치 (한 번만):
-```bash
-uv venv --python 3.12 ~/Library/Application\ Support/meeting-recorder/diarize-env
-uv pip install --python ~/Library/Application\ Support/meeting-recorder/diarize-env/bin/python pyannote.audio==4.0.7
-~/Library/Application\ Support/meeting-recorder/diarize-env/bin/hf auth login   # 모델 약관 동의한 계정의 Read 토큰
-```
-화자 구분 모델(약 33MB)은 처음 쓸 때 `~/Library/Application Support/meeting-recorder/hf-cache/`로 받는다 (Hugging Face 기본 캐시 `~/.cache/huggingface`를 쓰지 않음). Hugging Face 토큰은 앱의 설정 › 계정·토큰에서 넣어도 된다. Whisper large-v3 모델(`ggml-large-v3.bin`, 3.1GB)은 모델 폴더에 둔다. 없으면 turbo로 녹취한다.
+### 설치 (설정 › 엔진)
+
+앱의 **설정 › 엔진**에서 구성요소마다 설치 상태·크기를 보고 받거나 지운다.
+
+| 구성요소 | 설치 방법 | 크기 |
+|---|---|---|
+| 음성 인식 엔진 (whisper.cpp) | `brew install whisper-cpp`를 앱이 실행 (Homebrew는 터미널에서 먼저 설치) | |
+| 받아쓰기 모델 (large-v3-turbo q8_0) | 앱이 내려받음 | 0.9GB |
+| 회의 모델 (large-v3, 없으면 turbo로 녹취) | 앱이 내려받음 | 3.1GB |
+| 화자 구분 (pyannote) | 샌드박스 안에서 uv → 앱 전용 파이썬 3.12 → `pyannote.audio==4.0.7` → 모델 순으로 설치 (HF 토큰·모델 약관 동의 필요) | 약 1.2GB |
+
+앱 밖에서 직접 해야 하는 것: Homebrew 설치, Claude Code(`claude`) 또는 Codex(`codex login`) 로그인(API 키를 쓰면 생략), macOS 권한 허용, Hugging Face 모델 약관 동의와 토큰 만들기.
+
+### 샌드박스
+
+앱이 띄우는 외부 프로그램은 macOS 샌드박스(Seatbelt, `sandbox-exec`)로 감싼다 (`src/sandbox.js`, Codex·Claude Code와 같은 방식). 읽기는 넓게 두고 쓰기·네트워크를 좁힌다.
+
+| 프로그램 | 쓸 수 있는 곳 | 네트워크 |
+|---|---|---|
+| 화자 구분 설치 (uv·pip·모델 받기) | 앱 폴더 + 임시 폴더 | 허용 |
+| 화자 구분 실행 | 임시 폴더 | 차단 (`HF_HUB_OFFLINE`) |
+| whisper-server (받아쓰기·회의 녹취) | 임시 폴더 | 127.0.0.1만 |
+
+Homebrew 설치, Claude Code·Codex 호출(자체 샌드박스·읽기 전용), 앱 본체(fn 감지·⌘V 입력)는 샌드박스 밖에서 실행된다.
 
 ## 저장 위치
 
@@ -99,6 +116,8 @@ uv pip install --python ~/Library/Application\ Support/meeting-recorder/diarize-
 
 ## 구조
 - `src/main.js`: fn 상태 머신(받아쓰기 전용), 회의 일시정지·취소·참석 인원, WAV 저장, 회의 녹음 재생용 `rec://` 프로토콜(Range 지원), 메뉴바·플로팅 독
+- `src/setup.js`: 엔진 설치·크기·삭제 (설정 › 엔진)
+- `src/sandbox.js`: 외부 프로그램을 감싸는 macOS 샌드박스 프로필
 - `src/dictation.js`: whisper-server 관리, 모델 다운로드, 무음·지어낸 문장 거르기, 붙여 넣기
 - `src/cleanup.js`: 다듬기·회의록 작성 호출 (Claude Code / Codex / API, 긴 글 나누기)
 - `src/minutes.js`: 회의 녹취 + 화자 구분 → 스크립트·정리본·회의록, 확인 필요(목록·적용·채팅·확인 마치기)

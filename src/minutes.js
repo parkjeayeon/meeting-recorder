@@ -7,6 +7,7 @@ const { spawn } = require('child_process');
 const { app } = require('electron');
 const dictation = require('./dictation');
 const { complete } = require('./cleanup');
+const sandbox = require('./sandbox');
 
 const LONG_TIMEOUT_MS = 10 * 60 * 1000; // 1시간짜리 회의도 여유 있게
 const SPEAKER = { mic: '나', system: '상대방' };
@@ -234,6 +235,10 @@ function diarizeScript() {
   return app.isPackaged ? path.join(process.resourcesPath, 'diarize.py') : path.join(__dirname, '..', 'native', 'diarize.py');
 }
 
+function diarizeModelReady() {
+  return fs.existsSync(path.join(hfCacheDir(), DIARIZE_MODEL_DIR, 'snapshots'));
+}
+
 function diarizeAvailable() {
   return fs.existsSync(diarizeEnv()) && fs.existsSync(diarizeScript());
 }
@@ -266,10 +271,12 @@ function diarize(wavPath, speakers) {
   return new Promise((resolve, reject) => {
     const args = [diarizeScript(), wavPath];
     if (speakers) args.push('--speakers', String(speakers));
-    const env = { ...process.env, PYTORCH_ENABLE_MPS_FALLBACK: '1', HF_HUB_CACHE: hfCacheDir() };
-    const token = dictation.hfToken();
-    if (token) env.HF_TOKEN = token;
-    const proc = spawn(diarizeEnv(), args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
+    // 샌드박스: 네트워크 차단, 쓰기는 임시 폴더만 → 회의 녹음이 밖으로 나가지 않는다. 모델은 설치할 때 미리 받아 둔다
+    if (!diarizeModelReady()) return reject(new Error('화자 구분 모델이 없습니다. 설정 › 엔진에서 설치하세요'));
+    const tmp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'mr-diarize-'));
+    const env = { ...process.env, PYTORCH_ENABLE_MPS_FALLBACK: '1', HF_HUB_CACHE: hfCacheDir(), HF_HUB_OFFLINE: '1', ...sandbox.cacheEnv(tmp) };
+    const proc = spawn(...sandbox.wrap(diarizeEnv(), ['-I', ...args], { network: 'none' }), { env, stdio: ['ignore', 'pipe', 'pipe'] });
+    proc.on('exit', () => fs.rmSync(tmp, { recursive: true, force: true }));
     let out = '';
     let err = '';
     proc.stdout.on('data', (d) => (out += d));
@@ -281,7 +288,7 @@ function diarize(wavPath, speakers) {
           return resolve(JSON.parse(out));
         } catch {}
       }
-      const gated = /gated|401|403|token|Unauthorized|restricted/i.test(err);
+      const gated = /gated|401|403|Unauthorized|restricted/i.test(err);
       reject(new Error(gated ? 'Hugging Face 토큰이 없거나 모델 약관에 동의하지 않았습니다' : `화자 구분 실패: ${err.trim().split('\n').pop()}`));
     });
   });

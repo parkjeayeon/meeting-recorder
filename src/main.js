@@ -7,6 +7,7 @@ const { spawn, execFile, execFileSync } = require('child_process');
 const { WavWriter } = require('./wav-writer');
 const dictation = require('./dictation');
 const minutes = require('./minutes');
+const setup = require('./setup');
 
 const SELFTEST = process.argv.includes('--selftest');
 const TAP_MAX_MS = 300; // 이보다 짧게 눌렀다 떼면 실수로 누른 것으로 보고 버린다
@@ -617,6 +618,7 @@ const EXTERNAL_LINKS = new Set([
   'https://huggingface.co/settings/tokens',
   `https://huggingface.co/${DIARIZE_MODEL}`,
   'https://console.anthropic.com/settings/keys',
+  'https://brew.sh',
 ]);
 
 ipcMain.handle('tokens:status', () => dictation.tokenSources());
@@ -681,6 +683,11 @@ ipcMain.handle('dict:saveSettings', (_e, patch) => {
   if (settings.enabled) dictation.startServer();
   return { ...settings, engine: dictation.engineStatus(), diarizeReady: minutes.diarizeAvailable() };
 });
+ipcMain.handle('setup:status', () => setup.status());
+ipcMain.handle('setup:install', (_e, id) => {
+  setup.install(id); // 오래 걸리므로 기다리지 않고, 진행 상황은 setup:status로 보낸다
+});
+ipcMain.handle('setup:remove', (_e, id) => setup.remove(id));
 ipcMain.handle('dict:download', () => dictation.downloadModel().catch((err) => send('dict:engine', { state: 'error', error: err.message })));
 
 ipcMain.handle('app:info', async () => ({
@@ -996,6 +1003,7 @@ async function init() {
 
   installDisplayMediaHandler();
   dictation.init({ onEngineStatus: (status) => send('dict:engine', status) });
+  setup.init({ onStatus: (list) => send('setup:status', list) });
 
   createOverlay();
   if (!SELFTEST) overlay.once('ready-to-show', showOverlay);

@@ -1868,6 +1868,7 @@ function openSettings(sec = 'general') {
     document.activeElement?.blur(); // 열자마자 첫 탭에 포커스 테두리가 그려지지 않게
   }
   if (sec === 'perms') renderPerms();
+  if (sec === 'engine') api.setupStatus().then(renderSetup);
   if (sec === 'cleanup') renderProviders(true);
   if (sec === 'accounts') {
     for (const r of $('settings').querySelectorAll('[data-result]')) r.textContent = '';
@@ -1880,7 +1881,7 @@ $('settings').addEventListener('click', (e) => e.target === $('settings') && $('
 $('openSettings').onclick = () => openSettings();
 $('enginesBtn').onclick = () => {
   const bad = [...issues.values()].find((i) => i.sec);
-  openSettings(bad?.sec ?? 'general');
+  openSettings(bad?.sec ?? 'engine');
 };
 
 function setEngine(id, state, text) {
@@ -1905,15 +1906,12 @@ function renderEngine(engine) {
   $('engineLine').classList.toggle('bad', bad);
   const acts = $('engineActs');
   acts.replaceChildren();
-  if (engine.state === 'no-model' || engine.state === 'error') {
-    acts.append(h('button', { class: 'btn small', onclick: (e) => { e.currentTarget.disabled = true; api.dictDownload(); } }, '모델 받기'));
-  }
+  acts.append(h('button', { class: 'btn small', onclick: () => openSettings('engine') }, bad ? '설치하기' : '엔진 관리'));
   const short = { ready: '준비됨', loading: '불러오는 중', downloading: '받는 중', stopped: '꺼짐' }[engine.state] ?? '설정 필요';
   setEngine('engAsr', bad ? 'bad' : engine.state === 'ready' ? 'ok' : 'busy', short);
   setIssue('engine', bad ? {
-    title: '받아쓰기를 쓸 수 없습니다', detail: text, sec: 'general',
-    action: engine.state === 'no-engine' ? '설정 보기' : '모델 받기',
-    onAction: engine.state === 'no-engine' ? () => openSettings('general') : () => api.dictDownload(),
+    title: '받아쓰기를 쓸 수 없습니다', detail: text, sec: 'engine',
+    action: '설치하기', onAction: () => openSettings('engine'),
   } : null);
 }
 
@@ -1954,7 +1952,7 @@ function renderDictSettings(s) {
   $('diarizeOn').checked = s.diarize;
   const dl = $('diarizeLine');
   if (!s.diarizeReady) {
-    dl.textContent = '화자 구분 엔진(pyannote)이 설치되어 있지 않습니다. README의 설치 방법을 따라 주세요.';
+    dl.textContent = '화자 구분 엔진(pyannote)이 설치되어 있지 않습니다. 설정 › 엔진에서 설치하세요.';
     dl.className = 'bad';
   } else if (!s.hasHfToken) {
     dl.textContent = 'Hugging Face 토큰이 필요합니다. 계정·토큰에서 넣어 주세요.';
@@ -2107,6 +2105,53 @@ window.addEventListener('focus', () => {
   loadHistory();
 });
 api.onPermChanged(() => renderPerms());
+
+// ── 엔진: 설치 · 크기 · 지우기 ───────────────────────────────────────────
+const gb = (n) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)}GB` : `${Math.round(n / 1e6)}MB`);
+let setupWasRunning = false;
+
+function renderSetup(list) {
+  const box = $('compList');
+  box.replaceChildren();
+  let total = 0;
+  const running = list.some((c) => c.job?.running);
+  $('engineDot').hidden = !list.some((c) => !c.installed && c.id !== 'large');
+  for (const c of list) {
+    if (c.installed && c.size) total += c.size;
+    const job = c.job;
+    const state = job?.running ? ['', '설치 중'] : job?.error ? ['bad', '실패'] : c.installed ? ['ok', '설치됨'] : c.partial ? ['bad', '모델 없음'] : ['', '없음'];
+    const acts = h('div', { class: 'comp-acts' });
+    if (!c.installed && !job?.running && !(c.blocker === 'brew')) {
+      acts.append(h('button', { class: 'btn small primary', onclick: () => api.setupInstall(c.id) }, job?.error ? '다시 시도' : c.id === 'engine' ? '설치' : '받기'));
+    }
+    if (c.installed && c.removable && !job?.running) {
+      acts.append(h('button', { class: 'btn small ghost', onclick: async () => {
+        if (!(await confirmBox(`${c.name}을(를) 지울까요?`, `${gb(c.size)}를 확보합니다. 필요하면 언제든 다시 받을 수 있습니다.`, '지우기'))) return;
+        try {
+          await api.setupRemove(c.id);
+          toast(`${c.name}을(를) 지웠습니다`);
+          renderDictSettings(await api.dictSettings());
+        } catch (err) {
+          toast('지우지 못했습니다', err.message, { bad: true });
+        }
+      } }, '지우기'));
+    }
+    const row = h('div', { class: 'comp' },
+      h('div', { class: 'comp-main' }, h('b', null, c.name), h('span', null, c.desc)),
+      h('div', { class: 'comp-side' }, h('span', { class: `pill ${state[0]}` }, state[1]), c.size && (c.installed || c.id !== 'engine') && num(c.installed ? gb(c.size) : `약 ${gb(c.size)}`)),
+      acts);
+    if (job?.running) row.append(h('div', { class: 'comp-progress' }, h('div', { class: `bar${job.pct == null ? ' indeterminate' : ''}` }, h('i', { style: `width:${Math.round((job.pct ?? 0.3) * 100)}%` })), h('span', null, job.text ?? '')));
+    if (job?.error) row.append(h('div', { class: 'comp-note bad' }, job.error, c.blocker === 'token' && h('button', { class: 'link', onclick: () => openSettings('accounts') }, '토큰 넣기')));
+    if (!c.installed && c.blocker === 'brew') row.append(h('div', { class: 'comp-note' }, '터미널에서 Homebrew를 먼저 설치하세요.', h('button', { class: 'link', onclick: () => api.openExternal('https://brew.sh') }, 'brew.sh 열기')));
+    if (!c.installed && c.blocker === 'token' && !job?.running && !job?.error) row.append(h('div', { class: 'comp-note' }, 'Hugging Face 토큰이 있어야 모델을 받을 수 있습니다.', h('button', { class: 'link', onclick: () => openSettings('accounts') }, '토큰 넣기')));
+    box.append(row);
+  }
+  $('compTotal').textContent = `앱 폴더 사용량 ${gb(total)} · ~/Library/Application Support/meeting-recorder`;
+  // 설치가 끝나면 화자 구분·엔진 상태를 다시 읽는다
+  if (setupWasRunning && !running) api.dictSettings().then(renderDictSettings);
+  setupWasRunning = running;
+}
+api.onSetup((list) => $('settings').open && renderSetup(list));
 
 // ── 계정·토큰 ───────────────────────────────────────────────────────────
 const SOURCE_TEXT = {

@@ -149,6 +149,7 @@
       <button class="set-tab" data-sec="general"><svg><use href="#i-mic"/></svg>받아쓰기</button>
       <button class="set-tab" data-sec="cleanup"><svg><use href="#i-wand"/></svg>다듬기</button>
       <button class="set-tab" data-sec="meeting"><svg><use href="#i-people"/></svg>회의</button>
+      <button class="set-tab" data-sec="engine"><svg><use href="#i-gear"/></svg>엔진<span class="dot" id="engineDot" hidden></span></button>
       <button class="set-tab" data-sec="accounts"><svg><use href="#i-key"/></svg>계정·토큰<span class="dot" id="accountsDot" hidden></span></button>
       <button class="set-tab" data-sec="perms"><svg><use href="#i-shield"/></svg>권한<span class="dot" id="permDot" hidden></span></button>
     </nav>
@@ -221,6 +222,13 @@
           <div class="field-text"><b>화상 회의 상대방 소리</b><span>시스템 오디오를 따로 녹음합니다. 대면 회의에서는 꺼 두세요.</span></div>
           <label class="switch"><input type="checkbox" id="meetingSystem" /><i></i></label>
         </div>
+      </section>
+
+      <section class="set-sec" data-sec="engine" hidden>
+        <h3>엔진</h3>
+        <p class="sec-lead">음성 인식과 화자 구분에 필요한 프로그램과 모델입니다. 화자 구분은 샌드박스 안에서 앱 폴더에만 설치되고, 실행할 때는 네트워크가 막혀 회의 녹음이 밖으로 나가지 않습니다.</p>
+        <div class="comps" id="compList"></div>
+        <p class="hint" id="compTotal"></p>
       </section>
 
       <section class="set-sec" data-sec="accounts" hidden>
