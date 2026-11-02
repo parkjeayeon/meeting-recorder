@@ -19,6 +19,33 @@ let RECORDINGS_DIR = DEFAULT_RECORDINGS_DIR; // 설정 › 받아쓰기 › 녹�
 // 받아쓰기는 음성을 남기지 않는다: 임시 폴더에 녹음 → 변환·입력 → 음성 삭제, 데이터만 이 파일에 한 줄씩 쌓는다
 let DICTATION_LOG = path.join(RECORDINGS_DIR, 'dictations.jsonl');
 
+// ── 사전·설정 백업: 녹음 폴더의 settings.json에 같이 적어 두어, 녹음 폴더만 옮겨도 이어 쓸 수 있게 한다 (토큰·키는 넣지 않는다)
+const PORTABLE_KEYS = ['vocabulary', 'language', 'enabled', 'cleanup', 'provider', 'minutes', 'diarize', 'meetingSystemAudio'];
+const portableFile = () => path.join(RECORDINGS_DIR, 'settings.json');
+const vocabList = (v) => (v ?? '').split(/[,\n]/).map((w) => w.trim()).filter(Boolean);
+
+function writePortableSettings() {
+  const s = dictation.getSettings();
+  try {
+    fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
+    fs.writeFileSync(portableFile(), JSON.stringify({ ...Object.fromEntries(PORTABLE_KEYS.map((k) => [k, s[k]])), savedAt: new Date() }, null, 2));
+  } catch {}
+}
+
+// 녹음 폴더에 저장된 설정을 읽어 온다. 앱 설정이 비어 있으면(새 컴퓨터) 그대로 쓰고, 아니면 사전 단어만 합친다
+function mergePortableSettings() {
+  const saved = readJson(portableFile());
+  if (!saved) return false;
+  const stored = dictation.storedSettings();
+  const fresh = !('vocabulary' in stored) && !('language' in stored);
+  const patch = {};
+  if (fresh) for (const k of PORTABLE_KEYS) if (saved[k] !== undefined) patch[k] = saved[k];
+  const words = [...new Set([...vocabList(stored.vocabulary), ...vocabList(saved.vocabulary)])];
+  if (words.join(', ') !== vocabList(stored.vocabulary).join(', ')) patch.vocabulary = words.join(', ');
+  if (Object.keys(patch).length) dictation.saveSettings(patch);
+  return Object.keys(patch).length > 0;
+}
+
 function setRecordingsDir(dir) {
   RECORDINGS_DIR = dir;
   DICTATION_LOG = path.join(dir, 'dictations.jsonl');
@@ -680,6 +707,7 @@ function pasteLast() {
 ipcMain.handle('dict:settings', () => ({ ...dictation.getSettings(), engine: dictation.engineStatus(), diarizeReady: minutes.diarizeAvailable() }));
 ipcMain.handle('dict:saveSettings', (_e, patch) => {
   const settings = dictation.saveSettings(patch);
+  if (PORTABLE_KEYS.some((k) => k in patch)) writePortableSettings();
   if (settings.enabled) dictation.startServer();
   return { ...settings, engine: dictation.engineStatus(), diarizeReady: minutes.diarizeAvailable() };
 });
@@ -780,7 +808,7 @@ ipcMain.handle('recordings:choose', async () => {
   }
   let entries = [];
   try {
-    entries = fs.readdirSync(prev).filter((n) => RECORDING_ENTRY.test(n) || n === 'dictations.jsonl');
+    entries = fs.readdirSync(prev).filter((n) => RECORDING_ENTRY.test(n) || n === 'dictations.jsonl' || n === 'settings.json');
   } catch {}
   let move = false;
   if (entries.length) {
@@ -814,6 +842,8 @@ ipcMain.handle('recordings:choose', async () => {
     }
   }
   setRecordingsDir(next);
+  mergePortableSettings(); // 새 폴더에 예전 설정이 있으면 사전을 합친다
+  writePortableSettings();
   dictation.saveSettings({ recordingsDir: next === DEFAULT_RECORDINGS_DIR ? null : next });
   updateTray();
   return { dir: next, moved, skipped, total: entries.length, isDefault: next === DEFAULT_RECORDINGS_DIR };
@@ -824,6 +854,8 @@ ipcMain.handle('recordings:reset', async () => {
   fs.mkdirSync(DEFAULT_RECORDINGS_DIR, { recursive: true });
   setRecordingsDir(DEFAULT_RECORDINGS_DIR);
   dictation.saveSettings({ recordingsDir: null });
+  mergePortableSettings();
+  writePortableSettings();
   return { dir: DEFAULT_RECORDINGS_DIR, isDefault: true };
 });
 
@@ -989,6 +1021,8 @@ async function init() {
   protocol.handle('rec', serveRecording);
   const saved = dictation.getSettings().recordingsDir;
   if (saved && fs.existsSync(saved)) setRecordingsDir(saved); // 지정한 폴더가 사라졌으면(외장 디스크 분리 등) 기본 폴더를 쓴다
+  mergePortableSettings();
+  writePortableSettings();
   // 권한 대화상자를 기다리느라 fn 감지·독·로그인 항목 설정이 멈추지 않게 await하지 않는다
   if (process.platform === 'darwin') systemPreferences.askForMediaAccess('microphone');
   fs.mkdirSync(RECORDINGS_DIR, { recursive: true });

@@ -2004,6 +2004,7 @@ $('chooseDir').onclick = async () => {
     const r = await api.chooseRecordings();
     if (!r) return;
     showRecordingsDir(r.dir, (await api.info()).defaultRecordingsDir);
+    renderDictSettings(await api.dictSettings()); // 새 폴더에 있던 사전이 합쳐졌을 수 있다
     toast('녹음 폴더를 바꿨습니다', r.total ? (r.moved ? `기존 녹음 ${r.moved}개를 옮겼습니다${r.skipped ? ` · ${r.skipped}개는 같은 이름이 있거나 옮기지 못해 남겨 두었습니다` : ''}` : '기존 녹음은 원래 폴더에 남겨 두었습니다') : tilde(r.dir));
     docCache.clear();
     loadHistory();

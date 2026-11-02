@@ -401,5 +401,10 @@ function cleanupProviders(opts) {
 }
 
 const engineInstalled = () => whisperServerBin();
+// 사용자가 실제로 저장한 설정만 (기본값·토큰 제외)
+const storedSettings = () => {
+  const { apiKeyEnc, hfTokenEnc, ...rest } = readStored();
+  return rest;
+};
 
-module.exports = { init, engineInstalled, dictate, paste, transcribeSegments, startDedicatedServer, apiKey, hfToken, hfCliToken, tokenSources, cleanupProviders, downloadModel, engineStatus, startServer, stopServer, getSettings, saveSettings };
+module.exports = { init, engineInstalled, storedSettings, dictate, paste, transcribeSegments, startDedicatedServer, apiKey, hfToken, hfCliToken, tokenSources, cleanupProviders, downloadModel, engineStatus, startServer, stopServer, getSettings, saveSettings };
