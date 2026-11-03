@@ -34,6 +34,7 @@
 
 ### 문서
 - README를 지금 기능에 맞게 정리 (시작하기·처음 설정·엔진·샌드박스를 각각의 절로).
+- README·`docs/testing.md`에 반복 구간 다시 받아쓰기, 화자 이름 저장 방식(`meta.json`의 `speakerNames`), `segments.json`의 `redo`, `scripts/dev/` 목록, 실제 회의 결과를 바꿔 넣기 전 확인할 것(화자 이름·확인 필요 상태)을 반영.
 
 ---
 

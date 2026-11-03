@@ -13,7 +13,7 @@ macOS용 Electron 앱. 두 가지 일을 한다.
 - [docs/known-issues.md](docs/known-issues.md) — 알려진 한계·확인 못 한 것·남은 일
 - [docs/research/wispr-flow.md](docs/research/wispr-flow.md) — Wispr Flow 앱 분석 기록
 - [docs/measurements.md](docs/measurements.md) — 실측값 (속도·크기·정리본 줄 수·소리 크기)
-- [docs/testing.md](docs/testing.md) — 셀프테스트·화면 캡처·샌드박스·고아 프로세스 점검 방법 (`scripts/dev/`)
+- [docs/testing.md](docs/testing.md) — 셀프테스트·화면 캡처·샌드박스·고아 프로세스 점검·회의록 다시 돌리기 (`scripts/dev/`)
 
 ## 시작하기
 
@@ -130,7 +130,7 @@ fn 규칙은 Wispr Flow 앱 코드에서 확인한 값을 따른다 (`DICTATION_
 - **그대로 두기**: 기억나지 않거나 유실된 부분
 - **확인 마치기**: 남은 항목은 그대로 둔 것으로 하고, 채팅으로 밝혀진 내용·고친 이름처럼 문장에 영향이 있을 때만 회의록의 해당 문장을 고쳐 쓴다 (이전 회의록은 `minutes.before-finalize.md`). 단어만 고쳤다면 다시 쓰지 않는다
 
-화자 이름은 회의 페이지 제목 아래 막대(또는 스크립트의 화자 이름)를 눌러 바꾸면 스크립트·정리본·회의록 전체에 반영된다.
+화자 이름은 회의 페이지 제목 아래 막대(또는 스크립트의 화자 이름)를 눌러 바꾸면 스크립트·정리본·회의록·요약 전체에 보인다. 파일 안의 표시는 "화자 N" 그대로 두고 이름은 `meta.json`에 따로 저장해, 보여 줄 때만 "화자 N" 자리를 이름으로 바꾸고 조사(은/는·이/가 등)를 받침에 맞춘다. 회의록을 다시 만들면 화자 번호가 바뀔 수 있어 이름이 지워진다.
 
 ## 엔진 (설정 › 엔진)
 
@@ -163,7 +163,7 @@ Homebrew 설치, Claude Code·Codex 호출(자체 샌드박스·읽기 전용), 
 
 녹음 폴더 기본값은 `~/Documents/MeetingRecorder/`. 설정 › 받아쓰기 › 녹음 폴더에서 **변경…**으로 다른 폴더(외장 디스크 등)를 고를 수 있다. 고를 때 기존 녹음을 옮길지 정하고, 같은 이름이 있으면 덮어쓰지 않는다. 지정한 폴더가 없으면(디스크 분리 등) 기본 폴더를 쓴다.
 
-- 회의 `<날짜>_meeting/`: `mic.wav`(+ 화상 회의면 `system.wav`), `meta.json`(참석 인원 포함), `transcript.txt`(원본 스크립트), `script-clean.txt`(정리본), `minutes.md`(회의록), `minutes.json`(상태), `review.json`(확인 필요 항목·처리 결과·채팅 요지), `segments.json`·`diarization.json`(중간 결과)
+- 회의 `<날짜>_meeting/`: `mic.wav`(+ 화상 회의면 `system.wav`), `meta.json`(참석 인원·바꾼 화자 이름 포함), `transcript.txt`(원본 스크립트), `script-clean.txt`(정리본), `minutes.md`(회의록), `minutes.json`(상태), `review.json`(확인 필요 항목·처리 결과·채팅 요지), `segments.json`(녹취 구간, 같은 문장 반복으로 다시 받아쓴 구간 `redo`)·`diarization.json`(화자 구간)
 - `settings.json`: 사전과 일반 설정(언어·다듬기 계정·회의록 자동 등, 토큰·키는 제외)의 사본. 녹음 폴더만 다른 컴퓨터로 옮겨도 이어 쓸 수 있다. 앱 설정이 비어 있으면(새 컴퓨터) 그대로 가져오고, 아니면 사전 단어만 합친다
 - `dictations.jsonl`: 받아쓰기 한 건마다 한 줄 (시각, 길이, 실제 말소리 길이, 입력한 앱, 정리 전/후 글, 글자·단어 수, WPM, 다듬기 계정, 단계별 소요 시간). 음성은 임시 폴더에 녹음해 변환 후 바로 지운다
 
@@ -182,7 +182,7 @@ Homebrew 설치, Claude Code·Codex 호출(자체 샌드박스·읽기 전용), 
 - `src/sandbox.js`: 외부 프로그램을 감싸는 macOS 샌드박스 프로필
 - `src/dictation.js`: whisper-server 관리(고아 정리 포함), 모델 다운로드, 무음·지어낸 문장 거르기, 붙여 넣기
 - `src/cleanup.js`: 다듬기·회의록 작성 호출 (Claude Code / Codex / API, 긴 글 나누기)
-- `src/minutes.js`: 회의 녹취 + 화자 구분 → 스크립트·정리본·회의록, 확인 필요(목록·적용·채팅·확인 마치기)
+- `src/minutes.js`: 회의 녹취(같은 문장 반복 구간 다시 받아쓰기) + 화자 구분 → 스크립트·정리본·회의록, 확인 필요(목록·적용·채팅·확인 마치기), 화자 이름 표시
 - `native/fn-listener.swift`: CGEventTap(listen-only)으로 fn down/up을 stdout으로 출력
 - `native/permissions.swift`: 권한 확인·요청, ⌘V 입력, 앞에 있는 앱 이름
 - `native/diarize.py`: pyannote 화자 구분 (앱 전용 파이썬 환경에서 실행)
@@ -191,3 +191,5 @@ Homebrew 설치, Claude Code·Codex 호출(자체 샌드박스·읽기 전용), 
 - `src/renderer/recorder.js`, `recorder-worklet.js`: getUserMedia + getDisplayMedia → AudioContext(48kHz) → 트랙별 100ms 청크
 - `src/overlay/`: 화면 왼쪽 플로팅 독 (받아쓰기 진행 띠, 회의 녹음 시간)
 - `src/wav-writer.js`: 스트리밍 기록, 5초마다 헤더 갱신(크래시 대비)
+- `scripts/dev/`: 개발용 — 화면 캡처, 샌드박스 확인, 고아 프로세스 점검, 회의 사본에 회의록 다시 돌리기 ([docs/testing.md](docs/testing.md))
+- `docs/images/diagrams.py`: README 아키텍처 그림(SVG) 생성기
