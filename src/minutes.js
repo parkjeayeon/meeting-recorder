@@ -216,14 +216,75 @@ function splitAtPauses(wavPath, outDir) {
   const pieces = [];
   for (let i = 0; i < cuts.length - 1; i++) {
     const file = path.join(outDir, `.piece-${i}.wav`);
-    const body = Buffer.from(pcm.buffer, pcm.byteOffset + cuts[i] * 2, (cuts[i + 1] - cuts[i]) * 2);
-    const h = Buffer.from(buf.subarray(0, 44));
-    h.writeUInt32LE(36 + body.length, 4);
-    h.writeUInt32LE(body.length, 40);
-    fs.writeFileSync(file, Buffer.concat([h, body]));
+    writeWav(file, buf, Buffer.from(pcm.buffer, pcm.byteOffset + cuts[i] * 2, (cuts[i + 1] - cuts[i]) * 2));
     pieces.push({ file, offset: cuts[i] / rate });
   }
   return pieces;
+}
+
+// 원본 WAV의 헤더를 본떠 PCM 일부를 새 파일로 쓴다
+function writeWav(file, src, body) {
+  const h = Buffer.from(src.subarray(0, 44));
+  h.writeUInt32LE(36 + body.length, 4);
+  h.writeUInt32LE(body.length, 40);
+  fs.writeFileSync(file, Buffer.concat([h, body]));
+}
+
+// ── 같은 문장 반복 구간 다시 받아쓰기 ─────────────────────────────────────
+// Whisper는 앞 문장을 이어 받아 쓰는데, 작은 목소리·잡음 구간에서 한 문장에 갇히면 조각이 끝날 때까지
+// 1초마다 같은 문장을 적는다 (30분 회의에서 3.5분, 2시간 회의에서 8.5분이 이렇게 빠짐).
+// 매번 생기는 게 아니라 같은 녹음도 다시 돌리면 대개 제대로 나오므로, 그 구간만 앞 문장 없이 다시 받아쓴다.
+const LOOP_MIN_REPEATS = 3; // 같은 줄(또는 같은 두세 줄 묶음)이 3번 이상
+const LOOP_MAX_PERIOD = 3;
+const LOOP_MIN_SEC = 15;
+
+// 같은 줄이 이어지거나("A A A …"), 두세 줄이 번갈아 되풀이되는("A 네 A 네 …") 구간
+function findLoops(segs) {
+  const norm = (t) => t.replace(/[\s.,!?…~]/g, '');
+  const texts = segs.map((x) => norm(x.text));
+  const loops = [];
+  for (let i = 0; i < segs.length; ) {
+    let best = i; // 반복이 끝나는 줄 (포함)
+    for (let p = 1; p <= LOOP_MAX_PERIOD; p++) {
+      let j = i + p;
+      while (j < segs.length && texts[j] === texts[j - p]) j++;
+      if ((j - i) / p >= LOOP_MIN_REPEATS && j - 1 > best) best = j - 1;
+    }
+    const long = segs[best].end - segs[i].start >= LOOP_MIN_SEC;
+    // 한 줄 안에서 같은 말을 되풀이한 경우 ("네 네 네 네 네 …")
+    const stutter = best === i && long && /(.{2,}?)\1{4,}/.test(texts[i]);
+    if ((best > i && long) || stutter) loops.push({ start: segs[i].start, end: segs[best].end });
+    i = best + 1;
+  }
+  return loops;
+}
+
+async function redoLoops(pieceFile, segs, settings, port) {
+  const loops = findLoops(segs);
+  if (!loops.length) return { segs, redone: [] };
+  const buf = fs.readFileSync(pieceFile);
+  const rate = buf.readUInt32LE(24);
+  const redone = [];
+  for (const loop of loops) {
+    const t = Date.now();
+    const from = Math.max(0, Math.floor(loop.start * rate)) * 2;
+    const to = Math.min(buf.length - 44, Math.ceil(loop.end * rate) * 2);
+    const file = `${pieceFile}.redo.wav`;
+    writeWav(file, buf, buf.subarray(44 + from, 44 + to));
+    try {
+      const again = await dictation.transcribeSegments(file, settings, port, { noContext: true });
+      const offset = from / 2 / rate;
+      segs = [
+        ...segs.filter((s) => s.start < loop.start - 0.01),
+        ...again.map((s) => ({ ...s, start: s.start + offset, end: s.end + offset })),
+        ...segs.filter((s) => s.start >= loop.end),
+      ];
+      redone.push({ start: loop.start, end: loop.end, stillLooping: findLoops(again).length > 0, ms: Date.now() - t });
+    } finally {
+      fs.rmSync(file, { force: true });
+    }
+  }
+  return { segs, redone };
 }
 
 // ── 화자 구분 (pyannote, 앱 전용 파이썬 환경) ─────────────────────────────
@@ -366,6 +427,7 @@ async function run(dir, onStage, { speakers = null } = {}) {
     timing.model = server ? 'large-v3' : 'large-v3-turbo';
 
     const lines = [];
+    const redo = []; // 같은 문장 반복으로 다시 받아쓴 구간
     let diarization = null;
     for (const track of tracks) {
       const small = path.join(dir, `.${track}-16k.wav`);
@@ -383,7 +445,10 @@ async function run(dir, onStage, { speakers = null } = {}) {
       const pieces = splitAtPauses(small, dir);
       temp.push(...pieces.map((p) => p.file));
       for (const [i, piece] of pieces.entries()) {
-        const segs = await dictation.transcribeSegments(piece.file, settings, server?.port ?? null);
+        const port = server?.port ?? null;
+        const first = await dictation.transcribeSegments(piece.file, settings, port);
+        const { segs, redone } = await redoLoops(piece.file, first, settings, port);
+        for (const r of redone) redo.push({ ...r, start: r.start + piece.offset, end: r.end + piece.offset, track });
         for (const seg of segs) lines.push({ ...seg, start: seg.start + piece.offset, end: seg.end + piece.offset, track });
         report('transcribe', { progress: (i + 1) / pieces.length, diarizing: Boolean(diarizeJob) });
       }
@@ -397,7 +462,8 @@ async function run(dir, onStage, { speakers = null } = {}) {
     timing.transcribeMs = Date.now() - t;
     lines.sort((a, b) => a.start - b.start);
     // 중간 결과를 남겨 두면 나중에 스크립트 규칙을 바꿔도 녹취·화자 구분을 다시 돌리지 않아도 된다
-    fs.writeFileSync(path.join(dir, 'segments.json'), JSON.stringify({ model: timing.model, tracks, segments: lines }));
+    if (redo.length) timing.redo = redo;
+    fs.writeFileSync(path.join(dir, 'segments.json'), JSON.stringify({ model: timing.model, tracks, redo, segments: lines }));
     if (diarization?.segments) fs.writeFileSync(path.join(dir, 'diarization.json'), JSON.stringify(diarization));
 
     const { text: transcript, speakerCount } = buildTranscript(lines, diarization, tracks);
@@ -682,4 +748,5 @@ function makeCleanScript(dir) {
   return job;
 }
 
-module.exports = { makeMinutes, makeCleanScript, renameSpeaker, diarizeAvailable, readReview, makeReview, applyReview, setReviewStatus, chatReview, finalizeReview };
+module.exports = {
+  findLoops, makeMinutes, makeCleanScript, renameSpeaker, diarizeAvailable, readReview, makeReview, applyReview, setReviewStatus, chatReview, finalizeReview };

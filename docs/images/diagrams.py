@@ -247,7 +247,7 @@ def meeting(t):
 
     # 2행: 동시 진행
     s.group(612, 82, 600, 236, '동시 진행 · 2시간 회의 약 18분 30초', dash=None, fill='panel')
-    s.node(630, 116, 270, 88, 'Whisper large-v3', ['회의 때만 띄우는 전용 서버 (샌드박스)', '약 10분 조각 · 조용한 곳(±5초)에서 자름'], stroke='voice')
+    s.node(630, 116, 270, 88, 'Whisper large-v3', ['회의 때만 띄우는 전용 서버 (샌드박스)', '약 10분 조각 · 조용한 곳(±5초)에서 자름', '같은 문장 반복 구간은 앞 문장 없이 다시'], stroke='voice')
     s.node(924, 116, 270, 88, 'pyannote 화자 구분', ['파일 전체를 한 번에 (조각마다 하면', '"화자 1"이 달라짐) · 참석 인원 · Mac GPU'], stroke='voice')
     s.node(630, 224, 564, 76, '원본 스크립트 조립 (1초 미만)', ['문장마다 가장 많이 겹치는 화자, 없으면 앞뒤 2초 안 가장 가까운 화자 · 같은 말 반복 합치기',
                                                           '→ [mm:ss] [화자 N] 말  ·  transcript.txt · segments.json · diarization.json'])

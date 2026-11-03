@@ -37,6 +37,14 @@ W=960 H=640 npx electron scripts/dev/screens.js /tmp/mr-screens  # 최소 창 �
 - 화자 구분: 16kHz 모노 WAV로 `diarize-env/bin/python -I native/diarize.py <wav>`를 `HF_HUB_OFFLINE=1`, `network: 'none'` 프로필로 실행 → 화자 구간 JSON
 - whisper-server: `network: 'local'` 프로필로 띄워 `/inference`에 WAV를 보내 200 응답
 
+## 회의록 다시 돌리기 — `scripts/dev/rerun-meeting.js`
+회의 폴더 **사본**에 녹취부터 회의록까지 전체 파이프라인을 다시 돌린다. 녹취 규칙(반복 감지 등)을 바꿨을 때 실제 녹음으로 확인하는 용도. 실제 녹음 폴더를 지정하면 거부한다.
+```bash
+mkdir /tmp/m && cp -c ~/Documents/MeetingRecorder/<회의>/{mic.wav,meta.json} /tmp/m/
+npx electron scripts/dev/rerun-meeting.js /tmp/m
+```
+결과의 `segments.json`의 `redo`에 다시 받아쓴 구간(시작·끝, 걸린 시간, 그래도 반복이 남았는지)이 남는다. 결과를 실제 회의에 넣을 때는 기존 파일을 회의 폴더 안 `이전 결과 (…)` 폴더로 옮겨 두고 복사한다.
+
 ## 고아 프로세스 — `node scripts/dev/orphans.js [--app]`
 부모가 사라져 PID 1에 입양된 도우미 프로세스를 찾는다. `--app`은 이 앱의 whisper-server·fn-listener만. 크래시 리포터(`chrome_crashpad_handler`)나 의도된 데몬도 목록에 나올 수 있으니 하나씩 확인한다.
 

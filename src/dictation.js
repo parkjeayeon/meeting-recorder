@@ -268,7 +268,8 @@ async function startDedicatedServer(modelFile) {
 }
 
 // 회의용: 구간별 시작/끝 시각이 붙은 결과. port를 주면 그 서버(회의용 고성능 모델)를 쓴다
-async function transcribeSegments(wavPath, { language, vocabulary }, port = null) {
+// noContext: 앞 문장을 이어 받지 않는다 (같은 문장 반복에 빠진 구간을 다시 받아쓸 때)
+async function transcribeSegments(wavPath, { language, vocabulary }, port = null, { noContext = false } = {}) {
   port ??= serverPort ?? (await startServer());
   if (!port) throw new Error('음성 인식 엔진이 준비되지 않았습니다');
   const form = new FormData();
@@ -277,6 +278,7 @@ async function transcribeSegments(wavPath, { language, vocabulary }, port = null
   form.append('language', language);
   form.append('temperature', '0');
   if (vocabulary) form.append('prompt', vocabulary);
+  if (noContext) form.append('max_context', '0');
   const res = await fetch(`http://127.0.0.1:${port}/inference`, { method: 'POST', body: form });
   if (!res.ok) throw new Error(`Whisper 오류 (HTTP ${res.status})`);
   const { segments = [] } = await res.json();
