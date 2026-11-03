@@ -410,6 +410,11 @@ function buildTranscript(segments, diarization, tracks) {
 async function run(dir, onStage, { speakers = null } = {}) {
   const settings = dictation.getSettings();
   const meta = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8'));
+  // 다시 만들면 화자 구분 번호가 바뀔 수 있어 바꿔 둔 이름이 엉뚱한 사람에게 붙는다 → 지운다
+  if (meta.speakerNames) {
+    delete meta.speakerNames;
+    fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2));
+  }
   const tracks = Object.keys(meta.files ?? {}).filter((t) => fs.existsSync(path.join(dir, `${t}.wav`)));
   const timing = {};
   const report = (status, extra = {}) => {
@@ -510,16 +515,50 @@ async function run(dir, onStage, { speakers = null } = {}) {
   }
 }
 
-// 화자 이름 바꾸기: "화자 1" → "김 대리"를 스크립트·정리본·회의록 전체에 반영한다
+// ── 화자 이름 ─────────────────────────────────────────────────────────────
+// 파일 안 화자 표시는 만든 그대로('화자 N', 두 트랙 녹음은 '나'·'상대방') 두고, 바꾼 이름은 meta.json의 speakerNames에 둔다.
+// 회의록 글자를 통째로 바꾸면 '나' → '김OO'이 '나눈'·'이나'·'나머지'까지 바꿔 버리므로, 보여 줄 때만 바꾼다.
 function renameSpeaker(dir, from, to) {
+  const file = path.join(dir, 'meta.json');
+  const meta = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const names = meta.speakerNames ?? {};
+  const key = Object.keys(names).find((k) => names[k] === from) ?? from; // 화면의 이름 → 파일 안 표시
   const name = to.trim().replace(/[\[\]\n]/g, '');
   if (!name || name === from) return;
-  for (const file of ['transcript.txt', 'script-clean.txt']) {
-    const p = path.join(dir, file);
-    if (fs.existsSync(p)) fs.writeFileSync(p, fs.readFileSync(p, 'utf8').split(`[${from}]`).join(`[${name}]`));
-  }
-  const m = path.join(dir, 'minutes.md');
-  if (fs.existsSync(m)) fs.writeFileSync(m, fs.readFileSync(m, 'utf8').split(from).join(name));
+  if (name === key) delete names[key];
+  else names[key] = name;
+  meta.speakerNames = names;
+  fs.writeFileSync(file, JSON.stringify(meta, null, 2));
+}
+
+const escapeRe = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// 스크립트(`[화자 1] 말`)는 대괄호 안만, 회의록 같은 글은 화자 표시로 쓰인 곳만 바꾼다.
+// '화자 N'은 다른 말과 헷갈리지 않고, 그 밖의 표시('나' 등)는 앞이 글자가 아니고 뒤가 끝·조사일 때만.
+function nameSpeakers(text, names, { prose = false } = {}) {
+  const keys = Object.keys(names ?? {}).sort((a, b) => b.length - a.length);
+  if (!text || !keys.length) return text;
+  const pattern = keys.map((key) => {
+    const k = escapeRe(key);
+    if (!prose) return `\\[${k}\\]`;
+    if (/^화자 \d+$/.test(key)) return `${k}(?!\\d)`;
+    return `(?<![가-힣A-Za-z0-9])${k}(?=$|[^가-힣A-Za-z0-9]|(?:은|는|이|가|과|와|의|을|를|도|만|에게|께서)(?![가-힣]))`;
+  });
+  // 한 번에 바꿔서 '화자 1' → '화자 2'처럼 이름이 다른 표시와 같아도 이어서 바뀌지 않게 한다.
+  // 글에서는 뒤에 붙은 조사를 이름 받침에 맞춘다 ("화자 1은" → "멘토는")
+  const re = new RegExp(`(?:${pattern.join('|')})${prose ? '(?:(은|는|이|가|과|와|을|를)(?![가-힣]))?' : ''}`, 'g');
+  return text.replace(re, (m, josa) => {
+    if (!prose) return `[${names[m.slice(1, -1)]}]`;
+    const name = names[josa ? m.slice(0, -josa.length) : m];
+    return name + (josa ? fitJosa(name, josa) : '');
+  });
+}
+
+const JOSA = { 은: ['은', '는'], 는: ['은', '는'], 이: ['이', '가'], 가: ['이', '가'], 과: ['과', '와'], 와: ['과', '와'], 을: ['을', '를'], 를: ['을', '를'] };
+function fitJosa(name, josa) {
+  const c = name.charCodeAt(name.length - 1);
+  if (c < 0xac00 || c > 0xd7a3) return josa; // 한글로 끝나지 않으면 그대로
+  return JOSA[josa][(c - 0xac00) % 28 ? 0 : 1];
 }
 
 // ── 확인 필요: 회의록이 확신하지 못한 부분을 하나씩 고치거나(추정 적용·직접 입력·채팅) 그대로 둔다 ──
@@ -749,4 +788,4 @@ function makeCleanScript(dir) {
 }
 
 module.exports = {
-  findLoops, makeMinutes, makeCleanScript, renameSpeaker, diarizeAvailable, readReview, makeReview, applyReview, setReviewStatus, chatReview, finalizeReview };
+  findLoops, nameSpeakers, makeMinutes, makeCleanScript, renameSpeaker, diarizeAvailable, readReview, makeReview, applyReview, setReviewStatus, chatReview, finalizeReview };

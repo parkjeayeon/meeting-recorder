@@ -530,7 +530,18 @@ ipcMain.handle('speaker:rename', (_e, dir, from, to) => minutes.renameSpeaker(re
 ipcMain.handle('minutes:read', (_e, dir) => {
   const d = recordingDir(dir);
   const read = (f) => (fs.existsSync(path.join(d, f)) ? fs.readFileSync(path.join(d, f), 'utf8') : null);
-  return { minutes: read('minutes.md'), transcript: read('transcript.txt'), scriptClean: read('script-clean.txt'), review: minutes.readReview(d) };
+  const names = readJson(path.join(d, 'meta.json'))?.speakerNames;
+  const review = minutes.readReview(d);
+  for (const it of review?.items ?? []) {
+    it.note = minutes.nameSpeakers(it.note, names, { prose: true });
+    for (const c of it.chat ?? []) c.assistant = minutes.nameSpeakers(c.assistant, names, { prose: true });
+  }
+  return {
+    minutes: minutes.nameSpeakers(read('minutes.md'), names, { prose: true }),
+    transcript: minutes.nameSpeakers(read('transcript.txt'), names),
+    scriptClean: minutes.nameSpeakers(read('script-clean.txt'), names),
+    review,
+  };
 });
 ipcMain.handle('review:make', (_e, dir) => minutes.makeReview(recordingDir(dir)));
 ipcMain.handle('review:apply', (_e, dir, fixes) => minutes.applyReview(recordingDir(dir), fixes));
@@ -634,6 +645,7 @@ function listFolders(limit) {
       let summary = null;
       try {
         summary = /^## 요약\s*\n([\s\S]*?)(?=\n## |(?![\s\S]))/m.exec(fs.readFileSync(path.join(dir, 'minutes.md'), 'utf8'))?.[1].trim() ?? null;
+        summary = minutes.nameSpeakers(summary, meta.speakerNames, { prose: true });
       } catch {}
       return {
         id: name,
