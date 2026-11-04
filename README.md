@@ -28,7 +28,7 @@ macOS용 Electron 앱. 두 가지 일을 한다.
 npm install
 npm start            # 개발 모드 실행 (fn 감지 헬퍼 빌드 포함)
 npm run selftest     # fn 꾹 누르기·탭·두 번·세 번 누르기, 처리 중 무시, 회의 중 fn 무시, 짧은 회의 녹음 검증
-npm run test:ui      # 화면 테스트: 입력칸마다 진짜 키 입력(영어·Backspace), 오류 알림 글자 대비 (가짜 데이터, 약 13초)
+npm run test:ui      # 화면 테스트: 입력칸마다 진짜 키 입력(영어·Backspace), 오류 알림 글자 대비, 오래 걸리는 작업 중복 방지 (가짜 데이터, 약 20초)
 npm run install-app  # .app 빌드 → 서명 → /Applications 설치
 ```
 `npm run dist`(`install-app`도)는 빌드 전에 키보드 처리기 검사와 화면 테스트를 돌리고, 하나라도 실패하면 멈춘다 ([docs/testing.md](docs/testing.md)).
