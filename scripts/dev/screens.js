@@ -18,7 +18,7 @@ fs.mkdirSync(meeting, { recursive: true });
 const lines = ['[00:02] [화자 1] 다음 주 배포 일정 얘기해 볼까요?', '[00:06] [화자 2] 네, 화요일 오전이 좋을 것 같아요.', '[00:11] [화자 1] QA는 월요일까지 끝낼 수 있죠?', '[00:15] [화자 2] 랩캐시도 쪽 확인만 하면 됩니다.'];
 fs.writeFileSync(path.join(meeting, 'transcript.txt'), `${lines.join('\n')}\n`);
 fs.writeFileSync(path.join(meeting, 'script-clean.txt'), `${lines.join('\n')}\n`);
-fs.writeFileSync(path.join(meeting, 'minutes.md'), '# 예시 회의: 배포 일정 정리\n\n## 요약\n배포 일정과 QA 범위를 정리함.\n\n## 결정 사항\n- 배포는 화요일 오전 (00:06)\n\n## 할 일\n- [ ] QA 마치기 — 담당: 화자 2, 기한: 월요일\n\n## 확인 필요\n- "랩캐시도"(00:15): Memcached로 추정됨\n');
+fs.writeFileSync(path.join(meeting, 'minutes.md'), '# 예시 회의: 배포 일정 정리\n\n## 요약\n배포 일정과 QA 범위를 정리함.\n\n## 결정 사항\n- 배포는 화요일 오전 (00:06)\n- QA 범위는 결제·로그인·알림 세 가지로 좁히고, 나머지는 배포 뒤 모니터링으로 확인하기로 함. 일정이 밀리면 알림은 다음 배포로 넘김 (00:11).\n\n## 할 일\n- [ ] QA 마치기 — 담당: 화자 2, 기한: 월요일\n\n## 확인 필요\n- "랩캐시도"(00:15): Memcached로 추정됨\n');
 fs.writeFileSync(path.join(meeting, 'review.json'), JSON.stringify({ items: [{ id: 'r1', kind: 'word', at: '00:15', heard: '랩캐시도', guess: 'Memcached', note: '캐시 관련 용어가 잘못 인식된 것으로 보임', status: 'open' }] }));
 process.env.STUB_MEETING_DIR = meeting;
 
@@ -46,6 +46,8 @@ app.whenReady().then(async () => {
     ['meetings', "location.hash='#meetings'"],
     ['meeting', `location.hash='#meeting/${id}'`],
     ['meeting-review', "[...document.querySelectorAll('.tab')].find(t=>t.textContent.startsWith('확인 필요'))?.click()"],
+    ['meeting-chat', "[...document.querySelectorAll('.ritem button')].find(b=>b.textContent.includes('채팅'))?.click(); setTimeout(()=>{const t=document.querySelector('.chat textarea'); t.value='캐시 얘기였어요'; t.dispatchEvent(new Event('input')); t.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}));},100)"],
+    ['meeting-chat-applied', "[...document.querySelectorAll('.proposal button')].find(b=>b.textContent==='적용')?.click()"],
     ['dictionary', "location.hash='#dictionary'"],
     ['stats', "location.hash='#stats'"],
     ['settings', "document.getElementById('openSettings').click()"],

@@ -950,6 +950,8 @@ function pageMeeting(id) {
     openReviewNext = null;
   }
   let lastKey = null;
+  // 회의록 진행 상태와 확인 필요 숫자(제목 아래 배지)가 바뀌면 다시 그린다
+  const stateKey = (r) => JSON.stringify([r.minutes?.status, r.minutes?.progress, r.minutes?.diarizing, r.minutes?.updatedAt, r.minutes?.title, r.review?.open, r.review?.finalized]);
   let lineEls = [];
   let lineTimes = [];
   let playingIdx = -1;
@@ -981,7 +983,7 @@ function pageMeeting(id) {
     if (!r) return;
     const m = r.minutes;
     const s = m?.status;
-    lastKey = JSON.stringify([s, m?.progress, m?.diarizing, m?.updatedAt, m?.title]);
+    lastKey = stateKey(r);
     let doc = docCache.get(id);
     if (!doc && ['done', 'error', 'empty'].includes(s)) {
       doc = await api.readMinutes(r.dir);
@@ -1122,14 +1124,20 @@ function pageMeeting(id) {
       text.split(/\*\*(.+?)\*\*/g).forEach((part, i) => {
         if (!part) return;
         if (i % 2) return el.append(h('b', null, part));
-        part.split(/(\(\s*\d{1,2}:\d{2}(?::\d{2})?(?:\s*,\s*\d{1,2}:\d{2}(?::\d{2})?)*\s*\))/).forEach((seg, j) => {
+        const segs = part.split(/(\(\s*\d{1,2}:\d{2}(?::\d{2})?(?:\s*,\s*\d{1,2}:\d{2}(?::\d{2})?)*\s*\))/);
+        segs.forEach((seg, j) => {
           if (j % 2 === 0) return seg && el.append(seg);
           const times = seg.match(/\d{1,2}:\d{2}(?::\d{2})?/g);
-          el.append(' ');
+          // 시각 칩과 바로 뒤 문장부호("(02:50)." → 칩 + ".")를 한 덩어리로 묶어 마침표만 다음 줄로 넘어가지 않게 한다
+          const punct = /^[.,;:!?…)\]」』]+/.exec(segs[j + 1] ?? '')?.[0] ?? '';
+          if (punct) segs[j + 1] = segs[j + 1].slice(punct.length);
+          const group = h('span', { class: 'stamps' });
           times.forEach((t, k) => {
-            if (k) el.append(' ');
-            el.append(r.firstFile ? h('button', { class: 'seek', title: '여기부터 듣기', onclick: () => seek(parseStamp(t)) }, t) : h('span', { class: 'num' }, t));
+            if (k) group.append(' ');
+            group.append(r.firstFile ? h('button', { class: 'seek', title: '여기부터 듣기', onclick: () => seek(parseStamp(t)) }, t) : h('span', { class: 'num' }, t));
           });
+          if (punct) group.append(punct);
+          el.append(' ', group);
         });
       });
     };
@@ -1196,6 +1204,7 @@ function pageMeeting(id) {
   async function refreshDoc(r) {
     docCache.set(r.id, await api.readMinutes(r.dir));
     draw();
+    loadHistory(); // 제목 아래 '확인 N개 남음'·목록 카드 숫자도 같이
   }
 
   async function applyFixes(r, fixes) {
@@ -1221,7 +1230,7 @@ function pageMeeting(id) {
 
   function openChat(ids) {
     if (!ids.length) return;
-    chat = { ids: [...ids], messages: [], busy: false };
+    chat = { ids: [...ids], messages: [], busy: false, applying: new Set() };
     draw();
     setTimeout(() => document.querySelector('.chat textarea')?.focus(), 50);
   }
@@ -1356,15 +1365,30 @@ function pageMeeting(id) {
       m.text.split(/\*\*(.+?)\*\*/g).forEach((part, i) => part && textEl.append(i % 2 ? h('b', null, part) : part));
       const bubble = h('div', { class: `msg ${m.role}` }, textEl);
       if (m.proposals?.length) {
-        const fixes = m.proposals.filter((p) => !p.keep);
+        // 이미 처리한 항목(적용·그대로 둠)은 버튼 대신 결과를 보여 준다 → 같은 제안을 두 번 누르지 않게
+        const itemOf = (p) => items.find((x) => x.id === p.id);
+        const fixes = m.proposals.filter((p) => !p.keep && itemOf(p)?.status === 'open');
+        const apply = async (list) => {
+          list.forEach((f) => chat.applying.add(f.id));
+          draw();
+          await applyFixes(r, list);
+          list.forEach((f) => chat?.applying.delete(f.id));
+          draw();
+        };
         bubble.append(h('div', { class: 'proposals' },
           m.proposals.map((p) => {
-            const it = items.find((x) => x.id === p.id);
-            return h('div', { class: 'proposal' },
+            const it = itemOf(p);
+            const done = it && it.status !== 'open';
+            const busy = chat.applying.has(p.id);
+            const state = !done ? null
+              : it.status === 'kept' ? h('span', { class: 'proposal-state' }, '그대로 둠')
+              : h('span', { class: 'proposal-state ok' }, icon('i-check'), it.applied === p.guess || p.keep ? '적용됨' : `'${it.applied}'로 적용됨`);
+            return h('div', { class: `proposal${done ? ' done' : ''}` },
               p.keep ? h('span', null, `${it?.heard ?? it?.heardNote ?? p.id}: 그대로 두기`) : [h('span', { class: 'heard' }, p.heard), icon('i-right'), h('b', null, p.guess)],
-              h('button', { class: 'btn small', onclick: () => applyFixes(r, [p.keep ? { id: p.id, keep: true } : { id: p.id, heard: p.heard, guess: p.guess }]) }, p.keep ? '그대로 두기' : '적용'));
+              state ?? h('button', { class: 'btn small', disabled: busy, onclick: () => apply([p.keep ? { id: p.id, keep: true } : { id: p.id, heard: p.heard, guess: p.guess }]) },
+                busy ? '적용 중…' : p.keep ? '그대로 두기' : '적용'));
           }),
-          fixes.length > 1 && h('button', { class: 'btn small primary', onclick: () => applyFixes(r, fixes.map((p) => ({ id: p.id, heard: p.heard, guess: p.guess }))) }, `${fixes.length}개 모두 적용`)));
+          fixes.length > 1 && h('button', { class: 'btn small primary', disabled: fixes.some((p) => chat.applying.has(p.id)), onclick: () => apply(fixes.map((p) => ({ id: p.id, heard: p.heard, guess: p.guess }))) }, `${fixes.length}개 모두 적용`)));
       }
       log.append(bubble);
     }
@@ -1638,12 +1662,11 @@ function pageMeeting(id) {
   draw();
   return {
     el,
-    // 진행률·상태가 바뀐 경우에만 다시 그린다
+    // 진행률·상태·확인 필요 숫자가 바뀐 경우에만 다시 그린다
     update: () => {
       const r = history.find((m) => m.id === id);
       if (!r) return;
-      const m = r.minutes;
-      if (JSON.stringify([m?.status, m?.progress, m?.diarizing, m?.updatedAt, m?.title]) !== lastKey) draw();
+      if (stateKey(r) !== lastKey) draw();
     },
     leave: () => {
       for (const ev of ['timeupdate', 'play', 'pause', 'loadedmetadata', 'seeked']) audio.removeEventListener(ev, onTime);

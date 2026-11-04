@@ -27,7 +27,19 @@ const meeting = dir && !denied && {
 const noop = () => {};
 const impl = {
   info: async () => ({ recordingsDir: '/Users/me/Documents/MeetingRecorder', defaultRecordingsDir: '/Users/me/Documents/MeetingRecorder' }),
-  history: async () => (meeting ? [meeting] : []),
+  history: async () => {
+    if (!meeting) return [];
+    const items = JSON.parse(read('review.json') ?? '{"items":[]}').items;
+    return [{ ...meeting, review: { open: items.filter((it) => it.status === 'open').length, total: items.length, finalized: false } }];
+  },
+  // 확인 필요 채팅: 늘 같은 제안을 돌려주고, 적용하면 review.json의 상태를 바꾼다
+  chatReview: async () => ({ text: '"랩캐시도"는 **Memcached**로 보입니다.', proposals: [{ id: 'r1', heard: '랩캐시도', guess: 'Memcached' }] }),
+  applyReview: async (_dir, fixes) => {
+    const review = JSON.parse(read('review.json'));
+    for (const f of fixes) Object.assign(review.items.find((it) => it.id === f.id), f.keep ? { status: 'kept' } : { status: 'applied', applied: f.guess, count: 1 });
+    fs.writeFileSync(path.join(dir, 'review.json'), JSON.stringify(review));
+    return review;
+  },
   recordingsAccess: async () => (denied ? { ok: false, dir: '/Users/me/Documents/MeetingRecorder', code: 'EPERM' } : { ok: true }),
   dictSettings: async () => ({ enabled: true, language: 'ko', cleanup: true, provider: 'auto', vocabulary: 'PJY, Whisper', minutes: true, diarize: true, diarizeReady: true, hasHfToken: true, meetingSystemAudio: false, engine: { state: 'ready' } }),
   providers: async () => ({ 'claude-code': { installed: true, loggedIn: true, account: 'me@example.com' }, codex: { installed: true, loggedIn: false }, api: { installed: true, loggedIn: false } }),
