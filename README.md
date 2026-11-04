@@ -28,9 +28,12 @@ macOS용 Electron 앱. 두 가지 일을 한다.
 npm install
 npm start            # 개발 모드 실행 (fn 감지 헬퍼 빌드 포함)
 npm run selftest     # fn 꾹 누르기·탭·두 번·세 번 누르기, 처리 중 무시, 회의 중 fn 무시, 짧은 회의 녹음 검증
-npm run install-app  # .app 빌드 → ad-hoc 서명 → /Applications 설치
+npm run install-app  # .app 빌드 → 서명 → /Applications 설치
 ```
-소스에서 빌드하려면 Node.js와 Xcode 명령줄 도구(swiftc)가 필요하다. ad-hoc 서명이라 다시 빌드할 때마다 macOS 권한을 다시 허용해야 하고, 다른 Mac에 복사한 `.app`은 처음 한 번 우클릭 › 열기로 연다.
+소스에서 빌드하려면 Node.js와 Xcode 명령줄 도구(swiftc)가 필요하다.
+
+- **서명**: `sh scripts/dev/make-signing-cert.sh`를 한 번 돌려 두면 키체인의 자체 서명 인증서로 서명해서, 다시 빌드해도 macOS 권한(문서 폴더·마이크·입력 모니터링·손쉬운 사용)이 유지된다. 인증서가 없으면 ad-hoc으로 서명하고, 그러면 다시 빌드할 때마다 권한을 다시 허용해야 한다 (문서 폴더 권한이 풀리면 회의 목록이 비어 보인다).
+- **다른 Mac에서 열기**: 어느 서명이든 Apple 공증을 받지 않아 "확인되지 않은 개발자"로 막힌다. 한 번 열어 본 뒤 시스템 설정 › 개인정보 보호 및 보안에서 "그래도 열기"를 누른다 (macOS 15부터는 우클릭 › 열기로는 안 된다).
 
 ## 아키텍처
 
@@ -191,5 +194,6 @@ Homebrew 설치, Claude Code·Codex 호출(자체 샌드박스·읽기 전용), 
 - `src/renderer/recorder.js`, `recorder-worklet.js`: getUserMedia + getDisplayMedia → AudioContext(48kHz) → 트랙별 100ms 청크
 - `src/overlay/`: 화면 왼쪽 플로팅 독 (받아쓰기 진행 띠, 회의 녹음 시간)
 - `src/wav-writer.js`: 스트리밍 기록, 5초마다 헤더 갱신(크래시 대비)
-- `scripts/dev/`: 개발용 — 화면 캡처, 샌드박스 확인, 고아 프로세스 점검, 회의 사본에 회의록 다시 돌리기 ([docs/testing.md](docs/testing.md))
+- `scripts/sign-app.sh`: 빌드한 앱 서명 (자체 서명 인증서가 있으면 그걸로, 없으면 ad-hoc)
+- `scripts/dev/`: 개발용 — 서명 인증서 만들기, 화면 캡처, 샌드박스 확인, 고아 프로세스 점검, 회의 사본에 회의록 다시 돌리기 ([docs/testing.md](docs/testing.md))
 - `docs/images/diagrams.py`: README 아키텍처 그림(SVG) 생성기
