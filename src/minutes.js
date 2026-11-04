@@ -520,7 +520,15 @@ async function transcribeMeeting(dir, meta, settings, speakers, timing, report) 
       temp.push(...pieces.map((p) => p.file));
       for (const [i, piece] of pieces.entries()) {
         const port = server?.port ?? null;
+        // 조각 안 진행률(Whisper 서버가 알려 줌)을 전체로 환산한다. 1% 단위로만 기록한다
+        let shown = -1;
+        server?.onProgress((p) => {
+          const pct = Math.floor(((i + Math.min(p, 0.99)) / pieces.length) * 100);
+          if (pct > shown) report('transcribe', { progress: pct / 100, diarizing: Boolean(diarizeJob) });
+          shown = Math.max(shown, pct);
+        });
         const first = await dictation.transcribeSegments(piece.file, settings, port);
+        server?.onProgress(null); // 반복 구간 다시 받아쓰기의 진행률은 조각 진행률과 섞지 않는다
         const { segs, redone } = await redoLoops(piece.file, first, settings, port);
         for (const r of redone) redo.push({ ...r, start: r.start + piece.offset, end: r.end + piece.offset, track });
         for (const seg of segs) lines.push({ ...seg, start: seg.start + piece.offset, end: seg.end + piece.offset, track });

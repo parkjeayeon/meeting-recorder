@@ -621,7 +621,7 @@ function statusText(m) {
   if (s === 'queued') return '차례를 기다리는 중';
   if (s === 'transcribe') {
     const p = progressOf(m);
-    return `녹취하는 중${p !== null ? ` ${Math.round(p * 100)}%` : ''}${m.diarizing ? ' · 화자 구분 중' : ''}`;
+    return `받아쓰는 중${p !== null ? ` ${Math.round(p * 100)}%` : ''}${m.diarizing ? ' · 화자 구분 중' : ''}`;
   }
   if (s === 'write') return '회의록 쓰는 중';
   if (s === 'error') return m.error ?? '실패';

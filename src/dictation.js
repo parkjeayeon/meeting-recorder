@@ -244,21 +244,28 @@ function stopServer() {
 }
 
 // 회의용 고성능 서버: 지정한 모델로 따로 띄우고, 다 쓰면 stop()으로 내린다 (받아쓰기 서버는 그대로 둔다)
+// -pp: 받아쓰는 도중 "progress = 27%"를 출력한다 → onProgress(cb)로 받은 콜백에 0~1로 넘긴다
 async function startDedicatedServer(modelFile) {
   const bin = whisperServerBin();
   if (!bin || !fs.existsSync(modelFile)) return null;
   const port = await freePort();
-  const proc = spawn(...sandbox.wrap(bin, ['-m', modelFile, '--host', '127.0.0.1', '--port', String(port), '-sns', '-t', '8'], { network: 'local' }), {
-    stdio: ['ignore', 'ignore', 'pipe'],
+  const proc = spawn(...sandbox.wrap(bin, ['-m', modelFile, '--host', '127.0.0.1', '--port', String(port), '-sns', '-t', '8', '-pp'], { network: 'local' }), {
+    stdio: ['ignore', 'pipe', 'pipe'],
   });
-  proc.stderr.on('data', () => {});
+  let progressCb = null;
+  const parse = (chunk) => {
+    for (const m of String(chunk).matchAll(/progress =\s*(\d+)%/g)) progressCb?.(Number(m[1]) / 100);
+  };
+  proc.stdout.on('data', parse);
+  proc.stderr.on('data', parse);
   dedicated.add(proc);
   proc.on('exit', () => dedicated.delete(proc));
   const stop = () => proc.kill();
+  const onProgress = (cb) => (progressCb = cb);
   for (let i = 0; i < 480 && proc.exitCode === null; i++) {
     try {
       await fetch(`http://127.0.0.1:${port}/`);
-      return { port, stop };
+      return { port, stop, onProgress };
     } catch {
       await new Promise((r) => setTimeout(r, 250));
     }
