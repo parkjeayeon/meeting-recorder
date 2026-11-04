@@ -2107,11 +2107,14 @@ function pageMeeting(id) {
         // 확인 마치기 전까지는 처리한 항목도 다시 손볼 수 있다: 고친 말 바꾸기·되돌리기, 그대로 둔 것 다시 열기
         const locked = Boolean(doc.review?.finalizedAt);
         const isRedo = Boolean(it.redo?.appliedAt);
+        // 되돌리기 기능 전에 처리한 항목은 기록이 없어 되돌리거나 고칠 수 없다 → 버튼 대신 안내
+        const noUndo = it.status === 'applied' && (isRedo ? !it.redo.replaced : !it.undo);
         const doneRow = h('div', { class: 'ritem-done' },
           it.status === 'applied' ? [isRedo ? h('span', { class: 'num' }, `${clock(it.redo.start)}~${clock(it.redo.end)} 구간`) : h('span', { class: 'heard' }, it.heard ?? it.heardNote ?? ''), icon('i-right'), h('b', null, it.applied), h('span', { class: 'hint', style: 'margin:0' }, isRedo ? `${it.count ?? 0}줄` : `${it.count ?? 0}곳 고침`)] : h('span', null, '그대로 둠'),
           !locked && it.status === 'kept' && h('button', { class: 'btn small ghost', onclick: async () => { await api.setReviewStatus(r.dir, [it.id], 'open'); refreshDoc(r); } }, '다시 열기'),
-          !locked && it.status === 'applied' && !isRedo && it.heard && h('button', { class: 'btn small ghost', onclick: () => editApplied(r, it, doneRow) }, icon('i-pencil'), '고치기'),
-          !locked && it.status === 'applied' && h('button', { class: 'btn small ghost', onclick: () => revertItem(r, it) }, '되돌리기'));
+          !locked && it.status === 'applied' && !noUndo && !isRedo && it.heard && h('button', { class: 'btn small ghost', onclick: () => editApplied(r, it, doneRow) }, icon('i-pencil'), '고치기'),
+          !locked && it.status === 'applied' && !noUndo && h('button', { class: 'btn small ghost', onclick: () => revertItem(r, it) }, '되돌리기'),
+          !locked && noUndo && h('span', { class: 'hint', style: 'margin:0' }, '이전에 처리한 항목이라 되돌릴 수 없습니다'));
         card.append(doneRow);
       }
       box.append(card);
