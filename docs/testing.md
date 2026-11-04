@@ -21,7 +21,7 @@ fn 이벤트를 흉내 내 실제 녹음 흐름을 시험한다 (`src/main.js`�
 가짜 데이터(`scripts/dev/stub-preload.js`)로 메인 창을 **숨긴 채** 띄워 화면별 PNG를 남긴다. 메인 프로세스를 띄우지 않으므로 녹음·fn·권한·실제 기록에 영향이 없고, 설치된 앱이 켜져 있어도 된다.
 
 ```bash
-npx electron scripts/dev/screens.js /tmp/mr-screens            # 홈·회의·회의 페이지·확인 필요·사전·통계·설정·엔진
+npx electron scripts/dev/screens.js /tmp/mr-screens            # 홈·회의·회의 페이지·확인 필요·채팅(적용 전·후)·사전·통계·설정·엔진
 DARK=1 npx electron scripts/dev/screens.js /tmp/mr-screens     # 다크 모드
 OB_STEP=permissions npx electron scripts/dev/screens.js /tmp/mr-screens   # 처음 설정 단계 (welcome·permissions·token·engine·account·practice·done)
 W=960 H=640 npx electron scripts/dev/screens.js /tmp/mr-screens  # 최소 창 크기
