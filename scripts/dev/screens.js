@@ -20,6 +20,11 @@ fs.writeFileSync(path.join(meeting, 'transcript.txt'), `${lines.join('\n')}\n`);
 fs.writeFileSync(path.join(meeting, 'script-clean.txt'), `${lines.join('\n')}\n`);
 fs.writeFileSync(path.join(meeting, 'minutes.md'), '# 예시 회의: 배포 일정 정리\n\n## 요약\n배포 일정과 QA 범위를 정리함.\n\n## 결정 사항\n- 배포는 화요일 오전 (00:06)\n- QA 범위는 결제·로그인·알림 세 가지로 좁히고, 나머지는 배포 뒤 모니터링으로 확인하기로 함. 일정이 밀리면 알림은 다음 배포로 넘김 (00:11).\n\n## 할 일\n- [ ] QA 마치기 — 담당: 화자 2, 기한: 월요일\n\n## 확인 필요\n- "랩캐시도"(00:15): Memcached로 추정됨\n');
 fs.writeFileSync(path.join(meeting, 'review.json'), JSON.stringify({ items: [{ id: 'r1', kind: 'word', at: '00:15', heard: '랩캐시도', guess: 'Memcached', note: '캐시 관련 용어가 잘못 인식된 것으로 보임', status: 'open' }] }));
+fs.writeFileSync(path.join(meeting, 'glossary.json'), JSON.stringify({ terms: [
+  { id: 'g1', term: 'QA', note: '출시 전에 기능이 제대로 동작하는지 확인하는 품질 검사', basis: 'general', status: 'confirmed', source: 'llm', at: ['00:11'] },
+  { id: 'g2', term: '알림', note: '앱 푸시 알림 기능. 이번 배포 범위에서 빠질 수 있음', basis: 'meeting', status: 'suggested', source: 'llm', at: [] },
+  { id: 'g3', term: '랩캐시도', note: '회의에서 설명 없음', basis: 'unknown', status: 'suggested', source: 'llm', at: ['00:15'] },
+] }));
 process.env.STUB_MEETING_DIR = meeting;
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -48,6 +53,8 @@ app.whenReady().then(async () => {
     ['meeting-review', "[...document.querySelectorAll('.tab')].find(t=>t.textContent.startsWith('확인 필요'))?.click()"],
     ['meeting-chat', "[...document.querySelectorAll('.ritem button')].find(b=>b.textContent.includes('채팅'))?.click(); setTimeout(()=>{const t=document.querySelector('.chat textarea'); t.value='캐시 얘기였어요'; t.dispatchEvent(new Event('input')); t.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}));},100)"],
     ['meeting-chat-applied', "[...document.querySelectorAll('.proposal button')].find(b=>b.textContent==='적용')?.click()"],
+    ['meeting-term', "document.querySelector('.chat-head .icon-btn')?.click(); setTimeout(()=>{[...document.querySelectorAll('.tab')].find(t=>t.textContent.startsWith('회의록'))?.click(); setTimeout(()=>document.querySelector('.doc .term.guess')?.click(), 300)}, 200)"],
+    ['meeting-glossary', "document.querySelector('.term-card') && document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})); document.getElementById('view').scrollTop=1e6"],
     ['dictionary', "location.hash='#dictionary'"],
     ['stats', "location.hash='#stats'"],
     ['settings', "document.getElementById('openSettings').click()"],

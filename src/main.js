@@ -8,6 +8,7 @@ const { WavWriter } = require('./wav-writer');
 const dictation = require('./dictation');
 const minutes = require('./minutes');
 const importAudio = require('./import-audio');
+const glossary = require('./glossary');
 const setup = require('./setup');
 
 const SELFTEST = process.argv.includes('--selftest');
@@ -583,8 +584,17 @@ ipcMain.handle('minutes:read', (_e, dir) => {
     transcript: minutes.nameSpeakers(read('transcript.txt'), names),
     scriptClean: minutes.nameSpeakers(read('script-clean.txt'), names),
     review,
+    glossary: glossaryWithNames(d, names),
   };
 });
+function glossaryWithNames(d, names) {
+  const g = glossary.readGlossary(d);
+  for (const t of g?.terms ?? []) t.note = minutes.nameSpeakers(t.note, names, { prose: true });
+  return g;
+}
+ipcMain.handle('glossary:make', (_e, dir) => glossary.makeGlossary(recordingDir(dir)));
+ipcMain.handle('glossary:explain', (_e, dir, term) => glossary.explainTerm(recordingDir(dir), term));
+ipcMain.handle('glossary:update', (_e, dir, id, patch) => glossary.updateTerm(recordingDir(dir), id, patch));
 ipcMain.handle('review:make', (_e, dir) => minutes.makeReview(recordingDir(dir)));
 ipcMain.handle('review:apply', (_e, dir, fixes) => minutes.applyReview(recordingDir(dir), fixes));
 ipcMain.handle('review:status', (_e, dir, ids, status) => minutes.setReviewStatus(recordingDir(dir), ids, status === 'open' ? 'open' : 'kept'));

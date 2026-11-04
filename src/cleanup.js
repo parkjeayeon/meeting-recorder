@@ -207,4 +207,14 @@ async function cleanup(raw, { provider: choice, apiKey }) {
   };
 }
 
-module.exports = { cleanup, complete, providerStatus, PROVIDERS };
+// LLM 답에서 JSON 꺼내기 (```json 블록이나 본문의 첫 {…})
+function parseJson(text) {
+  const m = text.match(/```json\s*([\s\S]*?)```/) ?? text.match(/(\{[\s\S]*\})/);
+  try {
+    return JSON.parse(m ? m[1] : text);
+  } catch {
+    return null;
+  }
+}
+
+module.exports = { cleanup, complete, parseJson, providerStatus, PROVIDERS };

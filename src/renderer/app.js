@@ -1027,7 +1027,10 @@ function pageMeeting(id) {
     player = r.firstFile ? playerBar(r, raw, color) : null;
 
     const body = h('div');
-    if (tab === 'minutes') body.append(minutesDoc(r, doc.minutes, reviewOpen, () => { tab = 'review'; draw(); }));
+    const matcher = termMatcher(doc.glossary?.terms);
+    closeTermCard();
+    removeAddBtn();
+    if (tab === 'minutes') body.append(minutesDoc(r, doc.minutes, reviewOpen, () => { tab = 'review'; draw(); }, matcher));
     else if (tab === 'review') body.append(reviewView(r, doc));
     else if (tab === 'clean' || tab === 'raw') {
       const text = tab === 'clean' ? doc.scriptClean : doc.transcript;
@@ -1035,7 +1038,7 @@ function pageMeeting(id) {
         h('span', null, tab === 'clean' ? '맞장구·하다 만 말·잡담을 쳐내고, 같은 사람이 이어서 한 말을 한 줄로 합친 스크립트입니다.' : '녹취 그대로의 스크립트입니다.'),
         text && copyButton(text, '스크립트 복사'));
       body.append(bar);
-      if (text) body.append(scriptView(r, parseScript(text), color, seek));
+      if (text) body.append(scriptView(r, parseScript(text), color, seek, matcher));
       else {
         const make = h('button', { class: 'btn primary' }, '정리본 만들기');
         make.onclick = async () => {
@@ -1061,13 +1064,13 @@ function pageMeeting(id) {
     syncPlaying(true);
   }
 
-  function scriptView(r, lines, color, seekTo) {
+  function scriptView(r, lines, color, seekTo, matcher = null) {
     const box = h('div', { class: 'script' });
     for (const l of lines) {
       const row = h('div', { class: 'sline' },
         h('button', { class: 'stime', title: '여기부터 듣기', onclick: () => l.at !== null && seekTo(l.at) }, l.stamp),
         l.who ? h('button', { class: 'who', title: '눌러서 이름 바꾸기', onclick: (e) => renameSpeaker(e.currentTarget, r, l.who) }, h('i', { style: `background:${color(l.who)}` }), l.who) : h('span'),
-        h('span', { class: 'ssaid' }, l.said));
+        h('span', { class: 'ssaid' }, ...withTerms(l.said, matcher)));
       box.append(row);
       if (l.at !== null) {
         lineEls.push(row);
@@ -1114,19 +1117,163 @@ function pageMeeting(id) {
         h('div', { class: 'spk-sub' }, `약 ${clock(s.sec)} · ${fmt.format(s.lines)}줄 · 처음 말한 시각 `, h('button', { class: 'seek', onclick: () => seek(parseStamp(s.first)) }, s.first)))));
   }
 
-  // 회의록 마크다운: 소제목, 목록, 할 일(체크 가능), 문단, **굵게**, (12:34) 시각은 눌러서 듣기
-  function minutesDoc(r, md, reviewOpen = 0, openReview = null) {
+  // ── 용어 설명: 회의록·정리본·원본의 용어에 밑줄, 누르면 한 줄 설명 카드 ──────────
+  // 낱말 속 글자에는 긋지 않는다 ('나'가 '모르거나'·'나눈'에 붙지 않게): 앞에 글자가 없고,
+  // 뒤가 끝·글자 아닌 것·조사(뒤에 한글이 더 이어지지 않을 때)일 때만. 화면 표시만 하고 파일은 고치지 않는다
+  const JOSA_AFTER = '은|는|이|가|을|를|의|도|에|에서|에게|께서|과|와|로|으로|만|까지|부터|처럼|보다|이나|랑|이랑|이다|입니다';
+  function termMatcher(terms) {
+    const list = (terms ?? []).filter((t) => t.term).sort((a, b) => b.term.length - a.term.length);
+    if (!list.length) return null;
+    const esc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(?<![가-힣A-Za-z0-9])(${list.map((t) => esc(t.term)).join('|')})(?=$|[^가-힣A-Za-z0-9]|(?:${JOSA_AFTER})(?![가-힣]))`, 'g');
+    return { re, byTerm: new Map(list.map((t) => [t.term, t])) };
+  }
+
+  // 글에서 용어를 찾아 밑줄 요소로 바꾼 조각들. seen: 한 문단·한 줄 안에서는 처음 나온 곳에만 긋는다
+  function withTerms(text, matcher, seen = new Set()) {
+    if (!matcher || !text) return [text];
+    const out = [];
+    let last = 0;
+    for (const m of text.matchAll(matcher.re)) {
+      const t = matcher.byTerm.get(m[1]);
+      if (!t || seen.has(t.id)) continue;
+      seen.add(t.id);
+      if (m.index > last) out.push(text.slice(last, m.index));
+      const open = (e) => termCard(e.currentTarget, t);
+      out.push(h('span', { class: `term${t.status === 'confirmed' ? '' : ' guess'}`, role: 'button', tabindex: 0, title: t.note, onclick: open, onkeydown: (e) => e.key === 'Enter' && open(e) }, m[1]));
+      last = m.index + m[1].length;
+    }
+    out.push(text.slice(last));
+    return out;
+  }
+
+  const BASIS_LABEL = { general: '일반 용어', meeting: '회의 내용에서', unknown: '회의에서 설명 없음' };
+  let cardEl = null;
+  const outsideCard = (e) => cardEl && !cardEl.contains(e.target) && !e.target.closest?.('.term, .gl-item') && closeTermCard();
+  const escCard = (e) => e.key === 'Escape' && closeTermCard();
+  function closeTermCard() {
+    cardEl?.remove();
+    cardEl = null;
+    document.removeEventListener('mousedown', outsideCard, true);
+    document.removeEventListener('keydown', escCard, true);
+  }
+
+  async function changeTerm(r, termId, patch, done) {
+    try {
+      await api.updateTerm(r.dir, termId, patch);
+      if (done) toast(done);
+    } catch (err) {
+      toast('바꾸지 못했습니다', err.message, { bad: true });
+    }
+    closeTermCard();
+    refreshDoc(r);
+  }
+
+  function termCard(anchor, t, editing = false) {
+    closeTermCard();
+    const r = history.find((m) => m.id === id);
+    if (!r) return;
+    const guess = t.status !== 'confirmed';
+    const note = editing ? h('textarea', { class: 'tc-edit', rows: 3, maxlength: 200, 'aria-label': '설명' }) : h('p', { class: 'tc-note' }, t.note);
+    if (editing) note.value = t.note;
+    const acts = editing
+      ? [h('button', { class: 'btn small primary', onclick: () => note.value.trim() && changeTerm(r, t.id, { note: note.value }, '설명을 고쳤습니다') }, '저장'),
+        h('button', { class: 'btn small', onclick: () => termCard(anchor, t) }, '취소')]
+      : [guess && h('button', { class: 'btn small primary', onclick: () => changeTerm(r, t.id, { status: 'confirmed' }) }, icon('i-check'), '맞아요'),
+        h('button', { class: 'btn small', onclick: () => termCard(anchor, t, true) }, icon('i-pencil'), '고치기'),
+        h('button', { class: 'btn small ghost', onclick: () => changeTerm(r, t.id, { remove: true }, `'${t.term}' 설명을 지웠습니다`) }, '지우기')];
+    cardEl = h('div', { class: 'term-card', role: 'dialog', 'aria-label': `${t.term} 설명` },
+      h('div', { class: 'tc-head' }, h('b', null, t.term),
+        h('span', { class: `tc-badge${guess ? ' guess' : ''}` }, guess ? 'LLM 추정 · 확인 전' : t.edited ? '직접 고침' : BASIS_LABEL[t.basis] ?? '')),
+      note,
+      !editing && t.at?.length > 0 && h('div', { class: 'tc-at' }, h('span', null, '회의에서 나온 곳'),
+        t.at.map((s) => (r.firstFile ? h('button', { class: 'seek', title: '여기부터 듣기', onclick: () => seek(parseStamp(s)) }, s) : h('span', { class: 'num' }, s)))),
+      h('div', { class: 'tc-acts' }, acts));
+    document.body.append(cardEl);
+    // 용어 아래에, 화면 밖으로 나가면 위로
+    const a = anchor.getBoundingClientRect();
+    const c = cardEl.getBoundingClientRect();
+    const top = a.bottom + 6 + c.height > innerHeight - 8 ? Math.max(8, a.top - 6 - c.height) : a.bottom + 6;
+    cardEl.style.top = `${top}px`;
+    cardEl.style.left = `${Math.min(Math.max(8, a.left), innerWidth - c.width - 8)}px`;
+    if (editing) note.focus();
+    setTimeout(() => {
+      document.addEventListener('mousedown', outsideCard, true);
+      document.addEventListener('keydown', escCard, true);
+    });
+  }
+
+  // 회의록 아래 '용어' 칸: 설명을 스티커처럼 모아 보여 주고, 확인 전인 것은 한 번에 확인
+  function glossaryBox(r, g) {
+    const terms = g?.terms ?? [];
+    const guesses = terms.filter((t) => t.status !== 'confirmed');
+    const make = h('button', { class: 'btn small', onclick: async () => {
+      make.disabled = true;
+      make.textContent = '용어 찾는 중… (10초 안팎)';
+      try {
+        await api.makeGlossary(r.dir);
+      } catch (err) {
+        toast('용어 설명을 만들지 못했습니다', err.message, { bad: true });
+      }
+      refreshDoc(r);
+    } }, g ? '추정 설명 다시 찾기' : '용어 설명 만들기');
+    return h('section', { class: 'glossary' },
+      h('div', { class: 'glossary-head' }, h('h3', null, '용어', terms.length > 0 && num(terms.length)), h('span', { style: 'flex:1' }),
+        guesses.length > 1 && h('button', { class: 'btn small', onclick: () => changeTerm(r, '*', { status: 'confirmed' }, `${guesses.length}개를 확인했습니다`) }, icon('i-check'), `확인 전 ${guesses.length}개 모두 확인`),
+        make),
+      h('p', { class: 'hint' }, terms.length
+        ? '밑줄 친 말을 누르면 설명을 볼 수 있습니다. 점선은 LLM이 회의 내용으로 추정한 설명입니다. 본문에서 단어를 드래그하면 설명을 더할 수 있습니다.'
+        : '회의록에 나온 사내 용어·약어·기술 용어에 한 줄 설명을 붙입니다. 본문에서 단어를 드래그해 하나씩 더할 수도 있습니다.'),
+      terms.length > 0 && h('div', { class: 'gl-grid' }, terms.map((t) =>
+        h('button', { class: `gl-item${t.status === 'confirmed' ? '' : ' guess'}`, onclick: (e) => termCard(e.currentTarget, t) },
+          h('b', null, t.term), h('span', null, t.note), t.status !== 'confirmed' && h('i', { class: 'gl-badge' }, '추정')))));
+  }
+
+  // 본문·스크립트에서 단어를 드래그하면 '설명 추가' 버튼을 띄운다
+  let addBtn = null;
+  const removeAddBtn = () => {
+    addBtn?.remove();
+    addBtn = null;
+  };
+  function offerExplain() {
+    removeAddBtn();
+    const sel = window.getSelection();
+    const text = sel?.toString().trim().replace(/\s+/g, ' ');
+    if (!text || text.length > 40 || !sel.rangeCount || !el.querySelector('.doc, .script')?.contains(sel.anchorNode)) return;
+    const r = history.find((m) => m.id === id);
+    const rect = sel.getRangeAt(0).getBoundingClientRect();
+    addBtn = h('button', { class: 'btn small term-add', style: `top:${Math.max(8, rect.top - 38)}px;left:${Math.min(rect.left, innerWidth - 140)}px`, onmousedown: (e) => e.preventDefault(), onclick: async () => {
+      addBtn.disabled = true;
+      addBtn.lastChild.textContent = '설명 찾는 중…';
+      try {
+        const t = await api.explainTerm(r.dir, text);
+        toast(`'${t.term}' 설명을 더했습니다`, t.note);
+      } catch (err) {
+        toast('설명을 더하지 못했습니다', err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { bad: true });
+      }
+      removeAddBtn();
+      window.getSelection()?.removeAllRanges();
+      refreshDoc(r);
+    } }, icon('i-plus'), h('span', null, `'${text.length > 12 ? `${text.slice(0, 12)}…` : text}' 설명 추가`));
+    document.body.append(addBtn);
+  }
+  el.addEventListener('mouseup', () => setTimeout(offerExplain));
+  el.addEventListener('mousedown', (e) => !addBtn?.contains(e.target) && removeAddBtn());
+
+  // 회의록 마크다운: 소제목, 목록, 할 일(체크 가능), 문단, **굵게**, (12:34) 시각은 눌러서 듣기, 용어 밑줄
+  function minutesDoc(r, md, reviewOpen = 0, openReview = null, matcher = null) {
     const box = h('article', { class: 'doc' });
     let list = null;
     let todoIndex = 0;
     let skipping = false; // 확인 필요 섹션은 '확인 필요' 탭에서 하나씩 처리한다
-    const inline = (el, text) => {
+    const inline = (el, text, terms = matcher) => {
+      const seen = new Set();
       text.split(/\*\*(.+?)\*\*/g).forEach((part, i) => {
         if (!part) return;
-        if (i % 2) return el.append(h('b', null, part));
+        if (i % 2) return el.append(h('b', null, ...withTerms(part, terms, seen)));
         const segs = part.split(/(\(\s*\d{1,2}:\d{2}(?::\d{2})?(?:\s*,\s*\d{1,2}:\d{2}(?::\d{2})?)*\s*\))/);
         segs.forEach((seg, j) => {
-          if (j % 2 === 0) return seg && el.append(seg);
+          if (j % 2 === 0) return seg && el.append(...withTerms(seg, terms, seen));
           const times = seg.match(/\d{1,2}:\d{2}(?::\d{2})?/g);
           // 시각 칩과 바로 뒤 문장부호("(02:50)." → 칩 + ".")를 한 덩어리로 묶어 마침표만 다음 줄로 넘어가지 않게 한다
           const punct = /^[.,;:!?…)\]」』]+/.exec(segs[j + 1] ?? '')?.[0] ?? '';
@@ -1174,7 +1321,7 @@ function pageMeeting(id) {
       if (heading) {
         if (heading[1] === '#') continue; // 제목은 페이지 머리에 있다
         const hd = h(heading[1] === '##' ? 'h3' : 'h4');
-        inline(hd, heading[2]);
+        inline(hd, heading[2], null);
         box.append(hd);
       } else {
         const p = h('p');
@@ -1182,6 +1329,7 @@ function pageMeeting(id) {
         box.append(p);
       }
     }
+    box.append(glossaryBox(r, docCache.get(r.id)?.glossary));
     if (openReview && /^## 확인 필요/m.test(md)) {
       const finalized = Boolean(docCache.get(r.id)?.review?.finalizedAt);
       box.append(h('div', { class: 'review-callout' }, icon(finalized ? 'i-check' : 'i-alert'),
@@ -1672,6 +1820,8 @@ function pageMeeting(id) {
       for (const ev of ['timeupdate', 'play', 'pause', 'loadedmetadata', 'seeked']) audio.removeEventListener(ev, onTime);
       window.removeEventListener('resize', onResize);
       document.removeEventListener('keydown', onKey);
+      closeTermCard();
+      removeAddBtn();
     },
   };
 }

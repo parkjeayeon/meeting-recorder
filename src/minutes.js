@@ -6,8 +6,9 @@ const fs = require('fs');
 const { spawn } = require('child_process');
 const { app, net } = require('electron');
 const dictation = require('./dictation');
-const { complete } = require('./cleanup');
+const { complete, parseJson } = require('./cleanup');
 const sandbox = require('./sandbox');
+const glossary = require('./glossary');
 
 const LONG_TIMEOUT_MS = 10 * 60 * 1000; // 1시간짜리 회의도 여유 있게
 const SPEAKER = { mic: '나', system: '상대방' };
@@ -478,7 +479,8 @@ async function run(dir, onStage, { speakers = null, prev = null } = {}) {
     if (!text) throw new Error('회의록이 비어 있습니다');
     fs.writeFileSync(path.join(dir, 'minutes.md'), `${text}\n`);
     await scriptJob.catch(() => {});
-    await makeReview(dir).catch(() => {}); // 확인 필요 항목을 하나씩 처리할 수 있는 목록으로
+    // 확인 필요 항목 목록과 용어 설명을 함께 만든다 (어느 쪽이 실패해도 회의록은 그대로)
+    await Promise.all([makeReview(dir).catch(() => {}), glossary.makeGlossary(dir).catch(() => {})]);
     const title = text.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? null;
     report('done', { provider, title, ...diarizeInfo });
   } catch (err) {
@@ -647,15 +649,6 @@ function writeReview(dir, review) {
   if (review.finalizedAt && review.items.some((it) => it.status === 'open')) delete review.finalizedAt; // 다시 연 항목이 있으면 초안으로
   fs.writeFileSync(reviewFile(dir), JSON.stringify({ ...review, updatedAt: new Date() }, null, 2));
   return review;
-}
-
-function parseJson(text) {
-  const m = text.match(/```json\s*([\s\S]*?)```/) ?? text.match(/(\{[\s\S]*\})/);
-  try {
-    return JSON.parse(m ? m[1] : text);
-  } catch {
-    return null;
-  }
 }
 
 // 고칠 말에 설명이 섞여 오면 떼어 내고, 설명뿐이면 버린다 ("'반복문'으로 추정됨" → "반복문")

@@ -47,7 +47,14 @@ const impl = {
   fnKeyWarning: async () => null,
   tokenStatus: async () => ({ hf: { cli: true }, anthropic: {} }),
   verifyToken: async () => ({ ok: true, message: '예시 계정 · 화자 구분 모델 사용 가능' }),
-  readMinutes: async () => ({ minutes: read('minutes.md'), transcript: read('transcript.txt'), scriptClean: read('script-clean.txt'), review: JSON.parse(read('review.json') ?? 'null') }),
+  readMinutes: async () => ({ minutes: read('minutes.md'), transcript: read('transcript.txt'), scriptClean: read('script-clean.txt'), review: JSON.parse(read('review.json') ?? 'null'), glossary: JSON.parse(read('glossary.json') ?? 'null') }),
+  updateTerm: async (_dir, id, patch) => {
+    const g = JSON.parse(read('glossary.json'));
+    for (const t of g.terms) if (id === '*' || t.id === id) Object.assign(t, patch.status ? { status: patch.status } : {}, patch.note ? { note: patch.note, edited: true, status: 'confirmed' } : {});
+    if (patch.remove) g.terms = g.terms.filter((t) => t.id !== id);
+    fs.writeFileSync(path.join(dir, 'glossary.json'), JSON.stringify(g));
+    return g;
+  },
   onboardingGet: async () => ({ completed: !process.env.OB_STEP, step: process.env.OB_STEP || 'done' }),
   setupStatus: async () => [
     { id: 'engine', name: '음성 인식 엔진', desc: 'whisper.cpp (Homebrew로 설치)', installed: true, size: null, removable: false },

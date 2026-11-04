@@ -49,6 +49,9 @@ contextBridge.exposeInMainWorld('recorderApi', {
   makeMinutes: (dir, speakers) => ipcRenderer.invoke('minutes:make', dir, speakers),
   resumeMinutes: (dir) => ipcRenderer.invoke('minutes:resume', dir),
   importMeeting: (paths) => ipcRenderer.invoke('meeting:import', paths),
+  makeGlossary: (dir) => ipcRenderer.invoke('glossary:make', dir),
+  explainTerm: (dir, term) => ipcRenderer.invoke('glossary:explain', dir, term),
+  updateTerm: (dir, id, patch) => ipcRenderer.invoke('glossary:update', dir, id, patch),
   // 끌어다 놓은 파일의 경로 (렌더러는 샌드박스라 File.path가 없다)
   filePath: (file) => webUtils.getPathForFile(file),
   renameSpeaker: (dir, from, to) => ipcRenderer.invoke('speaker:rename', dir, from, to),
