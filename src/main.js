@@ -692,8 +692,29 @@ function addCorrectionsToVocab(review, fixes) {
   return added;
 }
 ipcMain.handle('review:apply', (_e, dir, fixes) => {
-  const review = minutes.applyReview(recordingDir(dir), fixes);
-  return { ...review, addedWords: addCorrectionsToVocab(review, fixes) };
+  const d = recordingDir(dir);
+  const review = minutes.applyReview(d, fixes);
+  const addedWords = addCorrectionsToVocab(review, fixes);
+  const ids = review.items.filter((it) => fixes.some((f) => f.id === it.id) && addedWords.includes(String(it.applied ?? '').trim())).map((it) => it.id);
+  if (ids.length) minutes.markReviewItems(d, ids, { vocabAdded: true });
+  return { ...review, addedWords };
+});
+// 확인 마치기 전 되돌리기: 사전에 자동으로 넣었던 단어도 뺀다
+ipcMain.handle('review:revert', (_e, dir, id) => {
+  const d = recordingDir(dir);
+  const before = minutes.readReview(d)?.items.find((it) => it.id === id);
+  const review = minutes.revertReview(d, id);
+  const word = before?.vocabAdded ? String(before.applied ?? '').trim() : '';
+  if (word) {
+    const words = vocabList(dictation.getSettings().vocabulary);
+    const next = words.filter((w) => w.toLowerCase() !== word.toLowerCase());
+    if (next.length !== words.length) {
+      dictation.saveSettings({ vocabulary: next.join(', ') });
+      writePortableSettings();
+    }
+    minutes.markReviewItems(d, [id], { vocabAdded: false });
+  }
+  return { ...review, removedWord: word || null };
 });
 ipcMain.handle('review:status', (_e, dir, ids, status) => minutes.setReviewStatus(recordingDir(dir), ids, status === 'open' ? 'open' : 'kept'));
 ipcMain.handle('review:finalize', (_e, dir) => minutes.finalizeReview(recordingDir(dir)));

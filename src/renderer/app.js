@@ -1923,6 +1923,40 @@ function pageMeeting(id) {
     }
   }
 
+  // 고친 항목 되돌리기: 그 항목이 바꾼 줄만 원래대로, 사전에 자동으로 넣은 단어면 사전에서도 뺀다
+  async function revertItem(r, it) {
+    try {
+      const res = await api.revertReview(r.dir, it.id);
+      toast('되돌렸습니다', res.removedWord ? `사전에서 '${res.removedWord}'를 뺐습니다` : '항목을 다시 확인 전으로 열었습니다');
+      if (res.removedWord) renderDictSettings(await api.dictSettings());
+    } catch (err) {
+      toast('되돌리지 못했습니다', err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { bad: true });
+    }
+    refreshDoc(r);
+  }
+
+  // 고친 말을 다른 말로: 되돌린 뒤 새 말로 다시 적용
+  function editApplied(r, it, row) {
+    const input = h('input', { type: 'text', value: it.applied, 'aria-label': '고칠 말' });
+    const save = h('button', { class: 'btn small primary', onclick: async () => {
+      const guess = input.value.trim();
+      if (!guess || guess === it.applied) return refreshDoc(r);
+      save.classList.add('busy');
+      try {
+        await api.revertReview(r.dir, it.id);
+        await applyFixes(r, [{ id: it.id, heard: it.heard, guess }]);
+      } catch (err) {
+        toast('고치지 못했습니다', err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { bad: true });
+        refreshDoc(r);
+      }
+    } }, '적용');
+    input.onkeydown = (e) => e.key === 'Enter' && !e.isComposing && save.click();
+    row.replaceChildren(h('span', { class: 'heard' }, it.heard), icon('i-right'), input, save, h('button', { class: 'btn small ghost', onclick: () => refreshDoc(r) }, '취소'));
+    row.classList.add('ritem-fix');
+    input.focus();
+    input.select();
+  }
+
   async function keepItems(r, ids) {
     await api.setReviewStatus(r.dir, ids, 'kept');
     ids.forEach((i) => reviewSel.delete(i));
@@ -2065,9 +2099,15 @@ function pageMeeting(id) {
           } }, icon('i-redo'), '구간 다시 받아쓰기'),
           h('button', { class: 'btn small ghost', onclick: () => keepItems(r, [it.id]) }, it.kind === 'lost' ? '유실 그대로 두기' : '그대로 두기')));
       } else {
-        card.append(h('div', { class: 'ritem-done' },
-          it.status === 'applied' ? [h('span', { class: 'heard' }, it.heard), icon('i-right'), h('b', null, it.applied), h('span', { class: 'hint', style: 'margin:0' }, `${it.count ?? 0}곳 고침`)] : h('span', null, '그대로 둠'),
-          it.status === 'kept' && h('button', { class: 'btn small ghost', onclick: async () => { await api.setReviewStatus(r.dir, [it.id], 'open'); refreshDoc(r); } }, '다시 열기')));
+        // 확인 마치기 전까지는 처리한 항목도 다시 손볼 수 있다: 고친 말 바꾸기·되돌리기, 그대로 둔 것 다시 열기
+        const locked = Boolean(doc.review?.finalizedAt);
+        const isRedo = Boolean(it.redo?.appliedAt);
+        const doneRow = h('div', { class: 'ritem-done' },
+          it.status === 'applied' ? [isRedo ? h('span', { class: 'num' }, `${clock(it.redo.start)}~${clock(it.redo.end)} 구간`) : h('span', { class: 'heard' }, it.heard ?? it.heardNote ?? ''), icon('i-right'), h('b', null, it.applied), h('span', { class: 'hint', style: 'margin:0' }, isRedo ? `${it.count ?? 0}줄` : `${it.count ?? 0}곳 고침`)] : h('span', null, '그대로 둠'),
+          !locked && it.status === 'kept' && h('button', { class: 'btn small ghost', onclick: async () => { await api.setReviewStatus(r.dir, [it.id], 'open'); refreshDoc(r); } }, '다시 열기'),
+          !locked && it.status === 'applied' && !isRedo && it.heard && h('button', { class: 'btn small ghost', onclick: () => editApplied(r, it, doneRow) }, icon('i-pencil'), '고치기'),
+          !locked && it.status === 'applied' && h('button', { class: 'btn small ghost', onclick: () => revertItem(r, it) }, '되돌리기'));
+        card.append(doneRow);
       }
       box.append(card);
     }

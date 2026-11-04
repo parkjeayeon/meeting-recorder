@@ -83,6 +83,7 @@ app.whenReady().then(async () => {
     ['meeting-review-back', "document.querySelector('.chat-head .icon-btn')?.click()"],
     ['meeting-chat', "[...document.querySelectorAll('.ritem button')].find(b=>b.textContent.includes('채팅'))?.click(); setTimeout(()=>{const t=document.querySelector('.chat textarea'); t.value='캐시 얘기였어요'; t.dispatchEvent(new Event('input')); t.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}));},100)"],
     ['meeting-chat-applied', "[...document.querySelectorAll('.proposal button')].find(b=>b.textContent==='적용')?.click()"],
+    ['meeting-review-done', "[...document.querySelectorAll('button')].find(b=>b.textContent.startsWith('처리함'))?.click()"],
     ['meeting-actions', "[...document.querySelectorAll('.tab')].find(t=>t.textContent.startsWith('액션'))?.click()"],
     ['meeting-term', "document.querySelector('.chat-head .icon-btn')?.click(); setTimeout(()=>{[...document.querySelectorAll('.tab')].find(t=>t.textContent.startsWith('회의록'))?.click(); setTimeout(()=>document.querySelector('.doc .term.guess')?.click(), 300)}, 200)"],
     ['meeting-glossary', "document.querySelector('.term-card') && document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})); document.getElementById('view').scrollTop=1e6"],

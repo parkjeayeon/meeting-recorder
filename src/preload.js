@@ -75,6 +75,7 @@ contextBridge.exposeInMainWorld('recorderApi', {
   applyReview: (dir, fixes) => ipcRenderer.invoke('review:apply', dir, fixes),
   setReviewStatus: (dir, ids, status) => ipcRenderer.invoke('review:status', dir, ids, status),
   chatReview: (dir, ids, messages) => ipcRenderer.invoke('review:chat', dir, ids, messages),
+  revertReview: (dir, id) => ipcRenderer.invoke('review:revert', dir, id),
   redoRange: (dir, id, start, end) => ipcRenderer.invoke('review:redo', dir, id, start, end),
   applyRedo: (dir, id) => ipcRenderer.invoke('review:redoApply', dir, id),
   finalizeReview: (dir) => ipcRenderer.invoke('review:finalize', dir),
