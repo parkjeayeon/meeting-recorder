@@ -40,6 +40,16 @@
   - 수집: PostHog·Segment(사용 통계), Sentry·Datadog(오류·로그)
 - → 이 앱과 다른 점: Wispr Flow는 인식·서식·요약을 모두 자기 서버에서 하고 화면 내용까지 문맥으로 보낸다. 이 앱은 Hugging Face에서 받은 모델(Whisper·pyannote)을 이 Mac에서 돌리고, 다듬기·회의록 글만 로그인된 Claude Code·Codex로 보낸다 ([결정 1](../decisions.md)).
 
+## 회의 노트테이커 동작 (2026-11-05, v1.6.1337 메인 프로세스 코드·로그 문구)
+- **봇이 회의에 들어가지 않는다**: 회의 참여 봇 관련 코드가 없다. Mac에서 마이크와 **시스템 소리**(상대방 목소리)를 함께 녹음한다 — `MacCatapSystemAudioLoopbackCapture`(Core Audio 탭), `MacSckSystemAudioLoopbackOverride`(ScreenCaptureKit). 시스템 오디오 권한이 없으면 녹음 대신 설정 안내를 연다 ("StartHeadlessSession: system audio not granted…"). 대면 회의(마이크만)도 되는지는 확인 못 함.
+- **회의 자동 감지** (`[MeetingAutoDetect]`): 어떤 앱이 마이크를 쓰고 있는지(mic holder), 캘린더 일정, 브라우저 탭(손쉬운 사용으로 Meet 탭 확인)을 함께 보고 "Meeting detected" 카드를 띄운다(20초 뒤 사라짐). 회의 앱이 마이크를 놓거나 탭이 닫히면 자동으로 끝낸다. 대상 플랫폼: Zoom·Google Meet·Teams·Webex·Slack·Discord·FaceTime 등. 회의를 바꾸면 이전 녹음을 끝내고 새로 시작, 잠자기·사용자 전환 때 그 시점에서 마무리.
+- **녹음 중 실시간 녹취**: 소리 조각을 서버로 계속 보내 받아쓴다 (`[MeetingTranscription] Failed to send audio chunk`, 보내지 못하면 버퍼에 쌓다가 가득 차면 오래된 것부터 버림). 실시간 녹취는 `live-transcript/upload-url`로 NDJSON 파일로 올린다.
+- **누가 말하는지 = 회의 앱 화면을 읽는다**: `StartSpeakerPolling`으로 회의 앱 창(메인 창·작은 창·옆 창·앱 트리)을 손쉬운 사용으로 주기적으로 읽어 지금 말하는 사람 이름, 참여자 이름, 음소거한 사람, 내 이름을 뽑는다 (`MeetingSpeakerChange`: speakerName·participantNames·mutedNames·selfName, 맞춤 상태 matched·ambiguous·unknown). 이 기록을 `speaker-observations`로 올린다. 목소리로 화자를 나누는 코드는 앱에 없다 (서버에서 하는지는 모름).
+- **녹음 파일**: Opus(`audio/ogg`)로 압축해 `meetings/{id}/audio-uploads`로 올린다. Opus가 실패하면 WAV로, 크기 제한(upload cap)이 있다.
+- **회의 뒤 서버에서 다듬기(refine)**: 서버가 다듬은 녹취(`refined-transcript`)를 만들면 앱이 받아 바꿔 넣는다 ("RefinedTranscriptLanded"). 화자 이름 고치기·나누기(`transcript-speakers/split`), 화자를 연락처에 연결, 요약(`quick-summary`, `candidate-summary`), 폴더 추천, 회의 채팅(Claude Agent SDK 문구도 있음).
+- **그 밖**: 캘린더 알림·회의 창 옆에 붙이기, 주간 녹음 한도("Weekly meeting recording limit reached")·회의당 최대 길이, 참석자 안내 문구("I'm using Wispr Notetaker to transcribe this meeting…"), 로컬 보관 기한(앞 절의 7일·30일).
+- → 이 앱과 다른 점: 이 앱은 회의가 끝난 뒤 이 Mac에서 녹취(Whisper)와 목소리 기반 화자 구분(pyannote)을 하고, 대면 회의를 기본으로 본다. Wispr Flow는 화상 회의 중심이고, 녹취·요약은 서버, 화자는 회의 앱 화면에 뜬 이름으로 붙인다.
+
 ## 허브 창(본 화면) 구조
 - 창 이름 "Flow Hub". 크기 상수 1350×850, 최소 1140×750. `frame:false`, `titleBarStyle:"hidden"`, 신호등 위치 `{x:16, y:15}`, 투명 창(macOS)에 CSS로 배경을 그림. 메인 창에 vibrancy 없음.
 - 위 막대 44px(`-webkit-app-region: drag`), 본문은 셸 위에 떠 있는 둥근 판: `border-radius: 24px 24px 16px 16px; border: 1px solid; margin: 0 8px 8px 0`.
