@@ -22,8 +22,23 @@
 - 오래된 음성은 업로드 후 지우고 VACUUM. "NeverStore" 모드에서는 사용 통계만 남김.
 - 통계 항목: 총 단어 수, 오늘·이번 주 단어 수, 평균 WPM, 연속 사용일(일·주), 사용한 앱 수.
 - 회의 녹음 로컬 보관 기본 7일, 처리 안 된 음성 30일.
-- 받아쓰기 인식은 gRPC `inference.wisprflow.com`(Baseten/Modal) 서버, 서식 정리는 Llama 계열, 자체 인식 모델 "Canto".
+- 받아쓰기 인식은 gRPC `inference.wisprflow.com`(Baseten/Modal) 서버, 서식 정리는 Llama 계열, 자체 인식 모델 "Canto" (자세한 내용은 아래 "서버 API로 하는 일").
 - → 이 앱은 인식을 로컬에서 하고, 음성은 바로 지우고 통계용 데이터만 남김 ([결정 1·5](../decisions.md)).
+
+## 서버 API로 하는 일 (2026-11-05, v1.6.1337 메인 프로세스 코드)
+- **앱 안에 음성 인식 모델이 없다**: 묶음에 `.onnx`·`.gguf`·`.bin`(모델)·`.mlmodelc` 파일이 없다. 로컬에서 도는 모델·Hugging Face 내려받기 코드도 찾지 못했다.
+- **받아쓰기 = gRPC `flow_api.v1.TranscriptionService`** (`Transcribe`, 양방향 스트리밍 `TranscribeStream`). 서버 이름 `inference.wisprflow.com`, 같은 목록에 `model-v31pl413.grpc.api.baseten.co`(Baseten)·`…modal.direct`(Modal) — 둘 다 GPU 모델 호스팅 서비스. 주소는 `inference-info.wisprflow.com/dictation_url.txt`에서 받아 오기도 한다.
+  - 보내는 것(`Request`): 음성 조각(`audio_packets`)과 함께 `Context` — 앞에 있는 앱(이름·번들 ID·URL), 입력칸 글(커서 앞·뒤·선택한 글), 화면 내용(`screen_content_ax` 손쉬운 사용 트리·`screen_content_ocr`), 변수·파일 이름, 대화(참여자·메시지), 스크린샷 칸, 사전·바꿔 쓰기·스니펫(개인·팀), 글쓰기 스타일.
+  - 받는 것(`Result`): 서식 정리한 글(HTML·평문), 단어 시각, 신뢰도, 진행 단계(`transcriber` → `formatter` → 후처리).
+  - 인식기 종류 열거형: `MIXTURE · WHISPER · SCRIBE · VOXTRAL · QWEN`. 이름으로 보아 여러 인식 모델(OpenAI Whisper, ElevenLabs Scribe, Mistral Voxtral, Qwen 계열 — 추정)을 서버에서 섞거나 고르는 것 같다. 어느 것을 언제 쓰는지는 서버 쪽이라 모른다.
+- **나머지는 REST `api.wisprflow.ai/api/v1/…`** (실시간은 `wss://api.wisprflow.ai`, `/api/v1/sync/ws`):
+  - 회의(Notetaker): 녹음 올리기(`meetings/{id}/upload-url`·`audio-uploads`·`live-transcript/upload-url`), 다듬은 녹취·화자 나누기(`refined-transcript`, `transcript-speakers/split`), 요약(`quick-summary`, `candidate-summary`, 피드백), 폴더 자동 분류, 공유, Zoom·Fireflies 가져오기, 회의 채팅(`notetaker-chats`), 주간 사용량(`meetings/weekly-quota`)
+  - 글 바꾸기·명령: `transform/apply/stream`, `voice-actions/realtime`, 할 일 `todos/sync`, 메모 `notes/sync`
+  - 개인화: 사전(개인·팀·공유), `wispr-memory`, `memory/context`, `learned-preferences/generate`, 목소리 설정 올리기, 문체 다듬기 기록(`polish/upload`, `instruct_history/upload`)
+  - 연동: 캘린더(회의 전 자료 `preread`), 커넥터, MCP 연결, LinkedIn
+  - 계정·결제·팀: 구독·결제, 기업·팀 초대, 추천·프로모션, 알림, 데이터 내보내기·삭제, 기기 등록
+  - 수집: PostHog·Segment(사용 통계), Sentry·Datadog(오류·로그)
+- → 이 앱과 다른 점: Wispr Flow는 인식·서식·요약을 모두 자기 서버에서 하고 화면 내용까지 문맥으로 보낸다. 이 앱은 Hugging Face에서 받은 모델(Whisper·pyannote)을 이 Mac에서 돌리고, 다듬기·회의록 글만 로그인된 Claude Code·Codex로 보낸다 ([결정 1](../decisions.md)).
 
 ## 허브 창(본 화면) 구조
 - 창 이름 "Flow Hub". 크기 상수 1350×850, 최소 1140×750. `frame:false`, `titleBarStyle:"hidden"`, 신호등 위치 `{x:16, y:15}`, 투명 창(macOS)에 CSS로 배경을 그림. 메인 창에 vibrancy 없음.
