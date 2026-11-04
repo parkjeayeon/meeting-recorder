@@ -43,6 +43,9 @@ fs.writeFileSync(path.join(meeting, 'actions.json'), process.env.STUB_ACTIONS ? 
   actions: [
     { id: 'a1', owner: '화자 2', task: 'QA 마치기', due: '월요일', kind: 'assigned', at: '00:11', quote: 'QA는 월요일까지', done: false },
     { id: 'a2', owner: '화자 1', task: '배포 일정 공지하기', due: null, kind: 'promise', at: '00:06', quote: '화요일 오전이 좋을 것 같아요', done: true },
+    { id: 'a3', owner: '화자 2', task: '결제 화면 오류 재현 영상 공유하기', due: '내일', kind: 'promise', at: '00:15', quote: 'x', done: false },
+    { id: 'a4', owner: '화자 1', task: '롤백 절차 문서 다시 확인하기', due: null, kind: 'assigned', at: '00:20', quote: 'x', done: false },
+    { id: 'a5', owner: '화자 1', task: '다음 주부터 매일 배포 전 체크리스트 보기', due: '다음 주', kind: 'resolution', at: '00:24', quote: 'x', done: false },
   ],
   advice: [
     { id: 'v1', group: '배포', key: true, why: '일정이 밀리면 범위부터 줄여야 해서', from: '화자 1', to: '화자 2', text: '일정이 밀리면 알림은 다음 배포로 넘기기', at: '00:11', quote: 'x' },
@@ -84,7 +87,7 @@ app.whenReady().then(async () => {
     ['meeting-chat', "[...document.querySelectorAll('.ritem button')].find(b=>b.textContent.includes('채팅'))?.click(); setTimeout(()=>{const t=document.querySelector('.chat textarea'); t.value='캐시 얘기였어요'; t.dispatchEvent(new Event('input')); t.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}));},100)"],
     ['meeting-chat-applied', "[...document.querySelectorAll('.proposal button')].find(b=>b.textContent==='적용')?.click()"],
     ['meeting-review-done', "[...document.querySelectorAll('button')].find(b=>b.textContent.startsWith('처리함'))?.click()"],
-    ['meeting-actions', "[...document.querySelectorAll('.tab')].find(t=>t.textContent.startsWith('액션'))?.click()"],
+    ['meeting-actions', "document.querySelector('.chat-head .icon-btn')?.click(); [...document.querySelectorAll('.tab')].find(t=>t.textContent.startsWith('액션'))?.click()"],
     ['meeting-term', "document.querySelector('.chat-head .icon-btn')?.click(); setTimeout(()=>{[...document.querySelectorAll('.tab')].find(t=>t.textContent.startsWith('회의록'))?.click(); setTimeout(()=>document.querySelector('.doc .term.guess')?.click(), 300)}, 200)"],
     ['meeting-glossary', "document.querySelector('.term-card') && document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})); document.getElementById('view').scrollTop=1e6"],
     ['dictionary', "location.hash='#dictionary'"],

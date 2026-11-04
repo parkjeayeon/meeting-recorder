@@ -1277,23 +1277,31 @@ function pageMeeting(id) {
   const ACTION_KIND = { promise: '약속', assigned: '맡음', resolution: '다짐' };
   function actionsView(r, data) {
     const stamp = (at) => (r.firstFile ? h('button', { class: 'seek', title: '여기부터 듣기', onclick: () => seek(parseStamp(at)) }, at) : h('span', { class: 'num' }, at));
+    // 할 일: 카드 하나 안에 체크리스트 (줄마다 얇은 선, 담당·기한·시각은 오른쪽)
+    const doneCount = () => data.actions.filter((a) => a.done).length;
+    const count = num(`${doneCount()}/${data.actions.length}`);
+    const bar = h('i', { style: `width:${(doneCount() / Math.max(1, data.actions.length)) * 100}%` });
     const todo = h('section', { class: 'act-sec' },
-      h('div', { class: 'act-head' }, h('h3', null, '할 일'), data.actions.length > 0 && num(`${data.actions.filter((a) => a.done).length}/${data.actions.length}`)),
       data.actions.length
-        ? h('ul', { class: 'act-list' }, data.actions.map((a) => {
-          const cb = h('input', { type: 'checkbox', checked: a.done, 'aria-label': '했음' });
-          const li = h('li', { class: `act-item${a.done ? ' done' : ''}`, title: `녹취: “${a.quote}”` }, cb,
-            h('div', { class: 'act-body' }, h('span', { class: 'act-task' }, a.task),
-              h('div', { class: 'act-meta' }, h('span', { class: 'flane' }, a.owner), a.due && h('span', { class: 'flane due' }, a.due), h('span', { class: 'act-kind' }, ACTION_KIND[a.kind] ?? ''), stamp(a.at))));
-          cb.onchange = async () => {
-            li.classList.toggle('done', cb.checked);
-            await api.toggleAction(r.dir, a.id, cb.checked);
-            docCache.delete(r.id);
-            loadHistory();
-          };
-          return li;
-        }))
-        : h('p', { class: 'act-empty' }, '약속하거나 맡은 할 일은 없었습니다.'));
+        ? h('div', { class: 'act-board' },
+          h('div', { class: 'act-board-head' }, h('h3', null, '할 일'), count, h('span', { class: 'act-progress', 'aria-hidden': 'true' }, bar)),
+          h('ul', { class: 'act-list' }, data.actions.map((a) => {
+            const cb = h('input', { type: 'checkbox', checked: a.done, 'aria-label': `${a.task} 했음` });
+            const li = h('li', { class: `act-item${a.done ? ' done' : ''}`, title: `녹취: “${a.quote}”` },
+              h('label', { class: 'act-check' }, cb, h('span', { class: 'act-task' }, a.task)),
+              h('div', { class: 'act-meta' }, h('span', { class: 'act-kind' }, ACTION_KIND[a.kind] ?? ''), h('span', { class: 'flane' }, a.owner), a.due && h('span', { class: 'flane due' }, a.due), stamp(a.at)));
+            cb.onchange = async () => {
+              a.done = cb.checked;
+              li.classList.toggle('done', cb.checked);
+              count.textContent = `${doneCount()}/${data.actions.length}`;
+              bar.style.width = `${(doneCount() / data.actions.length) * 100}%`;
+              await api.toggleAction(r.dir, a.id, cb.checked);
+              docCache.delete(r.id);
+              loadHistory();
+            };
+            return li;
+          })))
+        : [h('div', { class: 'act-head' }, h('h3', null, '할 일')), h('p', { class: 'act-empty' }, '약속하거나 맡은 할 일은 없었습니다.')]);
     const keys = data.advice.filter((a) => a.key);
     const groups = [...new Set(data.advice.map((a) => a.group))];
     const who = (a) => (a.from || a.to) && h('span', { class: 'act-who' }, `${a.from ?? ''}${a.to ? ` → ${a.to}` : ''}`);
