@@ -432,31 +432,63 @@ ins { text-decoration: underline; text-decoration-color: var(--accent); text-dec
 .tc-at > span:first-child { margin-right: 4px; }
 .tc-acts { display: flex; gap: 6px; margin-top: 12px; }
 .term-add { position: fixed; z-index: 95; box-shadow: var(--shadow-pop); }
-/* 흐름도: 회의록 요약 아래. 색은 앱 값(띠는 화자 색 --s1~6, 강조는 --accent), 다크 모드는 변수로 따라감 */
-.flow { margin: 22px 0 8px; padding: 16px 16px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel-2); }
-.flow-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.doc .flow h3 { margin: 0; }
-.flow-title { font-size: 13.5px; color: var(--ink-2); font-weight: 600; }
-.flow-lanes { display: flex; gap: 14px; margin-top: 10px; font-size: 12px; color: var(--ink-3); }
-.flow-lanes span { display: inline-flex; align-items: center; gap: 6px; }
-.flow-lanes i { width: 10px; height: 10px; border-radius: 3px; }
-.flow-steps { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px 4px; margin-top: 14px; }
-.fstep { --lane: var(--ink-3); width: 176px; display: flex; flex-direction: column; gap: 4px; padding: 10px 12px 10px; border: 1px solid var(--line); border-top: 3px solid var(--lane); border-radius: 10px; background: var(--panel); }
-.fstep.optional { border-style: dashed; border-top-style: solid; }
-.fstep-head { display: flex; align-items: flex-start; gap: 7px; }
-.fstep-head b { font-size: 13.5px; line-height: 1.35; }
-.fstep p { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--ink-2); flex: 1; }
-.fstep-foot { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
-.fnum { flex: none; display: inline-grid; place-items: center; width: 19px; height: 19px; border-radius: 50%; background: var(--ink); color: var(--panel); font-size: 11px; font-weight: 700; }
-.fnum.small { width: 17px; height: 17px; font-size: 10.5px; }
+/* 흐름도: 회의록 요약 아래, 그림마다 카드. 색은 앱 값(띠는 화자 색 --s1~6, 경고는 --accent), 다크 모드는 변수로 따라감 */
+.flows { display: flex; flex-direction: column; gap: 14px; margin: 22px 0 8px; }
+.flow { padding: 16px 16px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel-2); }
+.flow-head { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.flow-titles { flex: 1; min-width: 220px; }
+.doc .flow h3 { margin: 0; font-size: 16px; }
+.flow-summary { margin: 3px 0 0 !important; font-size: 13px; color: var(--ink-2); }
+.flow-acts { display: flex; gap: 2px; }
+.flow-canvas { margin-top: 12px; overflow-x: auto; }
+.flow-svg { display: block; font-family: inherit; fill: var(--ink); stroke: none; stroke-width: 1; } /* 아이콘용 svg 규칙(16px·채움 없음·선) 풀기, 크기는 JS가 px로 */
+.flow-svg text { font-family: inherit; stroke: none; }
+.fl-lane { fill: var(--panel); stroke: var(--line); }
+.fl-lane-name { font-size: 14px; font-weight: 750; }
+.fl-lane-desc { font-size: 11.5px; fill: var(--ink-3); }
+.fl-box { fill: var(--panel); stroke: var(--line-2); stroke-width: 1.2; }
+.fl-step.optional .fl-box { stroke-dasharray: 6 5; stroke: var(--ink-3); }
+.fl-num { fill: var(--panel); font-size: 12px; font-weight: 700; text-anchor: middle; }
+.fl-title { fill: var(--ink); font-size: 14px; font-weight: 700; }
+.fl-detail { fill: var(--ink-2); font-size: 12.5px; }
+.fl-tag { fill: var(--ink-3); font-size: 11px; font-weight: 600; text-anchor: end; }
+.fl-stamp rect { fill: var(--panel-3); }
+.fl-stamp text { fill: var(--ink-2); font: 11.5px var(--mono); }
+.fl-stamp.play { cursor: pointer; }
+.fl-stamp.play:hover rect { fill: var(--accent-wash); }
+.fl-stamp.play:hover text { fill: var(--accent); }
+.fl-edge { fill: none; stroke: var(--ink-3); stroke-width: 1.6; }
+.fl-edge.dashed { stroke-dasharray: 4 4; }
+.fl-cont { fill: var(--ink-3); font-size: 11.5px; font-weight: 600; }
+.fl-cont.end { text-anchor: end; }
+.flow-parts { display: flex; flex-direction: column; gap: 10px; }
+.fl-arrowhead { fill: var(--ink-3); }
+.fl-anno-arc { fill: none; stroke: var(--accent); stroke-width: 1.2; stroke-dasharray: 3 3; }
+.fl-anno { fill: var(--accent); font-size: 11.5px; font-weight: 600; text-anchor: middle; }
+.fl-note rect { fill: var(--accent-wash); stroke: color-mix(in srgb, var(--accent) 35%, transparent); }
+.fl-note circle { fill: var(--accent); }
+.fl-note.info rect { fill: color-mix(in srgb, var(--s1) 10%, var(--panel)); stroke: color-mix(in srgb, var(--s1) 40%, transparent); }
+.fl-note.info circle { fill: var(--s1); }
+.fl-note-icon { fill: #fff; font-size: 11px; font-weight: 800; text-anchor: middle; }
+.fl-note-text { fill: var(--ink); font-size: 12.5px; }
+.fl-note-step { fill: var(--ink-3); font-size: 11px; font-weight: 600; text-anchor: end; }
+.handoff { padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; }
+.handoff-head { display: flex; align-items: baseline; gap: 10px; }
+.handoff-head b { font-size: 15px; }
+.handoff-head span { font-size: 12.5px; color: var(--ink-3); }
+.handoff-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 10px; }
+.handoff-col { padding: 10px 12px 10px 14px; border-radius: 10px; background: var(--panel-2); border-left: 3px solid var(--ink); }
+.handoff-col.todo { border-left-color: var(--accent); }
+.handoff-col.decided { border-left-color: var(--s1); }
+.handoff-col b { font-size: 13px; }
+.handoff-col ul { margin: 6px 0 0; padding-left: 16px; font-size: 13px; color: var(--ink-2); line-height: 1.6; }
+.handoff-col .flane { margin-left: 6px; }
 .flane { font-size: 11px; color: var(--ink-3); padding: 1px 6px; border-radius: 5px; background: var(--panel-3); }
-.farrow { display: grid; place-items: center; color: var(--ink-3); }
-.farrow svg { width: 16px; height: 16px; }
-.flow-notes { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.flow-notes li { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
-.flow-notes li > svg { width: 15px; height: 15px; flex: none; color: var(--accent); }
-.flow-row { display: flex; align-items: center; gap: 12px; margin-top: 36px; padding: 12px 14px; border: 1px dashed var(--line-2); border-radius: 12px; font-size: 13px; color: var(--ink-3); }
-.flow-row span { flex: 1; }
+.flow-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 36px; padding: 12px 14px; border: 1px dashed var(--line-2); border-radius: 12px; font-size: 13px; color: var(--ink-3); }
+.flow-row-text { flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 2px; }
+.flow-row-text b { color: var(--ink); font-size: 13.5px; }
+.flow-row-acts { display: flex; gap: 8px; }
+.flow-focus { width: 230px; height: 28px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel); color: var(--ink); font: inherit; font-size: 12.5px; outline: none; }
 .flow-row + .glossary { margin-top: 20px; }
 .glossary { margin-top: 36px; padding-top: 20px; border-top: 1px solid var(--line); }
 .glossary-head { display: flex; align-items: center; gap: 8px; }

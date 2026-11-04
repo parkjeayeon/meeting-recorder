@@ -599,15 +599,26 @@ ipcMain.handle('minutes:read', (_e, dir) => {
 });
 // 흐름도 글의 '화자 N'도 바꾼 이름으로 보여 준다 (파일은 그대로)
 function flowWithNames(d, names) {
-  const f = flowMod.readFlow(d);
+  const data = flowMod.readFlow(d);
   const fix = (t) => minutes.nameSpeakers(t, names, { prose: true });
-  for (const st of f?.flow?.steps ?? []) Object.assign(st, { title: fix(st.title), detail: fix(st.detail) });
-  for (const n of f?.flow?.notes ?? []) n.text = fix(n.text);
-  for (const l of f?.flow?.lanes ?? []) l.name = fix(l.name);
-  return f;
+  for (const f of data?.flows ?? []) {
+    Object.assign(f, { title: fix(f.title), summary: fix(f.summary) });
+    for (const st of f.steps ?? []) Object.assign(st, { title: fix(st.title), detail: fix(st.detail) });
+    for (const n of [...(f.notes ?? []), ...(f.annotations ?? [])]) n.text = fix(n.text);
+    for (const l of f.lanes ?? []) l.name = fix(l.name);
+  }
+  const h = data?.handoff;
+  if (h) {
+    Object.assign(h, { from: fix(h.from), to: fix(h.to) });
+    for (const x of [...h.give, ...h.todo, ...h.decided]) Object.assign(x, { text: fix(x.text), owner: fix(x.owner) });
+  }
+  return data;
 }
-ipcMain.handle('flow:make', (_e, dir) => flowMod.makeFlow(recordingDir(dir)));
-ipcMain.handle('flow:remove', (_e, dir) => flowMod.removeFlow(recordingDir(dir)));
+ipcMain.handle('flow:make', (_e, dir, focus) => flowMod.makeFlows(recordingDir(dir), { focus }));
+ipcMain.handle('flow:remake', (_e, dir, id, instruction) => flowMod.remakeFlow(recordingDir(dir), id, instruction));
+ipcMain.handle('flow:remove', (_e, dir, id) => flowMod.removeFlow(recordingDir(dir), id));
+ipcMain.handle('flow:chat', (_e, dir, id, messages) => flowMod.chatFlow(recordingDir(dir), id, messages));
+ipcMain.handle('flow:apply', (_e, dir, id, revision) => flowMod.applyRevision(recordingDir(dir), id, revision));
 function glossaryWithNames(d, names) {
   const g = glossary.readGlossary(d);
   for (const t of g?.terms ?? []) t.note = minutes.nameSpeakers(t.note, names, { prose: true });

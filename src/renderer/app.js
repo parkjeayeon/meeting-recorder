@@ -1095,7 +1095,8 @@ function pageMeeting(id) {
       tabs.length > 0 && h('div', { class: 'tabs', role: 'tablist' }, tabs.map(([tid, label, n]) =>
         h('button', { class: 'tab', role: 'tab', 'aria-selected': String(tid === tab), onclick: () => { tab = tid; draw(); } }, label, n && num(n)))),
       body,
-      chat && chatDrawer(r, doc));
+      chat && chatDrawer(r, doc),
+      flowChat && flowChatDrawer(r, doc));
     syncPlaying(true);
     if (findBar) runFind({ keep: true }); // 탭을 바꾸거나 다시 그려도 찾던 말을 그대로 표시
   }
@@ -1266,7 +1267,52 @@ function pageMeeting(id) {
           h('b', null, t.term), h('span', null, t.note), t.status !== 'confirmed' && h('i', { class: 'gl-badge' }, '추정')))));
   }
 
-  // ── 흐름도: 단계·순서가 녹취로 확인된 회의만 (src/flow.js). 회의록 요약 아래에 그리고, 없으면 아래쪽에 만들기 버튼 ──
+  // ── 흐름도 (src/flow.js): 사용자가 요청한 회의만. 회의록 요약 아래에 그림마다 카드 — 한 줄 요약·채팅·다시 만들기·지우기 ──
+  // 배치는 고정된 규칙: 띠(도구·담당)마다 가로줄, 같은 띠에서는 오른쪽으로, 띠를 바꾸면 같은 칸 위아래로 내려가고(꺾은선),
+  // 메모는 해당 단계 칸 아래에, 바뀐 경위는 해당 단계 위에 점선 호로. 색은 앱 값(CSS 변수), LLM 글은 글자로만 넣는다
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const svgEl = (tag, attrs = {}, ...kids) => {
+    const e = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) if (v !== null && v !== undefined && v !== false) e.setAttribute(k, String(v));
+    for (const k of kids.flat()) if (k !== null && k !== undefined && k !== false) e.append(k);
+    return e;
+  };
+  let measureCtx = null;
+  // 글자 폭을 재서 줄을 나눈다 (낱말 단위, 너무 긴 낱말은 글자 단위), 넘치면 말줄임
+  function wrapText(text, px, weight, maxW, maxLines) {
+    measureCtx ??= document.createElement('canvas').getContext('2d');
+    measureCtx.font = `${weight} ${px}px ${getComputedStyle(document.body).fontFamily}`;
+    const fits = (t) => measureCtx.measureText(t).width <= maxW;
+    const lines = [];
+    for (const para of String(text ?? '').split('\n')) {
+      let cur = '';
+      for (const word of para.split(/(\s+)/)) {
+        if (fits(cur + word)) cur += word;
+        else if (fits(word.trim())) {
+          lines.push(cur.trim());
+          cur = word.trim();
+        } else {
+          for (const ch of word) {
+            if (fits(cur + ch)) cur += ch;
+            else {
+              lines.push(cur);
+              cur = ch.trim();
+            }
+          }
+        }
+      }
+      lines.push(cur.trim());
+    }
+    const out = lines.filter((l, i) => l || i === 0);
+    if (out.length > maxLines) {
+      out.length = maxLines;
+      let last = out[maxLines - 1];
+      while (last && !fits(`${last}…`)) last = last.slice(0, -1);
+      out[maxLines - 1] = `${last}…`;
+    }
+    return out;
+  }
+
   // 화살표 순서대로 단계를 늘어놓는다 (들어오는 화살표가 없는 단계부터, 갈래는 나온 순서대로)
   function flowOrder(f) {
     const next = new Map(f.steps.map((s) => [s.id, []]));
@@ -1278,65 +1324,382 @@ function pageMeeting(id) {
     const out = [];
     const seen = new Set();
     const visit = (id) => {
-      if (seen.has(id)) return;
+      if (seen.has(id) || !next.has(id)) return;
       seen.add(id);
       out.push(id);
-      for (const n of next.get(id) ?? []) visit(n);
+      for (const n of next.get(id)) visit(n);
     };
     for (const s of f.steps) if (!into.has(s.id)) visit(s.id);
     for (const s of f.steps) visit(s.id);
     return out.map((id) => f.steps.find((s) => s.id === id));
   }
 
-  function flowBox(r, data) {
-    const f = data.flow;
-    const steps = flowOrder(f);
-    const num = new Map(steps.map((s, i) => [s.id, i + 1]));
-    const laneColor = new Map((f.lanes ?? []).map((l, i) => [l.id, `var(--s${(i % 6) + 1})`]));
-    const stamp = (at) => (r.firstFile ? h('button', { class: 'seek', title: '여기부터 듣기', onclick: () => seek(parseStamp(at)) }, at) : h('span', { class: 'num' }, at));
-    const remake = h('button', { class: 'btn small ghost', onclick: () => makeFlowNow(r, remake) }, icon('i-redo'), '다시 만들기');
-    const items = [];
-    steps.forEach((s, i) => {
-      if (i) items.push(h('span', { class: 'farrow', 'aria-hidden': 'true' }, icon('i-right')));
-      const lane = f.lanes?.find((l) => l.id === s.lane);
-      items.push(h('div', { class: `fstep${s.optional ? ' optional' : ''}`, style: lane ? `--lane:${laneColor.get(lane.id)}` : '', title: `녹취: “${s.quote}”` },
-        h('div', { class: 'fstep-head' }, h('span', { class: 'fnum' }, String(i + 1)), h('b', null, s.title)),
-        s.detail && h('p', null, s.detail),
-        h('div', { class: 'fstep-foot' }, stamp(s.at), lane && h('span', { class: 'flane' }, lane.name), s.optional && h('span', { class: 'flane' }, '선택'))));
-    });
-    return h('section', { class: 'flow' },
-      h('div', { class: 'flow-head' }, h('h3', null, '흐름'), f.title && h('span', { class: 'flow-title' }, f.title),
-        h('span', { class: 'tc-badge guess', title: '각 단계와 순서를 LLM이 뽑고, 녹취에 그 말이 있는지 앱이 확인했습니다' }, 'LLM 추정 · 녹취로 확인'),
-        h('span', { style: 'flex:1' }), remake,
-        h('button', { class: 'btn small ghost', onclick: async () => {
-          await api.removeFlow(r.dir);
-          toast('흐름도를 지웠습니다', '회의록 아래 "흐름도 만들기"로 다시 만들 수 있습니다');
-          refreshDoc(r);
-        } }, '지우기')),
-      (f.lanes?.length ?? 0) > 1 && h('div', { class: 'flow-lanes' }, f.lanes.map((l) => h('span', null, h('i', { style: `background:${laneColor.get(l.id)}` }), l.name))),
-      h('div', { class: 'flow-steps' }, items),
-      f.notes?.length > 0 && h('ul', { class: 'flow-notes' }, f.notes.map((n) =>
-        h('li', null, icon('i-alert'), num.has(n.step) && h('span', { class: 'fnum small' }, String(num.get(n.step))), h('span', null, n.text), stamp(n.at)))));
-  }
+  const FLOW = { BW: 164, GX: 36, GY: 46, PAD: 18, LABEL: 104 };
 
-  async function makeFlowNow(r, btn) {
-    btn.classList.add('busy');
-    btn.lastChild.textContent = '흐름 찾는 중… (30초 안팎)';
-    try {
-      const res = await api.makeFlow(r.dir);
-      toast(res.flow ? '흐름도를 만들었습니다' : '흐름도를 만들지 않았습니다', res.flow ? `${res.flow.steps.length}단계 · 녹취에서 근거를 확인했습니다` : res.reason ?? '', { ms: 7000 });
-    } catch (err) {
-      toast('흐름도를 만들지 못했습니다', err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { bad: true });
+  // 띠가 있는 흐름의 칸: 같은 띠는 오른쪽으로, 띠를 바꾸면 같은 칸 위아래로 (처음 들어가는 빈 띠만 한 칸 당겨 폭을 줄인다)
+  function placeLanes(steps, laneIdx) {
+    const pos = new Map();
+    const last = new Map();
+    let prev = null;
+    for (const s of steps) {
+      const row = laneIdx.get(s.lane) ?? 0;
+      const after = (last.get(row) ?? -1) + 1;
+      const col = !prev ? 0 : prev.row === row ? prev.col + 1 : last.has(row) ? Math.max(after, prev.col) : Math.max(after, prev.col - 1);
+      last.set(row, col);
+      prev = { row, col };
+      pos.set(s.id, prev);
     }
-    refreshDoc(r);
+    return pos;
   }
 
-  // 흐름도가 없을 때 회의록 아래에 두는 줄: 만든 적 없으면 만들기, 판단 결과 '흐름 없음'이면 그 이유와 다시 확인
+  // part: 넓은 그림을 여러 줄로 접을 때 한 줄에 들어갈 단계와 칸 (번호·띠 색은 그림 전체 기준을 이어 쓴다)
+  function flowSvgH(r, f, part = null, per = 4) {
+    const { BW, GX, GY, PAD } = FLOW;
+    const allLanes = f.lanes?.length > 1 ? f.lanes : [];
+    const steps = part?.steps ?? flowOrder(f);
+    const lanes = part?.lanes ?? allLanes;
+    const notesIn = [...(f.notes ?? [])];
+    let arcs = [];
+    const laneIdx = new Map(lanes.map((l, i) => [l.id, i]));
+    const colorIdx = new Map(allLanes.map((l, i) => [l.id, i]));
+    const laneColor = (id) => (colorIdx.has(id) ? `var(--s${(colorIdx.get(id) % 6) + 1})` : 'var(--ink)');
+    const numOf = part?.number ?? new Map(steps.map((s, i) => [s.id, i + 1]));
+    const LABEL = lanes.length ? FLOW.LABEL : 0;
+    // 칸 정하기
+    const pos = part?.pos ?? new Map();
+    if (part) {
+      // 칸은 이미 정해 왔다
+    } else if (lanes.length) {
+      for (const [id, p] of placeLanes(steps, laneIdx)) pos.set(id, p);
+    } else {
+      steps.forEach((s, i) => pos.set(s.id, { row: Math.floor(i / per), col: i % per }));
+    }
+    // 바뀐 경위: 같은 줄의 서로 다른 두 단계를 잇는 것만 호로, 나머지는 그 단계의 메모(정보)로
+    for (const a of f.annotations ?? []) {
+      const p = pos.get(a.from);
+      const q = pos.get(a.to);
+      if (!p || !q) continue;
+      if (p.row === q.row && a.from !== a.to) arcs.push(a);
+      else notesIn.push({ step: a.to, kind: 'info', text: a.text, at: a.at, quote: a.quote });
+    }
+    arcs = arcs.slice(0, 2);
+    const rows = Math.max(...[...pos.values()].map((p) => p.row)) + 1;
+    const cols = Math.max(...[...pos.values()].map((p) => p.col)) + 1;
+    // 상자 높이: 가장 긴 내용에 맞춘다
+    const box = new Map(steps.map((s) => [s.id, { title: wrapText(s.title, 14, 700, BW - (s.optional ? 82 : 52), 2), detail: wrapText(s.detail, 12.5, 400, BW - 28, 3) }]));
+    const BH = 30 + Math.max(...[...box.values()].map((b) => b.title.length * 19 + b.detail.length * 18)) + 34;
+    // 줄마다 위쪽 여유: 바뀐 경위 호가 있으면 더
+    const annRows = new Set(arcs.map((a) => pos.get(a.from).row));
+    const rowTop = [];
+    let y = PAD + (annRows.has(0) ? 30 : 4);
+    for (let i = 0; i < rows; i++) {
+      if (i) y += annRows.has(i) ? 30 : 0;
+      rowTop.push(y);
+      y += BH + GY;
+    }
+    const IN = part?.in?.length ? 64 : 0; // 앞 줄에서 이어지는 화살표 자리
+    const xOf = (c) => PAD + LABEL + IN + c * (BW + GX);
+    const bandTop = (i) => rowTop[i] - (annRows.has(i) ? 26 : 10);
+    const bandBottom = (i) => rowTop[i] + BH + 10;
+    const gapY = (i) => (i + 1 < rows ? (bandBottom(i) + bandTop(i + 1)) / 2 : bandBottom(i) + GY / 2); // i줄과 i+1줄 사이
+    const at = (id) => {
+      const p = pos.get(id);
+      return { x: xOf(p.col), y: rowTop[p.row], ...p };
+    };
+    // 메모: 단계 칸 아래에 쌓는다
+    const notesTop = rowTop[rows - 1] + BH + 26;
+    const noteBoxes = [];
+    const colY = new Map();
+    for (const n of notesIn) {
+      if (!pos.has(n.step)) continue;
+      const lines = wrapText(n.text, 12.5, 400, BW - 44, 4);
+      const h = 18 + lines.length * 18 + 26;
+      const c = pos.get(n.step).col;
+      const ny = colY.get(c) ?? notesTop;
+      noteBoxes.push({ n, lines, x: xOf(c), y: ny, h });
+      colY.set(c, ny + h + 10);
+    }
+    const W = xOf(cols) - GX + PAD + (part?.out?.length ? 70 : 0);
+    const H = Math.max(notesTop - 26, ...noteBoxes.map((b) => b.y + b.h)) + PAD;
+
+    const stamp = (x, yy, t) => {
+      const w = 10 + t.length * 7.3;
+      const g = svgEl('g', { class: `fl-stamp${r.firstFile ? ' play' : ''}`, transform: `translate(${x} ${yy})` },
+        svgEl('rect', { width: w, height: 19, rx: 5 }), svgEl('text', { x: 5, y: 13.5 }, t));
+      if (r.firstFile) {
+        g.addEventListener('click', () => seek(parseStamp(t)));
+        g.append(svgEl('title', {}, '여기부터 듣기'));
+      }
+      return g;
+    };
+    const svg = svgEl('svg', { class: 'flow-svg', width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': f.title });
+    // 앱 전체 svg 규칙(아이콘 16px)보다 앞서게. 넓으면 화면 폭에 맞춰 줄인다 (원래 크기보다 키우지는 않음)
+    svg.style.width = '100%';
+    svg.style.maxWidth = `${W}px`;
+    svg.style.height = 'auto';
+    const mid = `fl-arrow-${f.id}-${Math.random().toString(36).slice(2, 7)}`;
+    svg.append(svgEl('defs', {}, svgEl('marker', { id: mid, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse' }, svgEl('path', { d: 'M0 0L10 5L0 10z', class: 'fl-arrowhead' }))));
+    // 띠
+    lanes.forEach((l, i) => {
+      svg.append(svgEl('rect', { x: PAD - 6, y: bandTop(i), width: W - 2 * PAD + 12, height: bandBottom(i) - bandTop(i), rx: 12, class: 'fl-lane' }));
+      svg.append(svgEl('text', { x: PAD + 8, y: rowTop[i] + 20, class: 'fl-lane-name', style: `fill:${laneColor(l.id)}` }, l.name));
+      wrapText(l.desc, 11.5, 400, LABEL - 22, 3).forEach((t, k) => svg.append(svgEl('text', { x: PAD + 8, y: rowTop[i] + 40 + k * 16, class: 'fl-lane-desc' }, t)));
+    });
+    // 화살표 (상자 밑에 그린다)
+    const edgeLayer = svgEl('g', { class: 'fl-edges' });
+    for (const e of f.edges ?? []) {
+      if (!pos.has(e.from) || !pos.has(e.to)) continue;
+      const a = at(e.from);
+      const b = at(e.to);
+      let d;
+      if (a.row === b.row && b.col > a.col) d = `M${a.x + BW} ${a.y + BH / 2} L${b.x - 3} ${b.y + BH / 2}`;
+      else if (a.row === b.row) d = `M${a.x + BW / 2} ${a.y} V${a.y - 14} H${b.x + BW / 2} V${b.y - 3}`;
+      else if (a.col === b.col && Math.abs(b.row - a.row) === 1) d = b.row > a.row ? `M${a.x + BW / 2} ${a.y + BH} V${b.y - 3}` : `M${a.x + BW / 2} ${a.y} V${b.y + BH + 3}`;
+      // 다른 줄·다른 칸: 세로 → 두 줄 사이 빈 곳에서 가로 → 세로로 꺾어 상자·글을 가로지르지 않는다
+      // 두 줄 이상 건너가면 칸 사이 세로 통로로 내려가 가운데 줄의 상자를 가로지르지 않는다
+      else if (Math.abs(b.row - a.row) > 1) {
+        // 상자 옆면(받는 단계 쪽)에서 나가 바로 옆 통로로 내려간다 → 위아래로 드나드는 다른 선·바뀐 경위 글과 겹치지 않는다
+        const left = b.col < a.col; // 같은 칸이면 오른쪽 통로로
+        const sx = left ? a.x : a.x + BW;
+        const lane = left ? a.x - GX / 2 : a.x + BW + GX / 2;
+        const down = b.row > a.row;
+        d = `M${sx} ${a.y + BH / 2} H${lane} V${down ? gapY(b.row - 1) : gapY(b.row)} H${b.x + BW / 2} V${down ? b.y - 3 : b.y + BH + 3}`;
+      } else if (b.row > a.row) d = `M${a.x + BW / 2} ${a.y + BH} V${gapY(a.row)} H${b.x + BW / 2} V${b.y - 3}`;
+      else d = `M${a.x + BW / 2} ${a.y} V${gapY(b.row)} H${b.x + BW / 2} V${b.y + BH + 3}`;
+      edgeLayer.append(svgEl('path', { d, class: 'fl-edge', 'marker-end': `url(#${mid})` }));
+    }
+    svg.append(edgeLayer);
+    // 바뀐 경위: 해당 단계들 위에 점선 호와 글
+    for (const a of arcs) {
+      const p = at(a.from);
+      const q = at(a.to);
+      const x1 = Math.min(p.x, q.x) + BW / 2 - 40;
+      const x2 = Math.max(p.x, q.x) + BW / 2 + 40;
+      const top = q.y - 6;
+      svg.append(svgEl('path', { d: `M${x1} ${top} Q${(x1 + x2) / 2} ${top - 22} ${x2} ${top}`, class: 'fl-anno-arc' }));
+      svg.append(svgEl('text', { x: (x1 + x2) / 2, y: top - 16, class: 'fl-anno' }, a.text));
+    }
+    // 단계 상자
+    steps.forEach((s, i) => {
+      const p = at(s.id);
+      const b = box.get(s.id);
+      const g = svgEl('g', { class: `fl-step${s.optional ? ' optional' : ''}`, transform: `translate(${p.x} ${p.y})` },
+        svgEl('title', {}, `녹취: “${s.quote}”`),
+        svgEl('rect', { width: BW, height: BH, rx: 12, class: 'fl-box' }),
+        svgEl('circle', { cx: 21, cy: 23, r: 11, style: `fill:${laneColor(s.lane)}` }),
+        svgEl('text', { x: 21, y: 27.5, class: 'fl-num' }, String(numOf.get(s.id))),
+        b.title.map((t, k) => svgEl('text', { x: 40, y: 28 + k * 19, class: 'fl-title' }, t)),
+        b.detail.map((t, k) => svgEl('text', { x: 14, y: 30 + b.title.length * 19 + 6 + k * 18, class: 'fl-detail' }, t)),
+        s.optional && svgEl('text', { x: BW - 12, y: 27, class: 'fl-tag' }, '선택'));
+      g.append(stamp(14, BH - 30, s.at));
+      svg.append(g);
+    });
+    // 줄을 넘어가는 화살표: 오른쪽 끝으로 '다음 줄 N번으로', 왼쪽 끝에서 'N번에서 이어짐'
+    for (const o of part?.out ?? []) {
+      const p = at(o.from);
+      svg.append(svgEl('path', { d: `M${p.x + BW} ${p.y + BH / 2} H${W - PAD + 2}`, class: 'fl-edge', 'marker-end': `url(#${mid})` }));
+      svg.append(svgEl('text', { x: W - PAD, y: p.y + BH / 2 - 8, class: 'fl-cont end' }, `다음 줄 ${o.toNum}번으로`));
+    }
+    for (const o of part?.in ?? []) {
+      const p = at(o.to);
+      const x0 = PAD + LABEL + 4;
+      svg.append(svgEl('path', { d: `M${x0} ${p.y + BH / 2} H${p.x - 3}`, class: 'fl-edge dashed', 'marker-end': `url(#${mid})` }));
+      svg.append(svgEl('text', { x: x0, y: p.y + BH / 2 - 8, class: 'fl-cont' }, `${o.fromNum}번에서`));
+    }
+    // 메모
+    const num = numOf;
+    for (const { n, lines, x, y: ny, h } of noteBoxes) {
+      const g = svgEl('g', { class: `fl-note ${n.kind}`, transform: `translate(${x} ${ny})` },
+        svgEl('rect', { width: BW, height: h, rx: 10 }),
+        svgEl('circle', { cx: 16, cy: 18, r: 8 }),
+        svgEl('text', { x: 16, y: 22, class: 'fl-note-icon' }, n.kind === 'info' ? 'i' : '!'),
+        svgEl('text', { x: BW - 12, y: h - 15, class: 'fl-note-step' }, `${num.get(n.step)}번 단계`),
+        lines.map((t, k) => svgEl('text', { x: 32, y: 22 + k * 18, class: 'fl-note-text' }, t)));
+      g.append(stamp(32, h - 28, n.at));
+      svg.append(g);
+    }
+    svg.flowWidth = W;
+    svg.flowLayout = { steps, pos, lanes, cols };
+    return svg;
+  }
+
+  // 그림 놓을 폭 (회의 페이지 본문 폭 − 카드 여백)
+  function flowAvail() {
+    const v = $('view').clientWidth;
+    return v ? Math.min(v, 1040) - 88 - 36 : null;
+  }
+
+  // 넓으면 가로 그림을 여러 줄로 접는다 (80%보다 줄여야 할 때만). 단계 순서대로 앞에서부터 한 줄을 채우고,
+  // 들어갈 칸을 넘으면 다음 줄로 — 줄마다 배치를 새로 계산해 번호 순서가 섞이지 않고, 세로로 길게 늘이지 않는다
+  function flowSvg(r, f) {
+    const wide = flowSvgH(r, f);
+    const avail = flowAvail();
+    if (!avail || wide.flowWidth * 0.8 <= avail) return wide;
+    const { BW, GX, PAD } = FLOW;
+    const { steps, lanes } = wide.flowLayout;
+    const label = lanes.length ? FLOW.LABEL : 0;
+    const per = Math.max(2, Math.floor((avail / 0.85 - 2 * PAD - label - 70 - 64 + GX) / (BW + GX)));
+    if (!lanes.length) return flowSvgH(r, f, null, per); // 띠 없는 흐름은 한 줄 칸 수만 줄인다
+    const laneIdx = new Map(lanes.map((l, i) => [l.id, i]));
+    const chunks = [];
+    let cur = [];
+    for (const st of steps) {
+      const next = [...cur, st];
+      const cols = Math.max(...[...placeLanes(next, laneIdx).values()].map((p) => p.col)) + 1;
+      if (cur.length && cols > per) {
+        chunks.push(cur);
+        cur = [st];
+      } else cur = next;
+    }
+    if (cur.length) chunks.push(cur);
+    const number = new Map(steps.map((st, i) => [st.id, i + 1]));
+    const box = h('div', { class: 'flow-parts' });
+    for (const part of chunks) {
+      const partLanes = lanes.filter((l) => part.some((st) => st.lane === l.id));
+      const rowOf = new Map(partLanes.map((l, i) => [l.id, i]));
+      const partPos = placeLanes(part, rowOf);
+      const ids = new Set(part.map((st) => st.id));
+      const out = f.edges.filter((e) => ids.has(e.from) && !ids.has(e.to) && number.has(e.to)).map((e) => ({ from: e.from, toNum: number.get(e.to) }));
+      const inn = f.edges.filter((e) => ids.has(e.to) && !ids.has(e.from) && number.has(e.from)).map((e) => ({ to: e.to, fromNum: number.get(e.from) }));
+      box.append(flowSvgH(r, f, { steps: part, lanes: partLanes, pos: partPos, number, out, in: inn }));
+    }
+    return box;
+  }
+
+
+
+  function handoffBox(hd) {
+    const col = (head, cls, items) => items.length > 0 && h('div', { class: `handoff-col ${cls}` }, h('b', null, head),
+      h('ul', null, items.map((x) => h('li', null, x.text, x.owner && h('span', { class: 'flane' }, x.owner)))));
+    return h('section', { class: 'handoff' },
+      h('div', { class: 'handoff-head' }, h('b', null, '인수인계'), (hd.from || hd.to) && h('span', null, `${hd.from ?? ''} → ${hd.to ?? ''}`)),
+      h('div', { class: 'handoff-cols' },
+        col(`${hd.from ?? '넘기는 사람'}이 넘겨줄 것`, 'give', hd.give), col(`${hd.to ?? '받는 사람'}이 할 일`, 'todo', hd.todo), col('정해진 것', 'decided', hd.decided)));
+  }
+
+  function flowCard(r, f) {
+    const remake = h('button', { class: 'btn small ghost', onclick: async () => {
+      remake.classList.add('busy');
+      remake.lastChild.textContent = '다시 그리는 중… (1분 안팎)';
+      try {
+        await api.remakeFlow(r.dir, f.id);
+        toast('흐름도를 다시 만들었습니다', f.title);
+      } catch (err) {
+        toast('다시 만들지 못했습니다', err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { bad: true });
+      }
+      refreshDoc(r);
+    } }, icon('i-redo'), h('span', null, '다시 만들기'));
+    return h('section', { class: 'flow' },
+      h('div', { class: 'flow-head' },
+        h('div', { class: 'flow-titles' }, h('h3', null, f.title), f.summary && h('p', { class: 'flow-summary' }, f.summary)),
+        h('span', { class: 'tc-badge guess', title: '단계·메모는 LLM이 정리했고, 각 항목의 녹취 인용이 실제로 있는지 앱이 확인했습니다' }, 'LLM 정리 · 녹취로 확인'),
+        h('div', { class: 'flow-acts' },
+          h('button', { class: 'btn small ghost', onclick: () => openFlowChat(f.id) }, icon('i-chat'), '채팅'),
+          remake,
+          h('button', { class: 'btn small ghost', onclick: async () => {
+            await api.removeFlow(r.dir, f.id);
+            toast('흐름도를 지웠습니다', f.title);
+            refreshDoc(r);
+          } }, icon('i-trash'), '지우기'))),
+      h('div', { class: 'flow-canvas' }, flowSvg(r, f)));
+  }
+
+  function flowsSection(r, data) {
+    return h('div', { class: 'flows' }, data.flows.map((f) => flowCard(r, f)), data.handoff && handoffBox(data.handoff));
+  }
+
+  // 흐름도가 없을 때 회의록 아래 줄: 무엇을 그릴지(선택) 적고 만들기. 만들어 봤는데 없었으면 그 이유
   function flowRow(r, data) {
-    const btn = h('button', { class: 'btn small', onclick: () => makeFlowNow(r, btn) }, data ? '다시 확인' : '흐름도 만들기');
+    const input = h('input', { type: 'text', class: 'flow-focus', placeholder: '그릴 흐름 (선택) · 예: 데이터 처리 순서만', maxlength: 200, 'aria-label': '그릴 흐름' });
+    const btn = h('button', { class: 'btn small', onclick: async () => {
+      btn.classList.add('busy');
+      btn.lastChild.textContent = '흐름 정리하는 중… (1분 안팎)';
+      try {
+        const res = await api.makeFlow(r.dir, input.value);
+        toast(res.flows.length ? `흐름도 ${res.flows.length}장을 만들었습니다` : '그릴 흐름을 찾지 못했습니다', res.flows.length ? res.flows.map((f) => f.title).join(' · ') : res.reason ?? '', { ms: 7000 });
+      } catch (err) {
+        toast('흐름도를 만들지 못했습니다', err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { bad: true });
+      }
+      refreshDoc(r);
+    } }, icon('i-plus'), h('span', null, '흐름도 만들기'));
     return h('div', { class: 'flow-row' },
-      h('span', null, data ? `흐름도 없음 · ${data.reason ?? '단계로 정리할 흐름이 없습니다'}` : '인수인계·업무 절차처럼 단계와 순서가 설명된 회의는 흐름도로 정리할 수 있습니다.'),
-      btn);
+      h('div', { class: 'flow-row-text' }, h('b', null, '흐름도'),
+        h('span', null, data ? `그릴 흐름을 찾지 못했습니다 · ${data.reason ?? ''}` : '인수인계·업무 절차처럼 단계와 순서를 설명한 회의는 그림으로 정리할 수 있습니다. 원본·정리본·회의록을 모두 보고 만듭니다.')),
+      h('div', { class: 'flow-row-acts' }, input, btn));
+  }
+
+  // 그림마다 채팅: 고친 그림을 제안받아 '이대로 바꾸기'로 반영 (바꾼 그림도 녹취 인용을 다시 확인)
+  let flowChat = null; // { flowId, messages: [{ role, text, revision, applied }], busy, draft }
+  function openFlowChat(flowId) {
+    chat = null;
+    flowChat = { flowId, messages: [], busy: false, draft: '' };
+    draw();
+    setTimeout(() => document.querySelector('.chat textarea')?.focus(), 50);
+  }
+
+  function flowChatDrawer(r, doc) {
+    const f = doc.flow?.flows?.find((x) => x.id === flowChat.flowId);
+    if (!f) return null;
+    const log = h('div', { class: 'chat-log' });
+    if (!flowChat.messages.length) log.append(h('p', { class: 'chat-empty' }, '그림에서 고칠 점을 말해 주세요. 예: "3번과 4번 순서가 바뀌었어요", "업로드 뒤에 백업 단계도 있어요", "메모를 더 짧게". 녹취를 다시 보고 고친 그림을 제안합니다.'));
+    for (const m of flowChat.messages) {
+      const textEl = h('div', { class: 'msg-text' });
+      m.text.split(/\*\*(.+?)\*\*/g).forEach((part, i) => part && textEl.append(i % 2 ? h('b', null, part) : part));
+      const bubble = h('div', { class: `msg ${m.role}` }, textEl);
+      if (m.revision) {
+        bubble.append(h('div', { class: 'redo-result' },
+          h('div', { class: 'redo-lines' }, h('b', null, m.revision.title), flowOrder(m.revision).map((s, i) => h('div', { class: 'redo-line' }, h('span', { class: 'num' }, String(i + 1)), h('span', null, `${s.title} — ${s.detail}`)))),
+          m.applied
+            ? h('div', { class: 'proposal-state ok' }, icon('i-check'), '그림에 반영됨')
+            : h('div', { class: 'redo-acts' }, h('button', { class: 'btn small primary', onclick: async (e) => {
+              e.currentTarget.classList.add('busy');
+              try {
+                await api.applyFlow(r.dir, f.id, m.revision);
+                m.applied = true;
+                toast('흐름도를 고쳤습니다', m.revision.title);
+              } catch (err) {
+                toast('반영하지 못했습니다', err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { bad: true });
+              }
+              refreshDoc(r);
+            } }, '이대로 바꾸기'))));
+      }
+      log.append(bubble);
+    }
+    if (flowChat.busy) log.append(h('div', { class: 'msg assistant busy' }, h('div', { class: 'msg-text' }, '녹취를 다시 보고 있습니다…')));
+    const input = h('textarea', { rows: 2, placeholder: '예: 마지막에 백업 단계도 넣어 주세요', spellcheck: false });
+    input.value = flowChat.draft ?? '';
+    input.oninput = () => (flowChat.draft = input.value);
+    const send = async () => {
+      const text = input.value.trim();
+      if (!text || flowChat.busy) return;
+      flowChat.messages.push({ role: 'user', text });
+      flowChat.draft = '';
+      flowChat.busy = true;
+      draw();
+      try {
+        const res = await api.chatFlow(r.dir, f.id, flowChat.messages.map(({ role, text: t }) => ({ role, text: t })));
+        flowChat?.messages.push({ role: 'assistant', text: res.text + (res.dropped?.length ? `\n(녹취에서 확인되지 않은 항목 ${res.dropped.length}개는 뺐습니다)` : ''), revision: res.revision });
+      } catch (err) {
+        flowChat?.messages.push({ role: 'assistant', text: `답을 받지 못했습니다: ${err.message}` });
+      }
+      if (flowChat) flowChat.busy = false;
+      draw();
+      setTimeout(() => document.querySelector('.chat textarea')?.focus(), 30);
+    };
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        send();
+      }
+    };
+    const drawer = h('aside', { class: 'chat', 'aria-label': '흐름도 채팅' },
+      h('header', { class: 'chat-head' }, icon('i-chat'), h('b', null, '흐름도 채팅'), h('span', { style: 'flex:1' }),
+        h('button', { class: 'icon-btn', 'aria-label': '닫기', onclick: () => { flowChat = null; draw(); } }, icon('i-x'))),
+      h('div', { class: 'chat-ctx' }, h('span', { class: 'tag' }, f.title)),
+      log,
+      h('div', { class: 'chat-input' }, input, h('button', { class: 'icon-btn send', 'aria-label': '보내기', disabled: flowChat.busy, onclick: send }, icon('i-send'))));
+    requestAnimationFrame(() => (log.scrollTop = log.scrollHeight));
+    return drawer;
   }
 
   // 본문·스크립트에서 단어를 드래그하면 '설명 추가' 버튼을 띄운다
@@ -1434,8 +1797,8 @@ function pageMeeting(id) {
       if (!line.trim()) continue;
       if (heading) {
         if (heading[1] === '#') continue; // 제목은 페이지 머리에 있다
-        if (heading[1] === '##' && flowData?.flow && !flowPlaced && sawSummary) {
-          box.append(flowBox(r, flowData));
+        if (heading[1] === '##' && flowData?.flows?.length && !flowPlaced && sawSummary) {
+          box.append(flowsSection(r, flowData));
           flowPlaced = true;
         }
         if (heading[1] === '##') sawSummary = heading[2].trim() === '요약';
@@ -1448,8 +1811,8 @@ function pageMeeting(id) {
         box.append(p);
       }
     }
-    if (flowData?.flow && !flowPlaced) box.append(flowBox(r, flowData));
-    if (!flowData?.flow) box.append(flowRow(r, flowData));
+    if (flowData?.flows?.length && !flowPlaced) box.append(flowsSection(r, flowData));
+    if (!flowData?.flows?.length) box.append(flowRow(r, flowData));
     box.append(glossaryBox(r, docCache.get(r.id)?.glossary));
     if (openReview && /^## 확인 필요/m.test(md)) {
       const finalized = Boolean(docCache.get(r.id)?.review?.finalizedAt);
@@ -1544,6 +1907,7 @@ function pageMeeting(id) {
 
   function openChat(ids) {
     if (!ids.length) return;
+    flowChat = null;
     chat = { ids: [...ids], messages: [], busy: false, applying: new Set() };
     draw();
     setTimeout(() => document.querySelector('.chat textarea')?.focus(), 50);
@@ -2016,7 +2380,14 @@ function pageMeeting(id) {
   }
 
   const onTime = () => syncPlaying();
-  const onResize = () => player?.paint();
+  // 창 크기가 바뀌면 재생 막대를 다시 칠하고, 흐름도는 가로·세로 배치가 바뀔 수 있어 다시 그린다
+  let resizeTimer = null;
+  const onResize = () => {
+    player?.paint();
+    if (!docCache.get(id)?.flow?.flows?.length) return;
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => draw(), 250);
+  };
   // ── 본문 안 찾기 (⌘F): 지금 보고 있는 탭의 본문만. CSS Highlight로 표시만 하고 글은 고치지 않는다 ──
   let findScope = null; // draw()가 그린 탭 본문
   let findBar = null;
