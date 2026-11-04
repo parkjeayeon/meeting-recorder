@@ -25,6 +25,8 @@ npx electron scripts/dev/screens.js /tmp/mr-screens            # 홈·회의·�
 DARK=1 npx electron scripts/dev/screens.js /tmp/mr-screens     # 다크 모드
 OB_STEP=permissions npx electron scripts/dev/screens.js /tmp/mr-screens   # 처음 설정 단계 (welcome·permissions·token·engine·account·practice·done)
 W=960 H=640 npx electron scripts/dev/screens.js /tmp/mr-screens  # 최소 창 크기
+STUB_FOLDER=denied npx electron scripts/dev/screens.js /tmp/mr-screens   # macOS가 녹음 폴더 접근을 막은 상태 (홈 경고·빈 목록 안내)
+STUB_MINUTES=offline npx electron scripts/dev/screens.js /tmp/mr-screens # 인터넷이 끊겨 회의록 쓰기에서 멈춘 회의 (이어서 쓰기 버튼)
 ```
 예시 회의는 임시 폴더에 만들어 쓴다 (실제 회의 내용이 찍히지 않음). 실제 데이터로 찍은 캡처는 공개 저장소에 올리지 않는다.
 

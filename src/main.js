@@ -691,6 +691,15 @@ function listFolders(limit) {
 }
 
 ipcMain.handle('history:list', () => listHistory());
+// 녹음 폴더를 읽을 수 있는지. macOS가 문서 폴더 접근을 막으면(다시 설치해 서명이 바뀐 앱 등) 목록이 조용히 비므로 화면에 알린다
+ipcMain.handle('recordings:access', () => {
+  try {
+    fs.readdirSync(RECORDINGS_DIR);
+    return { ok: true, dir: RECORDINGS_DIR };
+  } catch (err) {
+    return { ok: false, dir: RECORDINGS_DIR, code: err.code ?? null };
+  }
+});
 ipcMain.handle('clipboard:write', (_e, text) => clipboard.writeText(text));
 ipcMain.handle('dict:repaste', async (_e, text) => {
   win.hide();
@@ -796,6 +805,7 @@ const SETTINGS_PANE = {
   inputMonitoring: 'Privacy_ListenEvent',
   systemAudio: 'Privacy_AudioCapture',
   accessibility: 'Privacy_Accessibility',
+  files: 'Privacy_FilesAndFolders',
 };
 
 function runPermissionsHelper(args) {

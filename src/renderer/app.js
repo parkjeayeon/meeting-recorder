@@ -253,7 +253,10 @@ async function run({ action, mode }) {
     } catch (err) {
       setRecording(null);
       api.failed();
-      toast('녹음을 시작하지 못했습니다', err.message, { bad: true, ms: 8000 });
+      if (/EPERM|EACCES|operation not permitted/i.test(err.message)) {
+        toast('녹음 폴더에 쓸 수 없습니다', 'macOS가 이 앱의 문서 폴더 접근을 막았습니다', { bad: true, ms: 10000, action: '권한 열기', onAction: () => api.permOpenSettings('files') });
+        loadHistory();
+      } else toast('녹음을 시작하지 못했습니다', err.message, { bad: true, ms: 8000 });
     }
     return;
   }
@@ -327,8 +330,31 @@ const dictations = () => history.filter((r) => r.mode === 'memo' && r.transcript
 const meetings = () => history.filter((r) => r.mode === 'meeting');
 const BUSY = ['queued', 'transcribe', 'write'];
 
+// macOS가 녹음 폴더(기본은 문서 폴더 안) 접근을 막으면 목록이 비어 보인다. 녹음이 사라진 게 아니라고 알린다
+const FOLDER_DENIED = new Set(['EPERM', 'EACCES']);
+function folderIssue(access) {
+  if (!access || access.ok) return null;
+  const denied = FOLDER_DENIED.has(access.code);
+  return {
+    title: '녹음 폴더를 읽을 수 없습니다',
+    detail: denied
+      ? `macOS가 이 앱의 ${tilde(access.dir)} 접근을 막았습니다. 녹음은 그대로 있습니다. 시스템 설정 › 파일 및 폴더에서 Meeting Recorder의 '문서 폴더'를 켜 주세요.`
+      : `${tilde(access.dir)}를 열지 못했습니다 (${access.code ?? '알 수 없는 오류'}).`,
+    action: denied ? '권한 열기' : null,
+    onAction: () => api.permOpenSettings('files'),
+    sec: 'general',
+  };
+}
+
+function folderEmpty() {
+  const i = issues.get('folder');
+  return i && h('div', { class: 'empty' }, h('b', null, i.title), i.detail, i.action && h('br'), i.action && h('button', { class: 'btn', onclick: i.onAction }, i.action));
+}
+
 async function loadHistory() {
-  history = await api.history();
+  const [list, access] = await Promise.all([api.history(), api.recordingsAccess()]);
+  history = list;
+  setIssue('folder', folderIssue(access));
   $('countDict').textContent = dictations().length || '';
   $('countMeet').textContent = meetings().length || '';
   refresh();
@@ -756,7 +782,8 @@ function pageDictations() {
     const all = dictations();
     count.textContent = all.length || '';
     const items = q ? all.filter((r) => `${r.transcript.text ?? ''} ${r.transcript.raw} ${r.app ?? ''}`.toLowerCase().includes(q)) : all;
-    if (!all.length) list.replaceChildren(h('div', { class: 'empty' }, h('b', null, '아직 받아쓴 글이 없습니다'), '아무 입력칸에 커서를 두고 ', h('kbd', null, 'fn'), '을 꾹 누른 채 말해 보세요.'));
+    if (!all.length && issues.has('folder')) list.replaceChildren(folderEmpty());
+    else if (!all.length) list.replaceChildren(h('div', { class: 'empty' }, h('b', null, '아직 받아쓴 글이 없습니다'), '아무 입력칸에 커서를 두고 ', h('kbd', null, 'fn'), '을 꾹 누른 채 말해 보세요.'));
     else if (!items.length) list.replaceChildren(h('div', { class: 'empty' }, h('b', null, '찾는 글이 없습니다'), `"${q}"가 들어간 받아쓰기가 없습니다.`));
     else list.replaceChildren(...groupByDay(items, (r) => dictItem(r), 'dlist'));
   };
@@ -799,7 +826,8 @@ function pageMeetings() {
       h('span', null, `회의록이 없는 녹음 ${failedOnes.length}개`),
       h('button', { class: 'btn small', onclick: () => trashMeetings(failedOnes) }, icon('i-trash'), '모두 휴지통으로'),
     ] : []));
-    if (!all.length) list.replaceChildren(h('div', { class: 'empty' }, h('b', null, '아직 회의 녹음이 없습니다'), '회의를 시작할 때 위쪽 회의 녹음을 누르세요. 끝나면 녹취와 회의록이 만들어집니다.', h('br'), h('button', { class: 'btn rec', onclick: openMeetingStart }, icon('i-rec'), '회의 녹음 시작')));
+    if (!all.length && issues.has('folder')) list.replaceChildren(folderEmpty());
+    else if (!all.length) list.replaceChildren(h('div', { class: 'empty' }, h('b', null, '아직 회의 녹음이 없습니다'), '회의를 시작할 때 위쪽 회의 녹음을 누르세요. 끝나면 녹취와 회의록이 만들어집니다.', h('br'), h('button', { class: 'btn rec', onclick: openMeetingStart }, icon('i-rec'), '회의 녹음 시작')));
     else if (!items.length) list.replaceChildren(h('div', { class: 'empty' }, h('b', null, '맞는 회의가 없습니다'), '검색어나 필터를 바꿔 보세요.'));
     else {
       // 회의록이 있거나 만드는 중인 회의는 카드, 녹음만·실패·들린 말 없음은 한 줄로 접는다

@@ -13,9 +13,14 @@ const read = (f) => {
     return null;
   }
 };
-const meeting = dir && {
+// STUB_FOLDER=denied: macOS가 녹음 폴더 접근을 막은 상태 · STUB_MINUTES=offline: 인터넷이 끊겨 회의록 쓰기에서 멈춘 상태
+const denied = process.env.STUB_FOLDER === 'denied';
+const minutes = process.env.STUB_MINUTES === 'offline'
+  ? { status: 'error', stage: 'write', offline: true, error: 'fetch failed', speakers: 2 }
+  : { status: 'done', title: '예시 회의: 배포 일정 정리', speakers: 2, provider: 'claude-code' };
+const meeting = dir && !denied && {
   id: path.basename(dir), dir, mode: 'meeting', startedAt: '2026-11-01T14:00:00Z', durationSec: 1800, tracks: ['mic'], firstFile: 'mic.wav',
-  minutes: { status: 'done', title: '예시 회의: 배포 일정 정리', speakers: 2, provider: 'claude-code' },
+  minutes,
   summary: '배포 일정과 QA 범위를 정리한 예시 회의입니다.',
   review: { open: 1, total: 1, finalized: false },
 };
@@ -23,6 +28,7 @@ const noop = () => {};
 const impl = {
   info: async () => ({ recordingsDir: '/Users/me/Documents/MeetingRecorder', defaultRecordingsDir: '/Users/me/Documents/MeetingRecorder' }),
   history: async () => (meeting ? [meeting] : []),
+  recordingsAccess: async () => (denied ? { ok: false, dir: '/Users/me/Documents/MeetingRecorder', code: 'EPERM' } : { ok: true }),
   dictSettings: async () => ({ enabled: true, language: 'ko', cleanup: true, provider: 'auto', vocabulary: 'PJY, Whisper', minutes: true, diarize: true, diarizeReady: true, hasHfToken: true, meetingSystemAudio: false, engine: { state: 'ready' } }),
   providers: async () => ({ 'claude-code': { installed: true, loggedIn: true, account: 'me@example.com' }, codex: { installed: true, loggedIn: false }, api: { installed: true, loggedIn: false } }),
   permStatus: async () => ({ microphone: 'granted', inputMonitoring: process.env.OB_STEP === 'permissions' ? 'denied' : 'granted', accessibility: 'granted', systemAudio: 'granted' }),

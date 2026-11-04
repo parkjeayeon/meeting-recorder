@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('recorderApi', {
   onDictStage: (cb) => ipcRenderer.on('dict:stage', (_e, s) => cb(s)),
   providers: (opts) => ipcRenderer.invoke('dict:providers', opts),
   history: () => ipcRenderer.invoke('history:list'),
+  recordingsAccess: () => ipcRenderer.invoke('recordings:access'),
   copy: (text) => ipcRenderer.invoke('clipboard:write', text),
   repaste: (text) => ipcRenderer.invoke('dict:repaste', text),
   makeMinutes: (dir, speakers) => ipcRenderer.invoke('minutes:make', dir, speakers),
