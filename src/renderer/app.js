@@ -1322,11 +1322,12 @@ function pageMeeting(id) {
     refreshDoc(r);
   }
 
-  // 이 기능 전에 만든 회의: 회의록 아래에 '액션 찾기'
-  function actionsRow(r) {
-    const btn = h('button', { class: 'btn small', onclick: () => findActions(r, btn) }, icon('i-check'), h('span', null, '액션 찾기'));
+  // 회의록 아래 '액션 찾기' (요청할 때만 만든다). 찾아봤는데 없었으면 그렇다고 보여 주고 다시 찾을 수 있게
+  function actionsRow(r, data) {
+    const btn = h('button', { class: 'btn small', onclick: () => findActions(r, btn) }, icon('i-check'), h('span', null, data ? '다시 찾기' : '액션 찾기'));
     return h('div', { class: 'flow-row' },
-      h('div', { class: 'flow-row-text' }, h('b', null, '액션'), h('span', null, '약속하거나 맡은 할 일과 받은 조언을 찾아 따로 정리합니다. 있을 때만 "액션" 탭이 생깁니다.')),
+      h('div', { class: 'flow-row-text' }, h('b', null, '액션'),
+        h('span', null, data ? '찾아봤지만 약속한 할 일이나 남길 조언이 없었습니다.' : '약속하거나 맡은 할 일과 받은 조언을 찾아 따로 정리합니다. 있을 때만 "액션" 탭이 생깁니다.')),
       h('div', { class: 'flow-row-acts' }, btn));
   }
 
@@ -1875,7 +1876,8 @@ function pageMeeting(id) {
       }
     }
     if (flowData?.flows?.length && !flowPlaced) box.append(flowsSection(r, flowData));
-    if (!docCache.get(r.id)?.actions) box.append(actionsRow(r));
+    const actData = docCache.get(r.id)?.actions;
+    if (!actData?.actions?.length && !actData?.advice?.length) box.append(actionsRow(r, actData));
     if (!flowData?.flows?.length) box.append(flowRow(r, flowData));
     box.append(glossaryBox(r, docCache.get(r.id)?.glossary));
     if (openReview && /^## 확인 필요/m.test(md)) {
