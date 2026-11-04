@@ -707,6 +707,7 @@ function applyReview(dir, fixes) {
     const guess = (fix.guess ?? '').trim();
     if (!heard || !guess || heard === guess || !texts['transcript.txt'].includes(heard)) continue;
     let count = 0;
+    const cleanHad = texts['script-clean.txt'].includes(heard);
     for (const f of files) {
       if (f === 'minutes.md') {
         // 확인 필요 섹션은 원래 기록으로 남기고 본문만 고친다
@@ -716,6 +717,15 @@ function applyReview(dir, fixes) {
       } else {
         count += texts[f].split(heard).length - 1;
         texts[f] = texts[f].split(heard).join(guess);
+      }
+    }
+    // 유실 구간을 채운 경우: 정리본이 그 줄('아 그렇구나' 같은 맞장구)을 쳐내 바꿀 글자가 없으면,
+    // 원본에서 고쳐진 줄을 정리본의 같은 시각 자리에 넣는다 (오인식 단어는 쳐낸 줄이면 그대로 둔다)
+    if (item.kind === 'lost' && !cleanHad && texts['script-clean.txt']) {
+      for (const line of texts['transcript.txt'].split('\n').filter((l) => l.includes(guess))) {
+        const at = /^\[([\d:]+)\]/.exec(line)?.[1];
+        if (!at || texts['script-clean.txt'].includes(line)) continue;
+        texts['script-clean.txt'] = spliceLines(texts['script-clean.txt'], parseClock(at), parseClock(at), [line]);
       }
     }
     Object.assign(item, { status: 'applied', heard, applied: guess, count });
