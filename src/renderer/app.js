@@ -928,6 +928,23 @@ $('importYes').onclick = async () => {
 
 // ── 회의 상세 ───────────────────────────────────────────────────────────
 const docCache = new Map(); // 회의 id → { minutes, transcript, scriptClean }
+
+// 오래 걸리는 LLM 작업(흐름도 만들기·다시 만들기, 액션 찾기)을 회의별로 기억한다.
+// 탭을 옮기거나 화면을 다시 그리면 버튼이 새로 만들어져 '정리하는 중…'이 사라지고, 다시 누르면 같은 작업이 두 번 돌았다.
+const jobs = new Map(); // `${dir}|흐름도` 같은 키 → { promise, label }
+function runJob(key, label, fn) {
+  if (!jobs.has(key)) jobs.set(key, { label, promise: fn().finally(() => jobs.delete(key)) });
+  return jobs.get(key).promise;
+}
+// 진행 중이면 버튼을 돌아가는 표시 + 누를 수 없게
+function markBusy(btn, key) {
+  const job = jobs.get(key);
+  if (!job) return btn;
+  btn.classList.add('busy');
+  btn.disabled = true;
+  btn.lastChild.textContent = job.label;
+  return btn;
+}
 const audio = new Audio(); // 문서 밖에 두어 화면을 다시 그려도 재생이 끊기지 않는다
 audio.preload = 'metadata';
 let audioFor = null;
@@ -1312,17 +1329,19 @@ function pageMeeting(id) {
       groups.map((g) => h('div', { class: 'act-group' }, h('h4', null, g),
         h('ul', null, data.advice.filter((a) => a.group === g).map((a) => h('li', { title: `녹취: “${a.quote}”` },
           h('span', null, a.key && '★ ', a.text), h('span', { class: 'act-meta inline' }, who(a), stamp(a.at))))))));
-    const again = h('button', { class: 'btn small ghost', onclick: () => findActions(r, again) }, icon('i-redo'), h('span', null, '다시 찾기'));
+    const again = markBusy(h('button', { class: 'btn small ghost', onclick: () => findActions(r, again) }, icon('i-redo'), h('span', null, '다시 찾기')), `${r.dir}|액션`);
     return h('div', { class: 'acts' },
       h('div', { class: 'tab-bar' }, h('span', null, '회의가 끝난 뒤 챙길 것입니다. LLM이 원본·정리본·회의록을 보고 고르고, 각 항목의 녹취 인용을 앱이 확인했습니다. 체크는 회의록의 할 일과 따로 저장됩니다.'), again),
       todo, advice);
   }
 
   async function findActions(r, btn) {
-    btn.classList.add('busy');
-    btn.lastChild.textContent = '찾는 중… (1분 안팎)';
+    const key = `${r.dir}|액션`;
+    if (jobs.has(key)) return;
+    const run = runJob(key, '찾는 중… (1분 안팎)', () => api.makeActions(r.dir));
+    markBusy(btn, key);
     try {
-      const res = await api.makeActions(r.dir);
+      const res = await run;
       toast(res.actions.length || res.advice.length ? '액션을 정리했습니다' : '챙길 할 일이나 조언을 찾지 못했습니다',
         res.actions.length || res.advice.length ? `할 일 ${res.actions.length}개 · ${res.adviceTitle ?? '조언'} ${res.advice.length}개` : '이 대화에는 약속한 일이나 남길 조언이 없었습니다', { ms: 7000 });
       if (res.actions.length || res.advice.length) tab = 'actions';
@@ -1334,7 +1353,7 @@ function pageMeeting(id) {
 
   // 회의록 아래 '액션 찾기' (요청할 때만 만든다). 찾아봤는데 없었으면 그렇다고 보여 주고 다시 찾을 수 있게
   function actionsRow(r, data) {
-    const btn = h('button', { class: 'btn small', onclick: () => findActions(r, btn) }, icon('i-check'), h('span', null, data ? '다시 찾기' : '액션 찾기'));
+    const btn = markBusy(h('button', { class: 'btn small', onclick: () => findActions(r, btn) }, icon('i-check'), h('span', null, data ? '다시 찾기' : '액션 찾기')), `${r.dir}|액션`);
     return h('div', { class: 'flow-row' },
       h('div', { class: 'flow-row-text' }, h('b', null, '액션'),
         h('span', null, data ? '찾아봤지만 약속한 할 일이나 남길 조언이 없었습니다.' : '약속하거나 맡은 할 일과 받은 조언을 찾아 따로 정리합니다. 있을 때만 "액션" 탭이 생깁니다.')),
@@ -1652,17 +1671,19 @@ function pageMeeting(id) {
   }
 
   function flowCard(r, f) {
-    const remake = h('button', { class: 'btn small ghost', onclick: async () => {
-      remake.classList.add('busy');
-      remake.lastChild.textContent = '다시 그리는 중… (1분 안팎)';
+    const remakeKey = `${r.dir}|흐름도 다시|${f.id}`;
+    const remake = markBusy(h('button', { class: 'btn small ghost', onclick: async () => {
+      if (jobs.has(remakeKey)) return;
+      const run = runJob(remakeKey, '다시 그리는 중… (1분 안팎)', () => api.remakeFlow(r.dir, f.id));
+      markBusy(remake, remakeKey);
       try {
-        await api.remakeFlow(r.dir, f.id);
+        await run;
         toast('흐름도를 다시 만들었습니다', f.title);
       } catch (err) {
         toast('다시 만들지 못했습니다', err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { bad: true });
       }
       refreshDoc(r);
-    } }, icon('i-redo'), h('span', null, '다시 만들기'));
+    } }, icon('i-redo'), h('span', null, '다시 만들기')), remakeKey);
     return h('section', { class: 'flow' },
       h('div', { class: 'flow-head' },
         h('div', { class: 'flow-titles' }, h('h3', null, f.title), f.summary && h('p', { class: 'flow-summary' }, f.summary)),
@@ -1685,17 +1706,21 @@ function pageMeeting(id) {
   // 흐름도가 없을 때 회의록 아래 줄: 무엇을 그릴지(선택) 적고 만들기. 만들어 봤는데 없었으면 그 이유
   function flowRow(r, data) {
     const input = h('input', { type: 'text', class: 'flow-focus', placeholder: '그릴 흐름 (선택) · 예: 데이터 처리 순서만', maxlength: 200, 'aria-label': '그릴 흐름' });
-    const btn = h('button', { class: 'btn small', onclick: async () => {
-      btn.classList.add('busy');
-      btn.lastChild.textContent = '흐름 정리하는 중… (1분 안팎)';
+    const key = `${r.dir}|흐름도`;
+    const btn = markBusy(h('button', { class: 'btn small', onclick: async () => {
+      if (jobs.has(key)) return;
+      const run = runJob(key, '흐름 정리하는 중… (1분 안팎)', () => api.makeFlow(r.dir, input.value));
+      markBusy(btn, key);
+      input.disabled = true;
       try {
-        const res = await api.makeFlow(r.dir, input.value);
+        const res = await run;
         toast(res.flows.length ? `흐름도 ${res.flows.length}장을 만들었습니다` : '그릴 흐름을 찾지 못했습니다', res.flows.length ? res.flows.map((f) => f.title).join(' · ') : res.reason ?? '', { ms: 7000 });
       } catch (err) {
         toast('흐름도를 만들지 못했습니다', err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { bad: true });
       }
       refreshDoc(r);
-    } }, icon('i-plus'), h('span', null, '흐름도 만들기'));
+    } }, icon('i-plus'), h('span', null, '흐름도 만들기')), key);
+    if (jobs.has(key)) input.disabled = true;
     return h('div', { class: 'flow-row' },
       h('div', { class: 'flow-row-text' }, h('b', null, '흐름도'),
         h('span', null, data ? `그릴 흐름을 찾지 못했습니다 · ${data.reason ?? ''}` : '인수인계·업무 절차처럼 단계와 순서를 설명한 회의는 그림으로 정리할 수 있습니다. 원본·정리본·회의록을 모두 보고 만듭니다.')),

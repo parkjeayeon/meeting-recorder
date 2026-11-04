@@ -1,4 +1,5 @@
-// 화면 테스트: 입력칸마다 실제 키 입력(영어 a·b + Backspace)을 보내 값이 'a'가 되는지, 오류 알림 글자가 배경과 구분되는지.
+// 화면 테스트: 입력칸마다 실제 키 입력(영어 a·b + Backspace)을 보내 값이 'a'가 되는지, 오류 알림 글자가 배경과 구분되는지,
+// 오래 걸리는 작업이 탭을 옮겨도 진행 중으로 보이고 한 번만 도는지.
 //   npx electron scripts/dev/ui-test.js     (npm run dist가 빌드 전에 돌린다)
 // 가짜 데이터(stub-preload.js)로 메인 창을 숨긴 채 띄운다. 실제 기록·설정·녹음은 건드리지 않는다.
 // 왜: 키 처리기가 값을 돌려주면(`onkeydown = (e) => 조건 && 동작`) 영어·Backspace가 막히고 한글만 써지는 버그를 두 번 겪었다.
@@ -75,9 +76,37 @@ app.whenReady().then(async () => {
     results.push([name, value === 'a', `값 ${JSON.stringify(value)} (기대 "a")`]);
   }
 
-  // 오류 알림: 글자색이 배경색과 달라야 한다 (전역 '.bad { color … !important }'가 글자를 배경색으로 칠해 빈 막대로 보인 적이 있다)
-  await js(`[...document.querySelectorAll('.ritem-done button')].find(b=>b.textContent.includes('취소'))?.click()`);
+  // 오래 걸리는 작업(액션 찾기): 탭을 옮겼다 돌아와도 '찾는 중'이 남고 누를 수 없어야, 다시 눌러도 한 번만 돌아야 한다
+  fs.writeFileSync(path.join(meeting, 'actions.json'), JSON.stringify({ kind: 'work', adviceTitle: '알아 둘 것', actions: [{ id: 'a1', owner: '화자 2', task: 'QA 마치기', due: null, kind: 'assigned', at: '00:06', quote: 'x', done: false }], advice: [] }));
+  const tabClick = (t) => js(`[...document.querySelectorAll('.tab')].find(t=>t.textContent.startsWith(${JSON.stringify(t)}))?.click()`);
+  await js(`document.querySelector('.ritem-done button')?.click()`); // 고치기 입력 닫기 (취소)
+  await js(`location.hash='#meetings'`);
   await wait(400);
+  await js(`location.hash='#meeting/${id}'`);
+  await wait(900);
+  await tabClick('액션');
+  await wait(500);
+  const again = `[...document.querySelectorAll('.acts .tab-bar button')].find(b=>b.textContent.includes('찾'))`;
+  await js(`${again}?.click()`);
+  await wait(200);
+  await tabClick('회의록');
+  await wait(400);
+  await tabClick('액션');
+  await wait(400);
+  const busy = await js(`(() => { const b = ${again}; return b ? { busy: b.classList.contains('busy'), disabled: b.disabled, text: b.textContent } : null; })()`);
+  await js(`${again}?.click()`);
+  await wait(3200);
+  const calls = await js('window.stubCalls().makeActions ?? 0');
+  results.push(['진행 중 표시 유지 (탭 옮긴 뒤)', Boolean(busy?.busy && busy.disabled), busy ? `busy ${busy.busy} · disabled ${busy.disabled} · "${busy.text}"` : '버튼을 찾지 못함']);
+  results.push(['같은 작업 한 번만', calls === 1, `액션 찾기 ${calls}번 호출`]);
+
+  // 처리함 되돌리기 버튼을 다시 띄운다
+  await tabClick('확인 필요');
+  await wait(400);
+  await js(`[...document.querySelectorAll('button')].find(b=>b.textContent.startsWith('처리함'))?.click()`);
+  await wait(400);
+
+  // 오류 알림: 글자색이 배경색과 달라야 한다 (전역 '.bad { color … !important }'가 글자를 배경색으로 칠해 빈 막대로 보인 적이 있다)
   await js(`[...document.querySelectorAll('.ritem-done button')].find(b=>b.textContent.includes('되돌리기'))?.click()`); // 가짜 API가 아무것도 돌려주지 않아 오류 알림이 뜬다
   await wait(600);
   const toast = await js(`(() => { const t = document.querySelector('#toasts .toast.bad'); if (!t) return null; const b = t.querySelector('b'); return { bg: getComputedStyle(t).backgroundColor, fg: getComputedStyle(b).color, text: t.textContent }; })()`);

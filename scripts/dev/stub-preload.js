@@ -84,6 +84,12 @@ const impl = {
     fs.writeFileSync(path.join(dir, 'glossary.json'), JSON.stringify(g));
     return g;
   },
+  // 오래 걸리는 LLM 작업 흉내 (화면 테스트가 진행 중 표시·중복 실행을 본다)
+  makeActions: async () => {
+    calls.makeActions = (calls.makeActions ?? 0) + 1;
+    await new Promise((r) => setTimeout(r, +(process.env.STUB_JOB_MS || 2500)));
+    return JSON.parse(read('actions.json') ?? '{"actions":[],"advice":[]}');
+  },
   onboardingGet: async () => ({ completed: !process.env.OB_STEP, step: process.env.OB_STEP || 'done' }),
   setupStatus: async () => [
     { id: 'engine', name: '음성 인식 엔진', desc: 'whisper.cpp (Homebrew로 설치)', installed: true, size: null, removable: false },
@@ -92,7 +98,9 @@ const impl = {
     { id: 'diarize', name: '화자 구분', desc: 'pyannote', installed: true, size: 1.17e9, removable: true },
   ],
 };
+const calls = {};
 const keys = [...fs.readFileSync(path.join(__dirname, '../../src/preload.js'), 'utf8').matchAll(/^\s{2}(\w+):/gm)].map((m) => m[1]);
 const api = {};
 for (const k of keys) api[k] = impl[k] ?? (k.startsWith('on') ? noop : async () => null);
 contextBridge.exposeInMainWorld('recorderApi', api);
+contextBridge.exposeInMainWorld('stubCalls', () => ({ ...calls }));
