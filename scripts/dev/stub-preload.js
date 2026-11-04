@@ -52,6 +52,21 @@ const impl = {
   tokenStatus: async () => ({ hf: { cli: true }, anthropic: {} }),
   verifyToken: async () => ({ ok: true, message: '예시 계정 · 화자 구분 모델 사용 가능' }),
   readMinutes: async () => ({ minutes: read('minutes.md'), transcript: read('transcript.txt'), scriptClean: read('script-clean.txt'), review: JSON.parse(read('review.json') ?? 'null'), glossary: JSON.parse(read('glossary.json') ?? 'null') }),
+  redoRange: async (_dir, id, start, end) => {
+    const review = JSON.parse(read('review.json'));
+    const lines = [{ start: start + 2, end: start + 9, text: '그 부분은 로그를 심어서 확인할 예정입니다.', label: '화자 2' }, { start: start + 11, end: start + 18, text: '네, 알겠습니다.', label: '화자 1' }];
+    review.items.find((it) => it.id === id).redo = { start, end, lines, gain: 3.2 };
+    fs.writeFileSync(path.join(dir, 'review.json'), JSON.stringify(review));
+    const mmss = (x) => `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(Math.floor(x % 60)).padStart(2, '0')}`;
+    return { start, end, gain: 3.2, empty: false, text: lines.map((l) => `[${mmss(l.start)}] [${l.label}] ${l.text}`).join('\n') };
+  },
+  applyRedo: async (_dir, id) => {
+    const review = JSON.parse(read('review.json'));
+    Object.assign(review.items.find((it) => it.id === id), { status: 'applied', applied: '구간 다시 받아씀', count: 2 });
+    review.items.find((it) => it.id === id).redo.appliedAt = new Date().toISOString();
+    fs.writeFileSync(path.join(dir, 'review.json'), JSON.stringify(review));
+    return review;
+  },
   updateTerm: async (_dir, id, patch) => {
     const g = JSON.parse(read('glossary.json'));
     for (const t of g.terms) if (id === '*' || t.id === id) Object.assign(t, patch.status ? { status: patch.status } : {}, patch.note ? { note: patch.note, edited: true, status: 'confirmed' } : {});

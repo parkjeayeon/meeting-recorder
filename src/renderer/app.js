@@ -1406,6 +1406,47 @@ function pageMeeting(id) {
     refreshDoc(r);
   }
 
+  // 구간 다시 받아쓰기 범위: 설명에 'mm:ss~mm:ss'가 있으면 그 구간, 없으면 항목 시각 앞 10초~뒤 50초
+  function itemRange(it) {
+    const m = /(\d{1,2}:\d{2}(?::\d{2})?)\s*[~∼–-]\s*(\d{1,2}:\d{2}(?::\d{2})?)/.exec(`${it.note ?? ''} ${it.heardNote ?? ''}`);
+    if (m && parseStamp(m[2]) > parseStamp(m[1])) return { start: parseStamp(m[1]), end: parseStamp(m[2]) };
+    if (!it.at) return null;
+    const at = parseStamp(it.at);
+    return { start: Math.max(0, at - 10), end: at + 50 };
+  }
+
+  async function runRedo(r, itemId, range) {
+    if (!chat || chat.redoing) return;
+    chat.redoing = itemId;
+    draw();
+    try {
+      const res = await api.redoRange(r.dir, itemId, range.start, range.end);
+      const span = `${clock(res.start)}~${clock(res.end)}`;
+      chat?.messages.push({
+        role: 'assistant',
+        text: res.empty
+          ? `${span} 구간을 다시 받아써도 알아들을 수 있는 말이 없었습니다. 녹음을 직접 들어 보세요.`
+          : `${span} 구간을 다시 받아썼습니다${res.gain > 1.05 ? ` (작은 소리를 ${res.gain}배 키움)` : ''}. 녹취에 반영하면 이 구간 줄만 바뀌고 다른 줄은 그대로입니다.`,
+        redo: { id: itemId, ...res },
+      });
+    } catch (err) {
+      chat?.messages.push({ role: 'assistant', text: `다시 받아쓰지 못했습니다: ${err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')}` });
+    }
+    if (chat) chat.redoing = null;
+    draw();
+  }
+
+  async function applyRedo(r, itemId) {
+    try {
+      const review = await api.applyRedo(r.dir, itemId);
+      const it = review.items.find((x) => x.id === itemId);
+      toast('녹취에 반영했습니다', `이 구간 ${it?.count ?? ''}줄만 바꿨습니다 · 확인을 마치면 회의록에도 반영합니다`);
+      await refreshDoc(r);
+    } catch (err) {
+      toast('반영하지 못했습니다', err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { bad: true });
+    }
+  }
+
   function openChat(ids) {
     if (!ids.length) return;
     chat = { ids: [...ids], messages: [], busy: false, applying: new Set() };
@@ -1493,6 +1534,10 @@ function pageMeeting(id) {
         } else if (it.heardNote) card.append(h('div', { class: 'ritem-fix muted' }, h('span', { class: 'heard' }, it.heardNote), h('span', { class: 'hint', style: 'margin:0' }, '녹취에서 같은 글자를 찾지 못해 자동으로 고칠 수 없습니다. 채팅으로 확인하거나 그대로 두세요.')));
         card.append(h('div', { class: 'ritem-acts' },
           h('button', { class: 'btn small ghost', onclick: () => openChat([it.id]) }, icon('i-chat'), '채팅'),
+          (it.kind === 'lost' || it.kind === 'meaning') && r.firstFile && itemRange(it) && h('button', { class: 'btn small ghost', title: '이 구간만 녹음에서 다시 받아씁니다', onclick: () => {
+            openChat([it.id]);
+            runRedo(r, it.id, itemRange(it));
+          } }, icon('i-redo'), '구간 다시 받아쓰기'),
           h('button', { class: 'btn small ghost', onclick: () => keepItems(r, [it.id]) }, it.kind === 'lost' ? '유실 그대로 두기' : '그대로 두기')));
       } else {
         card.append(h('div', { class: 'ritem-done' },
@@ -1545,7 +1590,7 @@ function pageMeeting(id) {
       if (m.proposals?.length) {
         // 이미 처리한 항목(적용·그대로 둠)은 버튼 대신 결과를 보여 준다 → 같은 제안을 두 번 누르지 않게
         const itemOf = (p) => items.find((x) => x.id === p.id);
-        const fixes = m.proposals.filter((p) => !p.keep && itemOf(p)?.status === 'open');
+        const fixes = m.proposals.filter((p) => !p.keep && !p.redo && itemOf(p)?.status === 'open');
         const apply = async (list) => {
           list.forEach((f) => chat.applying.add(f.id));
           draw();
@@ -1556,6 +1601,11 @@ function pageMeeting(id) {
         bubble.append(h('div', { class: 'proposals' },
           m.proposals.map((p) => {
             const it = itemOf(p);
+            if (p.redo) {
+              const busy = chat.redoing === p.id;
+              return h('div', { class: 'proposal' }, icon('i-redo'), h('span', null, `${clock(p.redo.start)}~${clock(p.redo.end)} 구간 다시 받아쓰기`),
+                h('button', { class: `btn small${busy ? ' busy' : ''}`, onclick: () => runRedo(r, p.id, p.redo) }, busy ? '받아쓰는 중…' : '다시 받아쓰기'));
+            }
             const done = it && it.status !== 'open';
             const busy = chat.applying.has(p.id);
             const state = !done ? null
@@ -1568,10 +1618,23 @@ function pageMeeting(id) {
           }),
           fixes.length > 1 && h('button', { class: 'btn small primary', disabled: fixes.some((p) => chat.applying.has(p.id)), onclick: () => apply(fixes.map((p) => ({ id: p.id, heard: p.heard, guess: p.guess }))) }, `${fixes.length}개 모두 적용`)));
       }
+      if (m.redo && !m.redo.empty) {
+        const it = items.find((x) => x.id === m.redo.id);
+        const applied = Boolean(it?.redo?.appliedAt);
+        bubble.append(h('div', { class: 'redo-result' },
+          h('div', { class: 'redo-lines' }, m.redo.text.split('\n').map((l) => {
+            const x = /^\[([\d:]+)\]\s*(?:\[([^\]]+)\]\s*)?(.*)$/.exec(l);
+            return h('div', { class: 'redo-line' }, x ? [h('span', { class: 'num' }, x[1]), x[2] && h('b', null, x[2]), h('span', null, x[3])] : l);
+          })),
+          applied
+            ? h('div', { class: 'proposal-state ok' }, icon('i-check'), '녹취에 반영됨')
+            : h('div', { class: 'redo-acts' }, h('button', { class: 'btn small primary', onclick: (e) => { e.currentTarget.classList.add('busy'); applyRedo(r, m.redo.id); } }, '녹취에 반영'))));
+      }
       log.append(bubble);
     }
+    if (chat.redoing) log.append(h('div', { class: 'msg assistant busy' }, h('div', { class: 'msg-text' }, '녹음에서 그 구간을 다시 받아쓰는 중입니다… (30초 구간에 몇 초)')));
     if (chat.busy) log.append(h('div', { class: 'msg assistant busy' }, h('div', { class: 'msg-text' }, '녹취를 보고 있습니다…')));
-    const input = h('textarea', { rows: 2, placeholder: '예: 화자 1 이름은 박재현이에요 / 그 부분은 기억 안 나요', spellcheck: false });
+    const input = h('textarea', { rows: 2, placeholder: '예: 화자 1 이름은 김민준이에요 / 그 부분은 기억 안 나요', spellcheck: false });
     input.value = chat.draft ?? '';
     input.oninput = () => (chat.draft = input.value); // 화면을 다시 그려도 쓰던 글이 남게
     const send = async () => {
@@ -1582,7 +1645,7 @@ function pageMeeting(id) {
       chat.busy = true;
       draw();
       try {
-        const res = await api.chatReview(r.dir, chat.ids, chat.messages.map(({ role, text: t }) => ({ role, text: t })));
+        const res = await api.chatReview(r.dir, chat.ids, chat.messages.map(({ role, text: t, redo }) => ({ role, text: redo?.text ? `${t}\n${redo.text}` : t })));
         chat?.messages.push({ role: 'assistant', text: res.text, proposals: res.proposals });
       } catch (err) {
         chat?.messages.push({ role: 'assistant', text: `답을 받지 못했습니다: ${err.message}` });

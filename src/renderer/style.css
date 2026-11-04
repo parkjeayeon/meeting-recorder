@@ -569,6 +569,12 @@ button.who:hover { color: var(--ink); text-decoration: underline; text-underline
 .proposal-state { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 600; color: var(--ink-3); white-space: nowrap; }
 .proposal-state.ok { color: var(--ok); }
 .proposal-state.ok svg { color: var(--ok); }
+.redo-result { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.redo-lines { display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow: auto; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); font-size: 13px; line-height: 1.5; }
+.redo-line { display: flex; gap: 8px; align-items: baseline; }
+.redo-line .num { font: 11.5px var(--mono); color: var(--ink-3); flex: none; }
+.redo-line b { flex: none; font-size: 12px; color: var(--ink-2); }
+.redo-acts { display: flex; gap: 6px; }
 .chat-input { display: flex; align-items: flex-end; gap: 6px; padding: 10px; border-top: 1px solid var(--line); }
 .chat-input textarea { flex: 1; resize: none; min-height: 40px; max-height: 140px; padding: 9px 11px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); outline: none; font-size: 13.5px; line-height: 1.5; }
 .chat-input textarea:focus { border-color: var(--ink-3); }

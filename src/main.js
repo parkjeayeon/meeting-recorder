@@ -605,6 +605,8 @@ ipcMain.handle('review:make', (_e, dir) => minutes.makeReview(recordingDir(dir))
 ipcMain.handle('review:apply', (_e, dir, fixes) => minutes.applyReview(recordingDir(dir), fixes));
 ipcMain.handle('review:status', (_e, dir, ids, status) => minutes.setReviewStatus(recordingDir(dir), ids, status === 'open' ? 'open' : 'kept'));
 ipcMain.handle('review:finalize', (_e, dir) => minutes.finalizeReview(recordingDir(dir)));
+ipcMain.handle('review:redo', (_e, dir, id, start, end) => minutes.retranscribeRange(recordingDir(dir), id, start, end));
+ipcMain.handle('review:redoApply', (_e, dir, id) => minutes.applyRetranscribe(recordingDir(dir), id));
 ipcMain.handle('review:chat', (_e, dir, ids, messages) => minutes.chatReview(recordingDir(dir), ids, messages));
 // 회의록의 할 일 체크: minutes.md에서 n번째 "- [ ]" 줄을 뒤집는다
 ipcMain.handle('minutes:todo', (_e, dir, index, done) => {
