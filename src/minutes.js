@@ -694,6 +694,32 @@ function changedLines(a, b) {
 }
 
 // 확인 마치기 전에 처리한 항목을 되돌린다: 바뀐 줄만 원래대로 (다른 항목이 고친 줄은 건드리지 않는다)
+// 되돌리기 기능 전에 고친 단어 항목: 처음 고치기 전에 보관한 파일(*.before-review.*)과 지금 파일을 맞대어 이 항목이 바꾼 줄을 다시 찾는다.
+// 보관본에서 들은 말이 있던 줄만 본다 — 녹취·정리본은 같은 시각 줄, 회의록은 들은 말을 고친 말로 바꾼 줄이 지금 그대로 있는 줄.
+// 원래부터 고친 말이 있던 줄은 건드리지 않는다.
+function legacyUndo(dir, item) {
+  if (!item.heard || !item.applied) return null;
+  const undo = {};
+  let found = 0;
+  for (const f of ['transcript.txt', 'script-clean.txt', 'minutes.md']) {
+    const backup = path.join(dir, f.replace(/\.(\w+)$/, '.before-review.$1'));
+    if (!fs.existsSync(backup) || !fs.existsSync(path.join(dir, f))) continue;
+    const old = fs.readFileSync(backup, 'utf8').split('\n').filter((l) => l.includes(item.heard) && !l.includes(item.applied));
+    const cur = readText(dir, f).split('\n');
+    const changed = [];
+    for (const o of old) {
+      const at = /^\[[\d:]+\]/.exec(o)?.[0];
+      const fixed = o.split(item.heard).join(item.applied);
+      const to = at ? cur.find((l) => l.startsWith(at) && l.includes(item.applied) && !changed.some((c) => c.to === l)) : cur.includes(fixed) ? fixed : null;
+      if (!to) continue;
+      changed.push({ from: to.split(item.applied).join(item.heard), to });
+    }
+    found += changed.length;
+    undo[f] = { changed, inserted: [] };
+  }
+  return found ? undo : null;
+}
+
 function revertReview(dir, id) {
   const review = readReview(dir);
   const item = review?.items.find((it) => it.id === id);
@@ -721,7 +747,8 @@ function revertReview(dir, id) {
     delete r.replaced;
     item.chat = (item.chat ?? []).filter((c) => !/구간을 다시 받아써 녹취에 반영함/.test(c.user));
   } else {
-    if (!item.undo) throw new Error('이 항목은 되돌릴 기록이 없습니다 (되돌리기 기능 전에 고침)');
+    if (!item.undo) item.undo = legacyUndo(dir, item);
+    if (!item.undo) throw new Error('이 항목은 되돌릴 기록이 없습니다 (되돌리기 기능 전에 고쳤고, 고치기 전 보관본에서도 찾지 못함)');
     for (const [f, u] of Object.entries(item.undo)) {
       const p = path.join(dir, f);
       if (!fs.existsSync(p)) continue;
