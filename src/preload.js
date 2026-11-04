@@ -51,6 +51,8 @@ contextBridge.exposeInMainWorld('recorderApi', {
   pickAudio: (paths) => ipcRenderer.invoke('meeting:pick', paths),
   importMeeting: (paths, opts) => ipcRenderer.invoke('meeting:import', paths, opts),
   makeGlossary: (dir) => ipcRenderer.invoke('glossary:make', dir),
+  makeFlow: (dir) => ipcRenderer.invoke('flow:make', dir),
+  removeFlow: (dir) => ipcRenderer.invoke('flow:remove', dir),
   explainTerm: (dir, term) => ipcRenderer.invoke('glossary:explain', dir, term),
   updateTerm: (dir, id, patch) => ipcRenderer.invoke('glossary:update', dir, id, patch),
   // 끌어다 놓은 파일의 경로 (렌더러는 샌드박스라 File.path가 없다)

@@ -432,6 +432,32 @@ ins { text-decoration: underline; text-decoration-color: var(--accent); text-dec
 .tc-at > span:first-child { margin-right: 4px; }
 .tc-acts { display: flex; gap: 6px; margin-top: 12px; }
 .term-add { position: fixed; z-index: 95; box-shadow: var(--shadow-pop); }
+/* 흐름도: 회의록 요약 아래. 색은 앱 값(띠는 화자 색 --s1~6, 강조는 --accent), 다크 모드는 변수로 따라감 */
+.flow { margin: 22px 0 8px; padding: 16px 16px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel-2); }
+.flow-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.doc .flow h3 { margin: 0; }
+.flow-title { font-size: 13.5px; color: var(--ink-2); font-weight: 600; }
+.flow-lanes { display: flex; gap: 14px; margin-top: 10px; font-size: 12px; color: var(--ink-3); }
+.flow-lanes span { display: inline-flex; align-items: center; gap: 6px; }
+.flow-lanes i { width: 10px; height: 10px; border-radius: 3px; }
+.flow-steps { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px 4px; margin-top: 14px; }
+.fstep { --lane: var(--ink-3); width: 176px; display: flex; flex-direction: column; gap: 4px; padding: 10px 12px 10px; border: 1px solid var(--line); border-top: 3px solid var(--lane); border-radius: 10px; background: var(--panel); }
+.fstep.optional { border-style: dashed; border-top-style: solid; }
+.fstep-head { display: flex; align-items: flex-start; gap: 7px; }
+.fstep-head b { font-size: 13.5px; line-height: 1.35; }
+.fstep p { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--ink-2); flex: 1; }
+.fstep-foot { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.fnum { flex: none; display: inline-grid; place-items: center; width: 19px; height: 19px; border-radius: 50%; background: var(--ink); color: var(--panel); font-size: 11px; font-weight: 700; }
+.fnum.small { width: 17px; height: 17px; font-size: 10.5px; }
+.flane { font-size: 11px; color: var(--ink-3); padding: 1px 6px; border-radius: 5px; background: var(--panel-3); }
+.farrow { display: grid; place-items: center; color: var(--ink-3); }
+.farrow svg { width: 16px; height: 16px; }
+.flow-notes { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.flow-notes li { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
+.flow-notes li > svg { width: 15px; height: 15px; flex: none; color: var(--accent); }
+.flow-row { display: flex; align-items: center; gap: 12px; margin-top: 36px; padding: 12px 14px; border: 1px dashed var(--line-2); border-radius: 12px; font-size: 13px; color: var(--ink-3); }
+.flow-row span { flex: 1; }
+.flow-row + .glossary { margin-top: 20px; }
 .glossary { margin-top: 36px; padding-top: 20px; border-top: 1px solid var(--line); }
 .glossary-head { display: flex; align-items: center; gap: 8px; }
 .doc .glossary h3 { margin: 0; }

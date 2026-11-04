@@ -25,6 +25,17 @@ fs.writeFileSync(path.join(meeting, 'glossary.json'), JSON.stringify({ terms: [
   { id: 'g2', term: '알림', note: '앱 푸시 알림 기능. 이번 배포 범위에서 빠질 수 있음', basis: 'meeting', status: 'suggested', source: 'llm', at: [] },
   { id: 'g3', term: '랩캐시도', note: '회의에서 설명 없음', basis: 'unknown', status: 'suggested', source: 'llm', at: ['00:15'] },
 ] }));
+// 흐름도 예시 (STUB_FLOW=<flow.json 경로>를 주면 그 파일로 바꿔 본다 — 실제 회의 내용이 찍히니 캡처를 저장소에 올리지 않는다)
+fs.writeFileSync(path.join(meeting, 'flow.json'), process.env.STUB_FLOW ? fs.readFileSync(process.env.STUB_FLOW) : JSON.stringify({ flow: {
+  title: '배포 절차', lanes: [],
+  steps: [
+    { id: 's1', title: 'QA', detail: '결제·로그인·알림만 확인', at: '00:11', quote: 'QA는 월요일까지' },
+    { id: 's2', title: '배포', detail: '화요일 오전에 배포', at: '00:06', quote: '화요일 오전이 좋을 것 같아요' },
+    { id: 's3', title: '모니터링', detail: '나머지는 배포 뒤 확인', at: '00:15', quote: '확인만 하면 됩니다' },
+  ],
+  edges: [{ from: 's1', to: 's2', at: '00:11', quote: 'QA 끝나면' }, { from: 's2', to: 's3', at: '00:15', quote: '배포하고 나서' }],
+  notes: [{ step: 's2', text: '일정이 밀리면 알림은 다음 배포로', at: '00:11', quote: '알림은 다음 배포로' }],
+}, reason: '배포 순서를 설명함' }));
 process.env.STUB_MEETING_DIR = meeting;
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));

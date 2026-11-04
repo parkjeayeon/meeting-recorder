@@ -1266,6 +1266,79 @@ function pageMeeting(id) {
           h('b', null, t.term), h('span', null, t.note), t.status !== 'confirmed' && h('i', { class: 'gl-badge' }, '추정')))));
   }
 
+  // ── 흐름도: 단계·순서가 녹취로 확인된 회의만 (src/flow.js). 회의록 요약 아래에 그리고, 없으면 아래쪽에 만들기 버튼 ──
+  // 화살표 순서대로 단계를 늘어놓는다 (들어오는 화살표가 없는 단계부터, 갈래는 나온 순서대로)
+  function flowOrder(f) {
+    const next = new Map(f.steps.map((s) => [s.id, []]));
+    const into = new Set();
+    for (const e of f.edges) {
+      next.get(e.from)?.push(e.to);
+      into.add(e.to);
+    }
+    const out = [];
+    const seen = new Set();
+    const visit = (id) => {
+      if (seen.has(id)) return;
+      seen.add(id);
+      out.push(id);
+      for (const n of next.get(id) ?? []) visit(n);
+    };
+    for (const s of f.steps) if (!into.has(s.id)) visit(s.id);
+    for (const s of f.steps) visit(s.id);
+    return out.map((id) => f.steps.find((s) => s.id === id));
+  }
+
+  function flowBox(r, data) {
+    const f = data.flow;
+    const steps = flowOrder(f);
+    const num = new Map(steps.map((s, i) => [s.id, i + 1]));
+    const laneColor = new Map((f.lanes ?? []).map((l, i) => [l.id, `var(--s${(i % 6) + 1})`]));
+    const stamp = (at) => (r.firstFile ? h('button', { class: 'seek', title: '여기부터 듣기', onclick: () => seek(parseStamp(at)) }, at) : h('span', { class: 'num' }, at));
+    const remake = h('button', { class: 'btn small ghost', onclick: () => makeFlowNow(r, remake) }, icon('i-redo'), '다시 만들기');
+    const items = [];
+    steps.forEach((s, i) => {
+      if (i) items.push(h('span', { class: 'farrow', 'aria-hidden': 'true' }, icon('i-right')));
+      const lane = f.lanes?.find((l) => l.id === s.lane);
+      items.push(h('div', { class: `fstep${s.optional ? ' optional' : ''}`, style: lane ? `--lane:${laneColor.get(lane.id)}` : '', title: `녹취: “${s.quote}”` },
+        h('div', { class: 'fstep-head' }, h('span', { class: 'fnum' }, String(i + 1)), h('b', null, s.title)),
+        s.detail && h('p', null, s.detail),
+        h('div', { class: 'fstep-foot' }, stamp(s.at), lane && h('span', { class: 'flane' }, lane.name), s.optional && h('span', { class: 'flane' }, '선택'))));
+    });
+    return h('section', { class: 'flow' },
+      h('div', { class: 'flow-head' }, h('h3', null, '흐름'), f.title && h('span', { class: 'flow-title' }, f.title),
+        h('span', { class: 'tc-badge guess', title: '각 단계와 순서를 LLM이 뽑고, 녹취에 그 말이 있는지 앱이 확인했습니다' }, 'LLM 추정 · 녹취로 확인'),
+        h('span', { style: 'flex:1' }), remake,
+        h('button', { class: 'btn small ghost', onclick: async () => {
+          await api.removeFlow(r.dir);
+          toast('흐름도를 지웠습니다', '회의록 아래 "흐름도 만들기"로 다시 만들 수 있습니다');
+          refreshDoc(r);
+        } }, '지우기')),
+      (f.lanes?.length ?? 0) > 1 && h('div', { class: 'flow-lanes' }, f.lanes.map((l) => h('span', null, h('i', { style: `background:${laneColor.get(l.id)}` }), l.name))),
+      h('div', { class: 'flow-steps' }, items),
+      f.notes?.length > 0 && h('ul', { class: 'flow-notes' }, f.notes.map((n) =>
+        h('li', null, icon('i-alert'), num.has(n.step) && h('span', { class: 'fnum small' }, String(num.get(n.step))), h('span', null, n.text), stamp(n.at)))));
+  }
+
+  async function makeFlowNow(r, btn) {
+    btn.classList.add('busy');
+    btn.lastChild.textContent = '흐름 찾는 중… (30초 안팎)';
+    try {
+      const res = await api.makeFlow(r.dir);
+      toast(res.flow ? '흐름도를 만들었습니다' : '흐름도를 만들지 않았습니다', res.flow ? `${res.flow.steps.length}단계 · 녹취에서 근거를 확인했습니다` : res.reason ?? '', { ms: 7000 });
+    } catch (err) {
+      toast('흐름도를 만들지 못했습니다', err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { bad: true });
+    }
+    refreshDoc(r);
+  }
+
+  // 흐름도가 없을 때 회의록 아래에 두는 줄: 만든 적 없으면 만들기, 판단 결과 '흐름 없음'이면 그 이유와 다시 확인
+  function flowRow(r, data) {
+    const btn = h('button', { class: 'btn small', onclick: () => makeFlowNow(r, btn) }, data ? '다시 확인' : '흐름도 만들기');
+    return h('div', { class: 'flow-row' },
+      h('span', null, data ? `흐름도 없음 · ${data.reason ?? '단계로 정리할 흐름이 없습니다'}` : '인수인계·업무 절차처럼 단계와 순서가 설명된 회의는 흐름도로 정리할 수 있습니다.'),
+      btn);
+  }
+
   // 본문·스크립트에서 단어를 드래그하면 '설명 추가' 버튼을 띄운다
   let addBtn = null;
   const removeAddBtn = () => {
@@ -1301,6 +1374,9 @@ function pageMeeting(id) {
   // 회의록 마크다운: 소제목, 목록, 할 일(체크 가능), 문단, **굵게**, (12:34) 시각은 눌러서 듣기, 용어 밑줄
   function minutesDoc(r, md, reviewOpen = 0, openReview = null, matcher = null) {
     const box = h('article', { class: 'doc' });
+    const flowData = docCache.get(r.id)?.flow;
+    let flowPlaced = false;
+    let sawSummary = false;
     let list = null;
     let todoIndex = 0;
     let skipping = false; // 확인 필요 섹션은 '확인 필요' 탭에서 하나씩 처리한다
@@ -1358,6 +1434,11 @@ function pageMeeting(id) {
       if (!line.trim()) continue;
       if (heading) {
         if (heading[1] === '#') continue; // 제목은 페이지 머리에 있다
+        if (heading[1] === '##' && flowData?.flow && !flowPlaced && sawSummary) {
+          box.append(flowBox(r, flowData));
+          flowPlaced = true;
+        }
+        if (heading[1] === '##') sawSummary = heading[2].trim() === '요약';
         const hd = h(heading[1] === '##' ? 'h3' : 'h4');
         inline(hd, heading[2], null);
         box.append(hd);
@@ -1367,6 +1448,8 @@ function pageMeeting(id) {
         box.append(p);
       }
     }
+    if (flowData?.flow && !flowPlaced) box.append(flowBox(r, flowData));
+    if (!flowData?.flow) box.append(flowRow(r, flowData));
     box.append(glossaryBox(r, docCache.get(r.id)?.glossary));
     if (openReview && /^## 확인 필요/m.test(md)) {
       const finalized = Boolean(docCache.get(r.id)?.review?.finalizedAt);
