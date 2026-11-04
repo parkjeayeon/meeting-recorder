@@ -1483,7 +1483,11 @@ function pageMeeting(id) {
       const applied = review.items.filter((it) => fixes.some((f) => f.id === it.id) && it.status === 'applied');
       const kept = fixes.filter((f) => f.keep).length;
       for (const f of fixes) reviewSel.delete(f.id);
-      toast(applied.length ? `${applied.length}개를 고쳤습니다` : `${kept}개를 그대로 두었습니다`, applied.length ? `녹취·정리본·회의록에서 ${applied.reduce((n, it) => n + (it.count ?? 0), 0)}곳을 바꿨습니다` : '');
+      const words = review.addedWords ?? [];
+      toast(applied.length ? `${applied.length}개를 고쳤습니다` : `${kept}개를 그대로 두었습니다`,
+        applied.length ? `녹취·정리본·회의록에서 ${applied.reduce((n, it) => n + (it.count ?? 0), 0)}곳을 바꿨습니다${words.length ? ` · 사전에 추가: ${words.join(', ')}` : ''}` : '',
+        words.length ? { action: '사전 보기', onAction: () => (location.hash = '#dictionary'), ms: 7000 } : {});
+      if (words.length) renderDictSettings(await api.dictSettings()); // 사전 개수·목록도 바로
       await refreshDoc(r);
     } catch (err) {
       toast('적용하지 못했습니다', err.message, { bad: true });

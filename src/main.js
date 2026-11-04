@@ -648,7 +648,30 @@ ipcMain.handle('meeting:watch', (_e, dir) => {
   } catch {}
 });
 ipcMain.handle('review:make', (_e, dir) => minutes.makeReview(recordingDir(dir)));
-ipcMain.handle('review:apply', (_e, dir, fixes) => minutes.applyReview(recordingDir(dir), fixes));
+// 확인 필요에서 오인식 단어·이름을 고치면 고친 말을 사전에 넣는다 → 다음 녹음부터 Whisper가 그 말을 더 잘 알아듣는다.
+// 짧은 낱말만 (문장·설명은 넣지 않음). 사전 화면에서 언제든 지울 수 있다
+const VOCAB_KINDS = new Set(['word', 'name']);
+function addCorrectionsToVocab(review, fixes) {
+  const words = vocabList(dictation.getSettings().vocabulary);
+  const have = new Set(words.map((w) => w.toLowerCase()));
+  const added = [];
+  for (const f of fixes) {
+    const it = review.items.find((x) => x.id === f.id);
+    const w = it?.status === 'applied' && VOCAB_KINDS.has(it.kind) ? String(it.applied ?? '').trim() : '';
+    if (!w || w.length > 30 || w.split(/\s+/).length > 4 || /[.,!?。\n]/.test(w) || have.has(w.toLowerCase())) continue;
+    have.add(w.toLowerCase());
+    added.push(w);
+  }
+  if (added.length) {
+    dictation.saveSettings({ vocabulary: [...words, ...added].join(', ') });
+    writePortableSettings();
+  }
+  return added;
+}
+ipcMain.handle('review:apply', (_e, dir, fixes) => {
+  const review = minutes.applyReview(recordingDir(dir), fixes);
+  return { ...review, addedWords: addCorrectionsToVocab(review, fixes) };
+});
 ipcMain.handle('review:status', (_e, dir, ids, status) => minutes.setReviewStatus(recordingDir(dir), ids, status === 'open' ? 'open' : 'kept'));
 ipcMain.handle('review:finalize', (_e, dir) => minutes.finalizeReview(recordingDir(dir)));
 ipcMain.handle('review:redo', (_e, dir, id, start, end) => minutes.retranscribeRange(recordingDir(dir), id, start, end));
