@@ -1037,6 +1037,9 @@ function pageMeeting(id) {
     if (doc.minutes) tabs.push(['minutes', '회의록']);
     const reviewOpen = doc.review?.items?.filter((it) => it.status === 'open').length ?? 0;
     if (doc.review?.items?.length || /^## 확인 필요/m.test(doc.minutes ?? '')) tabs.push(['review', '확인 필요', doc.review ? `${reviewOpen}` : null]);
+    // 액션: 확인된 할 일·조언이 있을 때만 (대화에 따라 생기고 무조건 생기지 않는다)
+    const acts = doc.actions;
+    if (acts && (acts.actions?.length || acts.advice?.length)) tabs.push(['actions', '액션', acts.actions.length ? `${acts.actions.filter((a) => !a.done).length}` : null]);
     if (doc.transcript) tabs.push(['clean', '정리본'], ['raw', '원본'], ['speakers', '화자', order.length ? `${order.length}명` : null]);
     if (!tabs.some((t) => t[0] === tab)) tab = tabs[0]?.[0] ?? null;
 
@@ -1067,6 +1070,7 @@ function pageMeeting(id) {
     removeAddBtn();
     if (tab === 'minutes') body.append(minutesDoc(r, doc.minutes, reviewOpen, () => { tab = 'review'; draw(); }, matcher));
     else if (tab === 'review') body.append(reviewView(r, doc));
+    else if (tab === 'actions') body.append(actionsView(r, doc.actions));
     else if (tab === 'clean' || tab === 'raw') {
       const text = tab === 'clean' ? doc.scriptClean : doc.transcript;
       const bar = h('div', { class: 'tab-bar' },
@@ -1265,6 +1269,65 @@ function pageMeeting(id) {
       terms.length > 0 && h('div', { class: 'gl-grid' }, terms.map((t) =>
         h('button', { class: `gl-item${t.status === 'confirmed' ? '' : ' guess'}`, onclick: (e) => termCard(e.currentTarget, t) },
           h('b', null, t.term), h('span', null, t.note), t.status !== 'confirmed' && h('i', { class: 'gl-badge' }, '추정')))));
+  }
+
+  // ── 액션 (src/actions.js): 할 일(약속·맡은 일·다짐)과 받은 조언·알아 둘 것. 회의록과 따로 actions.json에 ──
+  const ACTION_KIND = { promise: '약속', assigned: '맡음', resolution: '다짐' };
+  function actionsView(r, data) {
+    const stamp = (at) => (r.firstFile ? h('button', { class: 'seek', title: '여기부터 듣기', onclick: () => seek(parseStamp(at)) }, at) : h('span', { class: 'num' }, at));
+    const todo = h('section', { class: 'act-sec' },
+      h('div', { class: 'act-head' }, h('h3', null, '할 일'), data.actions.length > 0 && num(`${data.actions.filter((a) => a.done).length}/${data.actions.length}`)),
+      data.actions.length
+        ? h('ul', { class: 'act-list' }, data.actions.map((a) => {
+          const cb = h('input', { type: 'checkbox', checked: a.done, 'aria-label': '했음' });
+          const li = h('li', { class: `act-item${a.done ? ' done' : ''}`, title: `녹취: “${a.quote}”` }, cb,
+            h('div', { class: 'act-body' }, h('span', { class: 'act-task' }, a.task),
+              h('div', { class: 'act-meta' }, h('span', { class: 'flane' }, a.owner), a.due && h('span', { class: 'flane due' }, a.due), h('span', { class: 'act-kind' }, ACTION_KIND[a.kind] ?? ''), stamp(a.at))));
+          cb.onchange = async () => {
+            li.classList.toggle('done', cb.checked);
+            await api.toggleAction(r.dir, a.id, cb.checked);
+            docCache.delete(r.id);
+            loadHistory();
+          };
+          return li;
+        }))
+        : h('p', { class: 'act-empty' }, '약속하거나 맡은 할 일은 없었습니다.'));
+    const keys = data.advice.filter((a) => a.key);
+    const groups = [...new Set(data.advice.map((a) => a.group))];
+    const who = (a) => (a.from || a.to) && h('span', { class: 'act-who' }, `${a.from ?? ''}${a.to ? ` → ${a.to}` : ''}`);
+    const advice = data.advice.length > 0 && h('section', { class: 'act-sec' },
+      h('div', { class: 'act-head' }, h('h3', null, data.adviceTitle ?? '받은 조언'), num(String(data.advice.length))),
+      keys.length > 0 && h('div', { class: 'act-keys' }, keys.map((a) => h('div', { class: 'act-key', title: `녹취: “${a.quote}”` },
+        h('b', null, '★ ', a.text), a.why && h('p', null, a.why), h('div', { class: 'act-meta' }, who(a), stamp(a.at))))),
+      groups.map((g) => h('div', { class: 'act-group' }, h('h4', null, g),
+        h('ul', null, data.advice.filter((a) => a.group === g).map((a) => h('li', { title: `녹취: “${a.quote}”` },
+          h('span', null, a.key && '★ ', a.text), h('span', { class: 'act-meta inline' }, who(a), stamp(a.at))))))));
+    const again = h('button', { class: 'btn small ghost', onclick: () => findActions(r, again) }, icon('i-redo'), h('span', null, '다시 찾기'));
+    return h('div', { class: 'acts' },
+      h('div', { class: 'tab-bar' }, h('span', null, '회의가 끝난 뒤 챙길 것입니다. LLM이 원본·정리본·회의록을 보고 고르고, 각 항목의 녹취 인용을 앱이 확인했습니다. 체크는 회의록의 할 일과 따로 저장됩니다.'), again),
+      todo, advice);
+  }
+
+  async function findActions(r, btn) {
+    btn.classList.add('busy');
+    btn.lastChild.textContent = '찾는 중… (1분 안팎)';
+    try {
+      const res = await api.makeActions(r.dir);
+      toast(res.actions.length || res.advice.length ? '액션을 정리했습니다' : '챙길 할 일이나 조언을 찾지 못했습니다',
+        res.actions.length || res.advice.length ? `할 일 ${res.actions.length}개 · ${res.adviceTitle ?? '조언'} ${res.advice.length}개` : '이 대화에는 약속한 일이나 남길 조언이 없었습니다', { ms: 7000 });
+      if (res.actions.length || res.advice.length) tab = 'actions';
+    } catch (err) {
+      toast('액션을 정리하지 못했습니다', err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { bad: true });
+    }
+    refreshDoc(r);
+  }
+
+  // 이 기능 전에 만든 회의: 회의록 아래에 '액션 찾기'
+  function actionsRow(r) {
+    const btn = h('button', { class: 'btn small', onclick: () => findActions(r, btn) }, icon('i-check'), h('span', null, '액션 찾기'));
+    return h('div', { class: 'flow-row' },
+      h('div', { class: 'flow-row-text' }, h('b', null, '액션'), h('span', null, '약속하거나 맡은 할 일과 받은 조언을 찾아 따로 정리합니다. 있을 때만 "액션" 탭이 생깁니다.')),
+      h('div', { class: 'flow-row-acts' }, btn));
   }
 
   // ── 흐름도 (src/flow.js): 사용자가 요청한 회의만. 회의록 요약 아래에 그림마다 카드 — 한 줄 요약·채팅·다시 만들기·지우기 ──
@@ -1812,6 +1875,7 @@ function pageMeeting(id) {
       }
     }
     if (flowData?.flows?.length && !flowPlaced) box.append(flowsSection(r, flowData));
+    if (!docCache.get(r.id)?.actions) box.append(actionsRow(r));
     if (!flowData?.flows?.length) box.append(flowRow(r, flowData));
     box.append(glossaryBox(r, docCache.get(r.id)?.glossary));
     if (openReview && /^## 확인 필요/m.test(md)) {

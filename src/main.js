@@ -10,6 +10,7 @@ const minutes = require('./minutes');
 const importAudio = require('./import-audio');
 const glossary = require('./glossary');
 const flowMod = require('./flow');
+const actionsMod = require('./actions');
 const setup = require('./setup');
 
 const SELFTEST = process.argv.includes('--selftest');
@@ -595,8 +596,19 @@ ipcMain.handle('minutes:read', (_e, dir) => {
     glossary: glossaryWithNames(d, names),
     speech: minutes.speakerTurns(d),
     flow: flowWithNames(d, names),
+    actions: actionsWithNames(d, names),
   };
 });
+// 액션 글의 '화자 N'도 바꾼 이름으로 (파일은 그대로)
+function actionsWithNames(d, names) {
+  const data = actionsMod.readActions(d);
+  const fix = (t) => minutes.nameSpeakers(t, names, { prose: true });
+  for (const a of data?.actions ?? []) Object.assign(a, { owner: fix(a.owner), task: fix(a.task) });
+  for (const a of data?.advice ?? []) Object.assign(a, { from: fix(a.from), to: fix(a.to), text: fix(a.text), why: fix(a.why) });
+  return data;
+}
+ipcMain.handle('actions:make', (_e, dir) => actionsMod.makeActions(recordingDir(dir)));
+ipcMain.handle('actions:toggle', (_e, dir, id, done) => actionsMod.toggleAction(recordingDir(dir), id, done));
 // 흐름도 글의 '화자 N'도 바꾼 이름으로 보여 준다 (파일은 그대로)
 function flowWithNames(d, names) {
   const data = flowMod.readFlow(d);
@@ -629,7 +641,7 @@ ipcMain.handle('glossary:explain', (_e, dir, term) => glossary.explainTerm(recor
 ipcMain.handle('glossary:update', (_e, dir, id, patch) => glossary.updateTerm(recordingDir(dir), id, patch));
 // 파일이 바뀌면 화면을 다시 그린다: 열려 있는 회의 폴더(회의록·녹취·정리본·확인 필요·용어·화자 이름)와 녹음 폴더(회의가 생기거나 사라짐).
 // 앱 안 작업은 원래 바로 다시 그리지만, 앱 밖에서 고치거나 다른 경로로 바뀐 경우에도 다시 열 필요가 없게 한다
-const WATCHED = new Set(['minutes.md', 'transcript.txt', 'script-clean.txt', 'review.json', 'glossary.json', 'flow.json', 'meta.json']);
+const WATCHED = new Set(['minutes.md', 'transcript.txt', 'script-clean.txt', 'review.json', 'glossary.json', 'flow.json', 'actions.json', 'meta.json']);
 let meetingWatch = null;
 let recordingsWatch = null;
 function debounced(fn, ms = 400) {

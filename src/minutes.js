@@ -9,6 +9,7 @@ const dictation = require('./dictation');
 const { complete, parseJson } = require('./cleanup');
 const sandbox = require('./sandbox');
 const glossary = require('./glossary');
+const actions = require('./actions');
 
 const LONG_TIMEOUT_MS = 10 * 60 * 1000; // 1시간짜리 회의도 여유 있게
 const SPEAKER = { mic: '나', system: '상대방' };
@@ -481,8 +482,8 @@ async function run(dir, onStage, { speakers = null, prev = null } = {}) {
     if (!text) throw new Error('회의록이 비어 있습니다');
     fs.writeFileSync(path.join(dir, 'minutes.md'), `${text}\n`);
     await scriptJob.catch(() => {});
-    // 확인 필요 항목 목록과 용어 설명을 함께 만든다 (어느 쪽이 실패해도 회의록은 그대로). 흐름도는 사용자가 요청할 때만 (flow.js)
-    await Promise.all([makeReview(dir).catch(() => {}), glossary.makeGlossary(dir).catch(() => {})]);
+    // 확인 필요 항목 목록·용어 설명·액션(할 일·조언)을 함께 만든다 (어느 쪽이 실패해도 회의록은 그대로). 흐름도는 사용자가 요청할 때만 (flow.js)
+    await Promise.all([makeReview(dir).catch(() => {}), glossary.makeGlossary(dir).catch(() => {}), actions.makeActions(dir).catch(() => {})]);
     const title = text.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? null;
     report('done', { provider, title, ...diarizeInfo });
   } catch (err) {

@@ -51,6 +51,8 @@ contextBridge.exposeInMainWorld('recorderApi', {
   pickAudio: (paths) => ipcRenderer.invoke('meeting:pick', paths),
   importMeeting: (paths, opts) => ipcRenderer.invoke('meeting:import', paths, opts),
   makeGlossary: (dir) => ipcRenderer.invoke('glossary:make', dir),
+  makeActions: (dir) => ipcRenderer.invoke('actions:make', dir),
+  toggleAction: (dir, id, done) => ipcRenderer.invoke('actions:toggle', dir, id, done),
   makeFlow: (dir, focus) => ipcRenderer.invoke('flow:make', dir, focus),
   remakeFlow: (dir, id, instruction) => ipcRenderer.invoke('flow:remake', dir, id, instruction),
   removeFlow: (dir, id) => ipcRenderer.invoke('flow:remove', dir, id),
