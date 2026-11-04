@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session, desktopCapturer, Tray, Menu, nativeImage, shell, screen, systemPreferences, clipboard, nativeTheme, protocol, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, session, desktopCapturer, Tray, Menu, nativeImage, shell, screen, systemPreferences, clipboard, nativeTheme, protocol, dialog, net } = require('electron');
 const { Readable } = require('stream');
 const path = require('path');
 const fs = require('fs');
@@ -491,7 +491,7 @@ const activeMinutes = new Set(); // 지금 이 실행에서 만들고 있는 회
 
 const MIN_MEETING_SEC = 10; // 이보다 짧은 회의 녹음은 회의록을 만들지 않는다 (시험·실수 녹음)
 
-function runMinutes(dir, speakers = null) {
+function runMinutes(dir, speakers = null, { resume = false } = {}) {
   const meta = readJson(path.join(dir, 'meta.json'));
   const durationSec = Math.max(0, ...Object.values(meta?.files ?? {}).map((f) => f.durationSec ?? 0));
   if (durationSec < MIN_MEETING_SEC) {
@@ -501,9 +501,12 @@ function runMinutes(dir, speakers = null) {
     return Promise.resolve();
   }
   activeMinutes.add(dir);
+  waitingOnline.delete(dir);
   return minutes.makeMinutes(dir, {
     speakers,
+    resume,
     onStage: (s) => {
+      if (s.status === 'error' && s.offline) waitForOnline(dir);
       send('minutes:status', { id: path.basename(dir), ...s });
       if (s.status === 'queued') sendOverlay('overlay:stage', { stage: 'done', status: 'meeting-saved' });
       if (s.status === 'done') {
@@ -516,6 +519,20 @@ function runMinutes(dir, speakers = null) {
   });
 }
 
+// 인터넷이 끊겨 회의록을 못 쓴 회의는 연결이 돌아오면 저장된 녹취로 이어서 쓴다
+const waitingOnline = new Set();
+let onlineTimer = null;
+function waitForOnline(dir) {
+  waitingOnline.add(dir);
+  onlineTimer ??= setInterval(() => {
+    if (!net.isOnline()) return;
+    clearInterval(onlineTimer);
+    onlineTimer = null;
+    for (const d of [...waitingOnline]) if (!activeMinutes.has(d) && minutes.canResume(d)) runMinutes(d, null, { resume: true });
+    waitingOnline.clear();
+  }, 15000);
+}
+
 // 렌더러가 넘긴 경로는 녹음 폴더 안의 것만 받는다
 function recordingDir(dir) {
   const resolved = path.resolve(dir);
@@ -525,6 +542,12 @@ function recordingDir(dir) {
 
 ipcMain.handle('minutes:make', (_e, dir, speakers) => {
   runMinutes(recordingDir(dir), Number(speakers) || null);
+});
+ipcMain.handle('minutes:resume', (_e, dir) => {
+  const d = recordingDir(dir);
+  if (activeMinutes.has(d)) return;
+  if (!minutes.canResume(d)) throw new Error('이어서 쓸 녹취가 없습니다. 녹취부터 다시 만들어 주세요');
+  runMinutes(d, null, { resume: true });
 });
 ipcMain.handle('speaker:rename', (_e, dir, from, to) => minutes.renameSpeaker(recordingDir(dir), from, to));
 ipcMain.handle('minutes:read', (_e, dir) => {
@@ -639,8 +662,10 @@ function listFolders(limit) {
       let minutesState = readJson(path.join(dir, 'minutes.json'));
       // 이전 실행에서 만들다 끊긴 회의록은 실패로 보여 줘서 다시 만들 수 있게 한다
       if (minutesState && ['queued', 'transcribe', 'write'].includes(minutesState.status) && !activeMinutes.has(dir)) {
-        minutesState = { ...minutesState, status: 'error', error: '앱이 종료되어 중단됨' };
+        minutesState = { ...minutesState, status: 'error', stage: minutesState.status === 'write' ? 'write' : 'transcribe', error: '앱이 종료되어 중단됨' };
       }
+      // 인터넷이 끊겨 멈춘 회의는 앱을 다시 켜도 연결을 기다렸다가 이어서 쓴다
+      if (minutesState?.status === 'error' && minutesState.offline && !activeMinutes.has(dir) && !waitingOnline.has(dir)) waitForOnline(dir);
       const durationSec = Math.max(0, ...Object.values(meta.files ?? {}).map((f) => f.durationSec ?? 0));
       let summary = null;
       try {

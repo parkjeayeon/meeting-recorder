@@ -46,6 +46,7 @@ contextBridge.exposeInMainWorld('recorderApi', {
   copy: (text) => ipcRenderer.invoke('clipboard:write', text),
   repaste: (text) => ipcRenderer.invoke('dict:repaste', text),
   makeMinutes: (dir, speakers) => ipcRenderer.invoke('minutes:make', dir, speakers),
+  resumeMinutes: (dir) => ipcRenderer.invoke('minutes:resume', dir),
   renameSpeaker: (dir, from, to) => ipcRenderer.invoke('speaker:rename', dir, from, to),
   tokenStatus: () => ipcRenderer.invoke('tokens:status'),
   saveToken: (kind, value) => ipcRenderer.invoke('tokens:save', kind, value),

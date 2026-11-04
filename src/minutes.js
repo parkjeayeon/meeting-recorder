@@ -4,7 +4,7 @@
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
-const { app } = require('electron');
+const { app, net } = require('electron');
 const dictation = require('./dictation');
 const { complete } = require('./cleanup');
 const sandbox = require('./sandbox');
@@ -180,13 +180,30 @@ function writeStatus(dir, status) {
   fs.writeFileSync(path.join(dir, 'minutes.json'), JSON.stringify({ ...status, updatedAt: new Date() }, null, 2));
 }
 
+function readStatus(dir) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(dir, 'minutes.json'), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+// 녹취·화자 구분은 끝났고 회의록 쓰기에서 멈춘 회의인지 (인터넷이 끊겨 실패했거나, 쓰는 중에 앱이 종료됨)
+// 지금 만들고 있는 회의인지는 부르는 쪽(main.js)이 확인한다
+function canResume(dir, status = readStatus(dir)) {
+  const stopped = status?.status === 'write' || (status?.status === 'error' && status.stage === 'write');
+  return stopped && fs.existsSync(path.join(dir, 'transcript.txt'));
+}
+
 // 같은 Whisper 서버를 받아쓰기와 나눠 쓰므로 회의록은 한 번에 하나씩 만든다
 let queue = Promise.resolve();
 
-function makeMinutes(dir, { onStage = () => {}, speakers = null } = {}) {
+// resume: 회의록 쓰기 단계에서 멈춘 회의를 저장된 녹취(transcript.txt)로 이어서 쓴다
+function makeMinutes(dir, { onStage = () => {}, speakers = null, resume = false } = {}) {
+  const prev = resume ? readStatus(dir) : null;
   writeStatus(dir, { status: 'queued' });
   onStage({ dir, status: 'queued' });
-  const job = queue.then(() => run(dir, onStage, { speakers }));
+  const job = queue.then(() => run(dir, onStage, { speakers, prev }));
   queue = job.catch(() => {});
   return job;
 }
@@ -407,26 +424,78 @@ function buildTranscript(segments, diarization, tracks) {
   return { text, speakerCount };
 }
 
-async function run(dir, onStage, { speakers = null } = {}) {
+async function run(dir, onStage, { speakers = null, prev = null } = {}) {
   const settings = dictation.getSettings();
   const meta = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8'));
-  // 다시 만들면 화자 구분 번호가 바뀔 수 있어 바꿔 둔 이름이 엉뚱한 사람에게 붙는다 → 지운다
-  if (meta.speakerNames) {
+  const resume = canResume(dir, prev);
+  // 다시 만들면 화자 구분 번호가 바뀔 수 있어 바꿔 둔 이름이 엉뚱한 사람에게 붙는다 → 지운다 (이어서 쓰면 녹취가 그대로라 둔다)
+  if (meta.speakerNames && !resume) {
     delete meta.speakerNames;
     fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2));
   }
-  const tracks = Object.keys(meta.files ?? {}).filter((t) => fs.existsSync(path.join(dir, `${t}.wav`)));
-  const timing = {};
+  const timing = resume ? { ...prev.timing } : {};
+  let diarizeInfo = resume ? { speakers: prev.speakers ?? null, diarizeError: prev.diarizeError ?? null } : {};
   const report = (status, extra = {}) => {
     writeStatus(dir, { status, timing, ...extra });
     onStage({ dir, status, ...extra });
   };
   let stage = 'transcribe';
+  try {
+    let transcript;
+    if (resume) {
+      transcript = fs.readFileSync(path.join(dir, 'transcript.txt'), 'utf8').trim();
+    } else {
+      const r = await transcribeMeeting(dir, meta, settings, speakers, timing, report);
+      transcript = r.transcript;
+      diarizeInfo = r.diarizeInfo;
+    }
+    if (!transcript) {
+      report('empty', diarizeInfo);
+      return;
+    }
+
+    stage = 'write';
+    report('write', diarizeInfo);
+    const t = Date.now();
+    const durationSec = Math.max(0, ...Object.values(meta.files).map((f) => f.durationSec ?? 0));
+    const when = new Date(meta.startedAt).toLocaleString('ko-KR', { dateStyle: 'full', timeStyle: 'short' });
+    // 정리본은 회의록과 동시에 만든다 (실패해도 회의록은 계속)
+    const scriptJob = cleanScript(transcript, settings).then((r) => {
+      fs.writeFileSync(path.join(dir, 'script-clean.txt'), `${r.text}\n`);
+      timing.scriptMs = Date.now() - t;
+      return r;
+    });
+    const { text, provider } = await complete({
+      system: MINUTES_SYSTEM,
+      input: `<meeting started="${when}" duration="${clock(durationSec)}">\n${transcript}\n</meeting>`,
+      choice: settings.provider,
+      apiKey: dictation.apiKey(),
+      effort: 'medium',
+      timeouts: { 'claude-code': LONG_TIMEOUT_MS, codex: LONG_TIMEOUT_MS, api: LONG_TIMEOUT_MS },
+      maxTokens: 16000,
+    });
+    timing.writeMs = Date.now() - t;
+    if (!text) throw new Error('회의록이 비어 있습니다');
+    fs.writeFileSync(path.join(dir, 'minutes.md'), `${text}\n`);
+    await scriptJob.catch(() => {});
+    await makeReview(dir).catch(() => {}); // 확인 필요 항목을 하나씩 처리할 수 있는 목록으로
+    const title = text.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? null;
+    report('done', { provider, title, ...diarizeInfo });
+  } catch (err) {
+    const error = err.killed ? '시간 초과' : err.message.split('\n')[0];
+    // 회의록 쓰기는 인터넷이 필요하다. 끊겨서 실패했으면 연결이 돌아올 때 이어서 쓴다 (main.js)
+    report('error', { stage, error, offline: stage === 'write' && !net.isOnline(), ...diarizeInfo });
+  }
+}
+
+// 녹음 → 16kHz → 조각별 Whisper 녹취(+반복 구간 다시) · 화자 구분 → transcript.txt
+async function transcribeMeeting(dir, meta, settings, speakers, timing, report) {
+  const tracks = Object.keys(meta.files ?? {}).filter((t) => fs.existsSync(path.join(dir, `${t}.wav`)));
   let server = null;
   const temp = [];
   try {
     report('transcribe', { progress: 0 });
-    let t = Date.now();
+    const t = Date.now();
     const modelFile = path.join(app.getPath('userData'), 'models', MEETING_MODEL);
     server = await dictation.startDedicatedServer(modelFile).catch(() => null);
     timing.model = server ? 'large-v3' : 'large-v3-turbo';
@@ -473,42 +542,7 @@ async function run(dir, onStage, { speakers = null } = {}) {
 
     const { text: transcript, speakerCount } = buildTranscript(lines, diarization, tracks);
     fs.writeFileSync(path.join(dir, 'transcript.txt'), transcript ? `${transcript}\n` : '');
-    const diarizeInfo = { speakers: speakerCount, diarizeError: diarization?.error ?? null };
-    if (!transcript) {
-      report('empty', diarizeInfo);
-      return;
-    }
-
-    stage = 'write';
-    report('write', diarizeInfo);
-    t = Date.now();
-    const durationSec = Math.max(0, ...Object.values(meta.files).map((f) => f.durationSec ?? 0));
-    const when = new Date(meta.startedAt).toLocaleString('ko-KR', { dateStyle: 'full', timeStyle: 'short' });
-    // 정리본은 회의록과 동시에 만든다 (실패해도 회의록은 계속)
-    const scriptJob = cleanScript(transcript, settings).then((r) => {
-      fs.writeFileSync(path.join(dir, 'script-clean.txt'), `${r.text}\n`);
-      timing.scriptMs = Date.now() - t;
-      return r;
-    });
-    const { text, provider } = await complete({
-      system: MINUTES_SYSTEM,
-      input: `<meeting started="${when}" duration="${clock(durationSec)}">\n${transcript}\n</meeting>`,
-      choice: settings.provider,
-      apiKey: dictation.apiKey(),
-      effort: 'medium',
-      timeouts: { 'claude-code': LONG_TIMEOUT_MS, codex: LONG_TIMEOUT_MS, api: LONG_TIMEOUT_MS },
-      maxTokens: 16000,
-    });
-    timing.writeMs = Date.now() - t;
-    if (!text) throw new Error('회의록이 비어 있습니다');
-    fs.writeFileSync(path.join(dir, 'minutes.md'), `${text}\n`);
-    await scriptJob.catch(() => {});
-    await makeReview(dir).catch(() => {}); // 확인 필요 항목을 하나씩 처리할 수 있는 목록으로
-    const title = text.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? null;
-    report('done', { provider, title, ...diarizeInfo });
-  } catch (err) {
-    const error = err.killed ? '시간 초과' : err.message.split('\n')[0];
-    report('error', { stage, error });
+    return { transcript, diarizeInfo: { speakers: speakerCount, diarizeError: diarization?.error ?? null } };
   } finally {
     server?.stop();
     for (const f of temp) fs.rmSync(f, { force: true });
@@ -788,4 +822,4 @@ function makeCleanScript(dir) {
 }
 
 module.exports = {
-  findLoops, nameSpeakers, makeMinutes, makeCleanScript, renameSpeaker, diarizeAvailable, readReview, makeReview, applyReview, setReviewStatus, chatReview, finalizeReview };
+  findLoops, nameSpeakers, makeMinutes, canResume, makeCleanScript, renameSpeaker, diarizeAvailable, readReview, makeReview, applyReview, setReviewStatus, chatReview, finalizeReview };

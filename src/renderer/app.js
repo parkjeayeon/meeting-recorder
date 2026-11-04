@@ -334,7 +334,7 @@ async function loadHistory() {
   refresh();
 }
 
-api.onMinutes(({ id, status }) => {
+api.onMinutes(({ id, status, offline }) => {
   if (status === 'done') {
     docCache.delete(id);
     // 회의록은 바로 쓸 수 있는 초안이다. 확인할 항목이 있으면 같이 알린다
@@ -351,7 +351,11 @@ api.onMinutes(({ id, status }) => {
     });
   }
   if (status === 'short') toast('회의 녹음을 저장했습니다', '10초 미만이라 회의록은 만들지 않았습니다');
-  if (status === 'error') toast('회의록을 만들지 못했습니다', '', { bad: true, action: '보기', onAction: () => (location.hash = `#meeting/${encodeURIComponent(id)}`) });
+  if (status === 'error') {
+    toast(offline ? '인터넷 연결이 없어 회의록을 쓰지 못했습니다' : '회의록을 만들지 못했습니다', offline ? '녹취는 저장했습니다. 연결되면 이어서 씁니다' : '', {
+      bad: true, action: '보기', onAction: () => (location.hash = `#meeting/${encodeURIComponent(id)}`),
+    });
+  }
   loadHistory();
 });
 
@@ -1366,6 +1370,19 @@ function pageMeeting(id) {
       return h('div', { class: 'state' }, h('b', null, '짧은 녹음입니다'), h('p', null, '10초 미만 녹음은 회의록을 만들지 않습니다. 필요 없으면 오른쪽 위 ⋯ 메뉴에서 휴지통으로 옮기세요.'));
     }
     const sel = speakersSelect();
+    // 회의록 쓰기에서 멈췄으면(인터넷 끊김·앱 종료) 저장된 녹취로 회의록만 다시 쓴다
+    if (s === 'error' && m.stage === 'write') {
+      const resume = h('button', { class: 'btn primary', onclick: () => {
+        docCache.delete(r.id);
+        api.resumeMinutes(r.dir).catch((err) => toast('이어서 쓰지 못했습니다', err.message, { bad: true }));
+        setTimeout(loadHistory, 400);
+      } }, '회의록만 다시 쓰기');
+      const redo = h('button', { class: 'btn', onclick: () => remake(r, sel.value) }, '녹취부터 다시');
+      return h('div', { class: 'state' },
+        h('b', null, m.offline ? '인터넷 연결이 없어 회의록을 쓰지 못했습니다' : '회의록을 쓰다가 멈췄습니다'),
+        h('p', { class: 'err' }, m.offline ? '녹취와 화자 구분은 저장되어 있습니다. 연결되면 자동으로 이어서 씁니다.' : `${m.error} · 녹취와 화자 구분은 저장되어 있어 회의록만 다시 쓸 수 있습니다.`),
+        h('div', { class: 'row' }, resume, h('label', { class: 'hint', style: 'margin:0 0 0 12px' }, '참석 인원 '), sel, redo));
+    }
     const go = h('button', { class: 'btn primary', onclick: () => remake(r, sel.value) }, s === 'error' ? '다시 만들기' : '회의록 만들기');
     return h('div', { class: 'state' },
       h('b', null, s === 'error' ? '회의록을 만들지 못했습니다' : s === 'empty' ? '들린 말이 없었습니다' : '아직 회의록이 없습니다'),
