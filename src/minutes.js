@@ -865,8 +865,8 @@ function labelRedoLines(dir, segs, track, tracks) {
   return lines;
 }
 
-// 재생 막대용: 화자 구분이 찾은 실제 말한 구간(누가 몇 초~몇 초)과, 말소리는 있는데 녹취 글이 없는 구간.
-// 화자 번호는 녹취와 같은 표로 붙이고(스크립트 색과 맞게), 바꾼 이름이 있으면 그 이름으로
+// 재생 막대용: 말소리는 있는데(화자 구분이 찾은 말한 구간) 녹취 글이 없는 구간.
+// turns(누가 몇 초~몇 초)도 같이 돌려주지만 막대 색에는 쓰지 않는다 (줄 화자와 어긋남, 결정 36)
 const MISSING_MIN_SEC = 8;
 function speakerTurns(dir) {
   const turns = readJsonFile(path.join(dir, 'diarization.json'))?.segments;

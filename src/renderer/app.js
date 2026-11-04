@@ -1775,8 +1775,8 @@ function pageMeeting(id) {
   }
 
   // 재생 막대: 화자별 색 띠 위에서 누르거나 끌어 원하는 곳부터 듣는다.
-  // 화자 구분 결과가 있으면 실제로 말한 구간(누가 몇 초~몇 초)으로 칠하고, 말소리는 있는데 녹취 글이 없는 구간은 빗금으로 표시한다.
-  // 없으면(화상 회의 두 트랙 등) 녹취 줄 시각으로 어림한다 (다음 줄까지, 최대 30초)
+  // 색은 스크립트와 같게 녹취 줄 기준(다음 줄까지, 최대 30초). 화자 구분 결과를 그대로 그리면 짧은 말을 놓친 곳이 비고
+  // 줄 화자와 어긋나서(실측 2시간 회의 27%) 쓰지 않는다. 말소리는 있는데 녹취 글이 없는 구간만 빗금으로 겹쳐 그린다
   function playerBar(r, raw, color, speech = null) {
     const missing = speech?.missing ?? [];
     const missingAt = (t) => missing.find((g) => t >= g.start && t < g.end);
@@ -1809,22 +1809,14 @@ function pageMeeting(id) {
       const T = total() || 1;
       // 같은 사람이 이어서 말한 구간은 한 덩어리로 합쳐, 2시간짜리도 누가 언제 말했는지 읽히게 한다
       const runs = [];
-      if (speech?.turns?.length) {
-        for (const t of speech.turns) {
-          const last = runs.at(-1);
-          if (last && last.who === t.who && t.start - last.end < 1.5) last.end = Math.max(last.end, t.end);
-          else runs.push({ who: t.who, start: t.start, end: t.end });
-        }
-      } else {
-        raw.forEach((l, i) => {
-          if (l.at === null || !l.who) return;
-          const next = raw.slice(i + 1).find((n) => n.at !== null)?.at ?? T;
-          const end = Math.min(next, l.at + 30);
-          const last = runs.at(-1);
-          if (last && last.who === l.who && l.at - last.end < 8) last.end = end;
-          else runs.push({ who: l.who, start: l.at, end });
-        });
-      }
+      raw.forEach((l, i) => {
+        if (l.at === null || !l.who) return;
+        const next = raw.slice(i + 1).find((n) => n.at !== null)?.at ?? T;
+        const end = Math.min(next, l.at + 30);
+        const last = runs.at(-1);
+        if (last && last.who === l.who && l.at - last.end < 8) last.end = end;
+        else runs.push({ who: l.who, start: l.at, end });
+      });
       for (const run of runs) {
         ctx.fillStyle = resolve(color(run.who));
         ctx.fillRect((run.start / T) * w, 0, Math.max(1, ((run.end - run.start) / T) * w), hh);
