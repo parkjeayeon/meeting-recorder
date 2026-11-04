@@ -2,6 +2,13 @@
 
 자동 시험과 손으로 확인하는 방법, 그리고 주의할 점.
 
+## 빌드 전 자동 검사 — `npm run dist`
+`npm run dist`(`npm run install-app`도)는 빌드 전에 아래 두 가지를 돌리고, 실패하면 빌드하지 않는다.
+1. 키보드 처리기 검사 `node scripts/dev/check-handlers.js` (1초 미만)
+2. 화면 테스트 `npm run test:ui` (약 13초)
+
+자세한 내용은 아래 "주의할 점"의 두 항목.
+
 ## 셀프테스트 — `npm run selftest`
 fn 이벤트를 흉내 내 실제 녹음 흐름을 시험한다 (`src/main.js`의 `runFnSimulation`). 창을 띄우지 않고 결과를 `SELFTEST …` 줄로 출력한다.
 
