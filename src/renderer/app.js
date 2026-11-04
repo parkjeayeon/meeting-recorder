@@ -1181,7 +1181,9 @@ function pageMeeting(id) {
       seen.add(t.id);
       if (m.index > last) out.push(text.slice(last, m.index));
       const open = (e) => termCard(e.currentTarget, t);
-      out.push(h('span', { class: `term${t.status === 'confirmed' ? '' : ' guess'}`, role: 'button', tabindex: 0, title: t.note, onclick: open, onkeydown: (e) => e.key === 'Enter' && open(e) }, m[1]));
+      out.push(h('span', { class: `term${t.status === 'confirmed' ? '' : ' guess'}`, role: 'button', tabindex: 0, title: t.note, onclick: open, onkeydown: (e) => {
+        if (e.key === 'Enter') open(e);
+      } }, m[1]));
       last = m.index + m[1].length;
     }
     out.push(text.slice(last));
@@ -1950,7 +1952,10 @@ function pageMeeting(id) {
         refreshDoc(r);
       }
     } }, '적용');
-    input.onkeydown = (e) => e.key === 'Enter' && !e.isComposing && save.click();
+    // 값을 돌려주지 않게 블록으로: on* 처리기가 false를 돌려주면 영어·Backspace 입력이 막힌다 (한글 IME만 됨)
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter' && !e.isComposing) save.click();
+    };
     row.replaceChildren(h('span', { class: 'heard' }, it.heard), icon('i-right'), input, save, h('button', { class: 'btn small ghost', onclick: () => refreshDoc(r) }, '취소'));
     row.classList.add('ritem-fix');
     input.focus();
