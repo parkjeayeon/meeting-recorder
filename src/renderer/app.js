@@ -385,6 +385,14 @@ api.onMinutes(({ id, status, offline }) => {
   loadHistory();
 });
 
+// 파일이 바뀌면(앱 밖에서 고친 경우 포함) 열려 있는 회의와 목록을 다시 읽는다
+api.onMeetingChanged(({ id }) => {
+  docCache.delete(id);
+  if (route.name === 'meeting' && route.arg === id) current?.reload?.();
+  loadHistory();
+});
+api.onRecordingsChanged(() => loadHistory());
+
 // 다듬기 전/후를 단어 단위로 비교해 지운 말(취소선)과 넣은 말(밑줄)을 표시한다
 const PUNCT = /^[.,!?…·:;"'“”‘’()]$/;
 const tokenize = (s) => s.match(/[^\s.,!?…·:;"'“”‘’()]+|[.,!?…·:;"'“”‘’()]/g) ?? [];
@@ -2006,8 +2014,13 @@ function pageMeeting(id) {
   document.addEventListener('keydown', onKey);
 
   draw();
+  api.watchMeeting(r0.dir); // 이 회의 파일이 바뀌면(앱 밖에서 고쳐도) 다시 읽어 그린다
   return {
     el,
+    reload: () => {
+      docCache.delete(id);
+      draw();
+    },
     // 진행률·상태·확인 필요 숫자가 바뀐 경우에만 다시 그린다
     update: () => {
       const r = history.find((m) => m.id === id);
@@ -2022,6 +2035,7 @@ function pageMeeting(id) {
       removeAddBtn();
       closeFind();
       document.removeEventListener('keydown', onFindKey);
+      api.watchMeeting(null);
     },
   };
 }

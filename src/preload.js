@@ -75,4 +75,7 @@ contextBridge.exposeInMainWorld('recorderApi', {
   deleteDictation: (id) => ipcRenderer.invoke('dict:delete', id),
   onSwipe: (cb) => ipcRenderer.on('nav:swipe', (_e, dir) => cb(dir)),
   onMinutes: (cb) => ipcRenderer.on('minutes:status', (_e, s) => cb(s)),
+  watchMeeting: (dir) => ipcRenderer.invoke('meeting:watch', dir),
+  onMeetingChanged: (cb) => ipcRenderer.on('meeting:changed', (_e, s) => cb(s)),
+  onRecordingsChanged: (cb) => ipcRenderer.on('recordings:changed', () => cb()),
 });

@@ -51,6 +51,7 @@ function mergePortableSettings() {
 function setRecordingsDir(dir) {
   RECORDINGS_DIR = dir;
   DICTATION_LOG = path.join(dir, 'dictations.jsonl');
+  if (recordingsWatch) watchRecordings(); // 앱 실행 중 녹음 폴더를 바꾸면 새 폴더를 지켜본다
 }
 
 // ── 시스템 오디오 캡처 경로 (Wispr Flow와 같은 분기) ──────────────────────
@@ -601,6 +602,37 @@ function glossaryWithNames(d, names) {
 ipcMain.handle('glossary:make', (_e, dir) => glossary.makeGlossary(recordingDir(dir)));
 ipcMain.handle('glossary:explain', (_e, dir, term) => glossary.explainTerm(recordingDir(dir), term));
 ipcMain.handle('glossary:update', (_e, dir, id, patch) => glossary.updateTerm(recordingDir(dir), id, patch));
+// 파일이 바뀌면 화면을 다시 그린다: 열려 있는 회의 폴더(회의록·녹취·정리본·확인 필요·용어·화자 이름)와 녹음 폴더(회의가 생기거나 사라짐).
+// 앱 안 작업은 원래 바로 다시 그리지만, 앱 밖에서 고치거나 다른 경로로 바뀐 경우에도 다시 열 필요가 없게 한다
+const WATCHED = new Set(['minutes.md', 'transcript.txt', 'script-clean.txt', 'review.json', 'glossary.json', 'meta.json']);
+let meetingWatch = null;
+let recordingsWatch = null;
+function debounced(fn, ms = 400) {
+  let t = null;
+  return () => {
+    clearTimeout(t);
+    t = setTimeout(fn, ms);
+  };
+}
+function watchRecordings() {
+  recordingsWatch?.close();
+  try {
+    const changed = debounced(() => send('recordings:changed', {}));
+    recordingsWatch = fs.watch(RECORDINGS_DIR, (_ev, name) => name && /^\d{4}-\d{2}-\d{2}_/.test(String(name)) && changed());
+  } catch {
+    recordingsWatch = null;
+  }
+}
+ipcMain.handle('meeting:watch', (_e, dir) => {
+  meetingWatch?.close();
+  meetingWatch = null;
+  if (!dir) return;
+  const d = recordingDir(dir);
+  const changed = debounced(() => send('meeting:changed', { id: path.basename(d) }));
+  try {
+    meetingWatch = fs.watch(d, (_ev, name) => WATCHED.has(String(name)) && changed());
+  } catch {}
+});
 ipcMain.handle('review:make', (_e, dir) => minutes.makeReview(recordingDir(dir)));
 ipcMain.handle('review:apply', (_e, dir, fixes) => minutes.applyReview(recordingDir(dir), fixes));
 ipcMain.handle('review:status', (_e, dir, ids, status) => minutes.setReviewStatus(recordingDir(dir), ids, status === 'open' ? 'open' : 'kept'));
@@ -1156,6 +1188,7 @@ async function init() {
   // 권한 대화상자를 기다리느라 fn 감지·독·로그인 항목 설정이 멈추지 않게 await하지 않는다
   if (process.platform === 'darwin') systemPreferences.askForMediaAccess('microphone');
   fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
+  watchRecordings();
 
   // 패키징된 앱은 처음 실행할 때 로그인 항목에 등록
   const FIRST_RUN_FLAG = path.join(app.getPath('userData'), '.login-item-configured');
