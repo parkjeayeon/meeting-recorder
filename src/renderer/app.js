@@ -827,7 +827,8 @@ function pageMeetings() {
       h('button', { class: 'btn small', onclick: () => trashMeetings(failedOnes) }, icon('i-trash'), '모두 휴지통으로'),
     ] : []));
     if (!all.length && issues.has('folder')) list.replaceChildren(folderEmpty());
-    else if (!all.length) list.replaceChildren(h('div', { class: 'empty' }, h('b', null, '아직 회의 녹음이 없습니다'), '회의를 시작할 때 위쪽 회의 녹음을 누르세요. 끝나면 녹취와 회의록이 만들어집니다.', h('br'), h('button', { class: 'btn rec', onclick: openMeetingStart }, icon('i-rec'), '회의 녹음 시작')));
+    else if (!all.length) list.replaceChildren(h('div', { class: 'empty' }, h('b', null, '아직 회의 녹음이 없습니다'), '회의를 시작할 때 위쪽 회의 녹음을 누르세요. 끝나면 녹취와 회의록이 만들어집니다. 다른 앱에서 녹음한 파일은 가져오거나 여기로 끌어다 놓으세요.', h('br'),
+      h('div', { style: 'display:inline-flex; gap:8px' }, h('button', { class: 'btn rec', onclick: openMeetingStart }, icon('i-rec'), '회의 녹음 시작'), h('button', { class: 'btn', onclick: () => importMeeting() }, icon('i-folder'), '파일 가져오기'))));
     else if (!items.length) list.replaceChildren(h('div', { class: 'empty' }, h('b', null, '맞는 회의가 없습니다'), '검색어나 필터를 바꿔 보세요.'));
     else {
       // 회의록이 있거나 만드는 중인 회의는 카드, 녹음만·실패·들린 말 없음은 한 줄로 접는다
@@ -849,13 +850,46 @@ function pageMeetings() {
     }
   };
   const el = h('div', { class: 'page wide' },
-    h('div', { class: 'page-head' }, h('h1', null, '회의', count), searchBox('제목, 요약 검색', '', (v) => {
-      q = v.trim().toLowerCase();
-      update();
-    })),
+    h('div', { class: 'page-head' }, h('h1', null, '회의', count),
+      h('button', { class: 'btn', title: '다른 앱에서 녹음한 파일로 회의록을 만듭니다. 여기로 끌어다 놓아도 됩니다', onclick: () => importMeeting() }, icon('i-folder'), '파일 가져오기'),
+      searchBox('제목, 요약 검색', '', (v) => {
+        q = v.trim().toLowerCase();
+        update();
+      })),
     chips, bulk, list);
+  // 녹음 파일을 끌어다 놓으면 가져온다 (여러 개면 이름 순서대로 이어 붙임)
+  el.ondragover = (e) => {
+    if (![...e.dataTransfer.types].includes('Files')) return;
+    e.preventDefault();
+    el.classList.add('drop');
+  };
+  el.ondragleave = (e) => !el.contains(e.relatedTarget) && el.classList.remove('drop');
+  el.ondrop = (e) => {
+    e.preventDefault();
+    el.classList.remove('drop');
+    const paths = [...e.dataTransfer.files].map((f) => api.filePath(f)).filter(Boolean);
+    if (paths.length) importMeeting(paths);
+  };
   update();
   return { el, update };
+}
+
+let importing = false;
+async function importMeeting(paths = null) {
+  if (importing) return;
+  importing = true;
+  try {
+    const r = await api.importMeeting(paths);
+    if (!r) return;
+    toast(r.count > 1 ? `녹음 파일 ${r.count}개를 이어 붙여 가져왔습니다` : '녹음 파일을 가져왔습니다', '녹취와 회의록을 만들기 시작합니다', {
+      action: '보기', onAction: () => (location.hash = `#meeting/${encodeURIComponent(r.id)}`),
+    });
+    loadHistory();
+  } catch (err) {
+    toast('가져오지 못했습니다', err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { bad: true, ms: 8000 });
+  } finally {
+    importing = false;
+  }
 }
 
 // ── 회의 상세 ───────────────────────────────────────────────────────────

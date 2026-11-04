@@ -231,6 +231,7 @@ code { font: 12px var(--mono); padding: 1px 5px; border-radius: 5px; background:
 /* ── 페이지 머리 ──────────────────────────────────────────────────── */
 .page-head { display: flex; align-items: flex-end; gap: 16px; margin-bottom: 24px; }
 .page-head h1 { margin: 0; font-size: 26px; line-height: 1.2; font-weight: 700; letter-spacing: -0.025em; flex: 1; }
+.page.drop { outline: 2px dashed var(--accent); outline-offset: -12px; border-radius: 16px; }
 .page-head h1 .num { font-size: 15px; color: var(--ink-3); font-weight: 400; margin-left: 8px; }
 .lead { margin: 6px 0 0; color: var(--ink-2); font-size: 14px; }
 .search { position: relative; width: 260px; }

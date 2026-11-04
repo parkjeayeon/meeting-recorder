@@ -7,6 +7,7 @@ const { spawn, execFile, execFileSync } = require('child_process');
 const { WavWriter } = require('./wav-writer');
 const dictation = require('./dictation');
 const minutes = require('./minutes');
+const importAudio = require('./import-audio');
 const setup = require('./setup');
 
 const SELFTEST = process.argv.includes('--selftest');
@@ -542,6 +543,24 @@ function recordingDir(dir) {
 
 ipcMain.handle('minutes:make', (_e, dir, speakers) => {
   runMinutes(recordingDir(dir), Number(speakers) || null);
+});
+// 다른 앱에서 녹음한 파일을 회의로 가져온다 (여러 개면 이름 순서대로 이어 붙임). paths가 없으면 파일 고르기 창을 띄운다
+ipcMain.handle('meeting:import', async (_e, paths = null) => {
+  let files = paths;
+  if (!files?.length) {
+    const picked = await dialog.showOpenDialog(win, {
+      title: '녹음 파일 가져오기',
+      buttonLabel: '가져오기',
+      message: '여러 파일을 고르면 이름 순서대로 이어 붙여 회의 하나로 만듭니다',
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: '녹음 파일', extensions: importAudio.EXTS.map((e) => e.slice(1)) }],
+    });
+    if (picked.canceled || !picked.filePaths.length) return null;
+    files = picked.filePaths;
+  }
+  const dir = await importAudio.importAudio(files, RECORDINGS_DIR);
+  runMinutes(dir);
+  return { id: path.basename(dir), count: files.length };
 });
 ipcMain.handle('minutes:resume', (_e, dir) => {
   const d = recordingDir(dir);

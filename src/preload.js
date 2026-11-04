@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('recorderApi', {
   info: () => ipcRenderer.invoke('app:info'),
@@ -48,6 +48,9 @@ contextBridge.exposeInMainWorld('recorderApi', {
   repaste: (text) => ipcRenderer.invoke('dict:repaste', text),
   makeMinutes: (dir, speakers) => ipcRenderer.invoke('minutes:make', dir, speakers),
   resumeMinutes: (dir) => ipcRenderer.invoke('minutes:resume', dir),
+  importMeeting: (paths) => ipcRenderer.invoke('meeting:import', paths),
+  // 끌어다 놓은 파일의 경로 (렌더러는 샌드박스라 File.path가 없다)
+  filePath: (file) => webUtils.getPathForFile(file),
   renameSpeaker: (dir, from, to) => ipcRenderer.invoke('speaker:rename', dir, from, to),
   tokenStatus: () => ipcRenderer.invoke('tokens:status'),
   saveToken: (kind, value) => ipcRenderer.invoke('tokens:save', kind, value),
