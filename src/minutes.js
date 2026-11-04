@@ -865,6 +865,41 @@ function labelRedoLines(dir, segs, track, tracks) {
   return lines;
 }
 
+// 재생 막대용: 화자 구분이 찾은 실제 말한 구간(누가 몇 초~몇 초)과, 말소리는 있는데 녹취 글이 없는 구간.
+// 화자 번호는 녹취와 같은 표로 붙이고(스크립트 색과 맞게), 바꾼 이름이 있으면 그 이름으로
+const MISSING_MIN_SEC = 8;
+function speakerTurns(dir) {
+  const turns = readJsonFile(path.join(dir, 'diarization.json'))?.segments;
+  if (!turns?.length) return null;
+  const mic = (readJsonFile(path.join(dir, 'segments.json'))?.segments ?? []).filter((l) => l.track === 'mic');
+  const names = new Map();
+  assignSpeakers(mic.map((l) => ({ ...l })), turns, names);
+  const display = readJsonFile(path.join(dir, 'meta.json'))?.speakerNames ?? {};
+  const out = turns.filter((t) => names.has(t.speaker)).map((t) => ({ start: t.start, end: t.end, who: display[names.get(t.speaker)] ?? names.get(t.speaker) }));
+  // 말한 구간에서 녹취 구간(앞뒤 1초 여유)에 덮이지 않은 부분 → 이어 붙여 8초 이상이면 '녹취 없음'
+  const covered = mic.map((l) => [l.start - 1, l.end + 1]).sort((a, b) => a[0] - b[0]);
+  const gaps = [];
+  for (const t of turns) {
+    let pos = t.start;
+    for (const [a, b] of covered) {
+      if (b <= pos || a >= t.end) continue;
+      if (a > pos) gaps.push([pos, a]);
+      pos = Math.max(pos, b);
+      if (pos >= t.end) break;
+    }
+    if (pos < t.end) gaps.push([pos, t.end]);
+  }
+  gaps.sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  for (const g of gaps) {
+    const last = merged.at(-1);
+    if (last && g[0] - last[1] < 3) last[1] = Math.max(last[1], g[1]);
+    else merged.push([...g]);
+  }
+  const missing = merged.filter(([a, b]) => b - a >= MISSING_MIN_SEC).map(([start, end]) => ({ start, end }));
+  return { turns: out, missing };
+}
+
 const formatLine = (l) => `[${clock(l.start)}]${l.label ? ` [${l.label}]` : ''} ${l.text}`;
 
 function retranscribeRange(dir, itemId, start, end) {
@@ -1007,4 +1042,4 @@ function makeCleanScript(dir) {
 }
 
 module.exports = {
-  findLoops, nameSpeakers, makeMinutes, canResume, makeCleanScript, renameSpeaker, diarizeAvailable, readReview, makeReview, applyReview, setReviewStatus, chatReview, finalizeReview, retranscribeRange, applyRetranscribe };
+  findLoops, nameSpeakers, makeMinutes, canResume, makeCleanScript, renameSpeaker, diarizeAvailable, readReview, makeReview, applyReview, setReviewStatus, chatReview, finalizeReview, retranscribeRange, applyRetranscribe, speakerTurns };

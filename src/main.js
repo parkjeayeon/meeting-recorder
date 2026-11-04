@@ -592,6 +592,7 @@ ipcMain.handle('minutes:read', (_e, dir) => {
     scriptClean: minutes.nameSpeakers(read('script-clean.txt'), names),
     review,
     glossary: glossaryWithNames(d, names),
+    speech: minutes.speakerTurns(d),
   };
 });
 function glossaryWithNames(d, names) {

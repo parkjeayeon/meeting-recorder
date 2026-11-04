@@ -24,6 +24,16 @@ const meeting = dir && !denied && {
   summary: '배포 일정과 QA 범위를 정리한 예시 회의입니다.',
   review: { open: 1, total: 1, finalized: false },
 };
+// 재생 막대용 예시: 두 사람이 번갈아 말하고, 10:00~11:20은 말소리는 있는데 녹취가 없는 구간
+const stubSpeech = () => {
+  const turns = [];
+  for (let t = 2, k = 0; t < 1790; k++) {
+    const len = 8 + ((k * 37) % 50);
+    turns.push({ start: t, end: t + len, who: k % 3 === 2 ? '화자 2' : '화자 1' });
+    t += len + 1 + (k % 4);
+  }
+  return { turns, missing: [{ start: 600, end: 680 }, { start: 1340, end: 1360 }] };
+};
 const noop = () => {};
 const impl = {
   info: async () => ({ recordingsDir: '/Users/me/Documents/MeetingRecorder', defaultRecordingsDir: '/Users/me/Documents/MeetingRecorder' }),
@@ -51,7 +61,7 @@ const impl = {
   fnKeyWarning: async () => null,
   tokenStatus: async () => ({ hf: { cli: true }, anthropic: {} }),
   verifyToken: async () => ({ ok: true, message: '예시 계정 · 화자 구분 모델 사용 가능' }),
-  readMinutes: async () => ({ minutes: read('minutes.md'), transcript: read('transcript.txt'), scriptClean: read('script-clean.txt'), review: JSON.parse(read('review.json') ?? 'null'), glossary: JSON.parse(read('glossary.json') ?? 'null') }),
+  readMinutes: async () => ({ minutes: read('minutes.md'), transcript: read('transcript.txt'), scriptClean: read('script-clean.txt'), review: JSON.parse(read('review.json') ?? 'null'), glossary: JSON.parse(read('glossary.json') ?? 'null'), speech: stubSpeech() }),
   redoRange: async (_dir, id, start, end) => {
     const review = JSON.parse(read('review.json'));
     const lines = [{ start: start + 2, end: start + 9, text: '그 부분은 로그를 심어서 확인할 예정입니다.', label: '화자 2' }, { start: start + 11, end: start + 18, text: '네, 알겠습니다.', label: '화자 1' }];

@@ -1058,7 +1058,7 @@ function pageMeeting(id) {
     lineEls = [];
     lineTimes = [];
     playingIdx = -1;
-    player = r.firstFile ? playerBar(r, raw, color) : null;
+    player = r.firstFile ? playerBar(r, raw, color, doc.speech) : null;
 
     const body = h('div');
     findScope = body;
@@ -1774,8 +1774,12 @@ function pageMeeting(id) {
     return wrap;
   }
 
-  // 재생 막대: 화자별 색 띠 위에서 누르거나 끌어 원하는 곳부터 듣는다
-  function playerBar(r, raw, color) {
+  // 재생 막대: 화자별 색 띠 위에서 누르거나 끌어 원하는 곳부터 듣는다.
+  // 화자 구분 결과가 있으면 실제로 말한 구간(누가 몇 초~몇 초)으로 칠하고, 말소리는 있는데 녹취 글이 없는 구간은 빗금으로 표시한다.
+  // 없으면(화상 회의 두 트랙 등) 녹취 줄 시각으로 어림한다 (다음 줄까지, 최대 30초)
+  function playerBar(r, raw, color, speech = null) {
+    const missing = speech?.missing ?? [];
+    const missingAt = (t) => missing.find((g) => t >= g.start && t < g.end);
     const playBtn = h('button', { class: 'play', 'aria-label': '재생' }, icon('i-play'));
     const time = h('span', { class: 'ptime' });
     const canvas = h('canvas');
@@ -1805,17 +1809,46 @@ function pageMeeting(id) {
       const T = total() || 1;
       // 같은 사람이 이어서 말한 구간은 한 덩어리로 합쳐, 2시간짜리도 누가 언제 말했는지 읽히게 한다
       const runs = [];
-      raw.forEach((l, i) => {
-        if (l.at === null || !l.who) return;
-        const next = raw.slice(i + 1).find((n) => n.at !== null)?.at ?? T;
-        const end = Math.min(next, l.at + 30);
-        const last = runs.at(-1);
-        if (last && last.who === l.who && l.at - last.end < 8) last.end = end;
-        else runs.push({ who: l.who, start: l.at, end });
-      });
+      if (speech?.turns?.length) {
+        for (const t of speech.turns) {
+          const last = runs.at(-1);
+          if (last && last.who === t.who && t.start - last.end < 1.5) last.end = Math.max(last.end, t.end);
+          else runs.push({ who: t.who, start: t.start, end: t.end });
+        }
+      } else {
+        raw.forEach((l, i) => {
+          if (l.at === null || !l.who) return;
+          const next = raw.slice(i + 1).find((n) => n.at !== null)?.at ?? T;
+          const end = Math.min(next, l.at + 30);
+          const last = runs.at(-1);
+          if (last && last.who === l.who && l.at - last.end < 8) last.end = end;
+          else runs.push({ who: l.who, start: l.at, end });
+        });
+      }
       for (const run of runs) {
         ctx.fillStyle = resolve(color(run.who));
         ctx.fillRect((run.start / T) * w, 0, Math.max(1, ((run.end - run.start) / T) * w), hh);
+      }
+      // 녹취 없음: 그 구간을 비우고 강조색 빗금
+      const accent = css.getPropertyValue('--accent').trim();
+      for (const g of missing) {
+        const x = (g.start / T) * w;
+        const gw = Math.max(3, ((g.end - g.start) / T) * w);
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x, 0, gw, hh);
+        ctx.clip();
+        ctx.fillStyle = css.getPropertyValue('--panel');
+        ctx.fillRect(x, 0, gw, hh);
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = 1.5;
+        for (let k = -hh; k < gw + hh; k += 4) {
+          ctx.beginPath();
+          ctx.moveTo(x + k, hh);
+          ctx.lineTo(x + k + hh, 0);
+          ctx.stroke();
+        }
+        ctx.restore();
       }
     };
     const tick = () => {
@@ -1840,7 +1873,8 @@ function pageMeeting(id) {
       hover.hidden = false;
       const rect = scrub.getBoundingClientRect();
       hover.style.left = `${e.clientX - rect.left}px`;
-      hover.textContent = clock(at(e));
+      const t = at(e);
+      hover.textContent = missingAt(t) ? `${clock(t)} · 녹취 없음` : clock(t);
     };
     scrub.onpointermove = showHover;
     scrub.onpointerleave = () => (hover.hidden = true);
@@ -1859,7 +1893,14 @@ function pageMeeting(id) {
       followBtn.setAttribute('aria-pressed', String(follow));
       if (follow) syncPlaying(true);
     };
-    const legend = order.length > 1 && h('div', { class: 'player-legend' }, order.slice(0, 6).map((who) => h('span', null, h('i', { style: `background:${color(who)}` }), who)));
+    // 녹취 없음 범례는 누를 때마다 다음 구간으로 이동한다
+    const nextMissing = () => {
+      const g = missing.find((x) => x.start > audio.currentTime + 1) ?? missing[0];
+      if (g) audio.currentTime = g.start;
+    };
+    const legend = (order.length > 1 || missing.length > 0) && h('div', { class: 'player-legend' },
+      order.length > 1 && order.slice(0, 6).map((who) => h('span', null, h('i', { style: `background:${color(who)}` }), who)),
+      missing.length > 0 && h('button', { class: 'legend-missing', title: '말소리는 있는데 녹취 글이 없는 구간입니다. 누르면 다음 구간으로 이동합니다', onclick: nextMissing }, h('i', { class: 'hatch' }), `녹취 없음 ${missing.length}곳`));
     const el = h('div', { class: 'player' }, h('div', { class: 'player-inner' },
       playBtn,
       h('button', { class: 'icon-btn', 'aria-label': '10초 뒤로', title: '10초 뒤로', onclick: () => (audio.currentTime -= 10) }, icon('i-back10')),
