@@ -40,6 +40,10 @@ const impl = {
     fs.writeFileSync(path.join(dir, 'review.json'), JSON.stringify(review));
     return review;
   },
+  pickAudio: async () => [
+    { path: '/Users/me/Downloads/2026-11-01 오후 2.00.00 녹음.m4a', name: '2026-11-01 오후 2.00.00 녹음.m4a', durationSec: 1752 },
+    { path: '/Users/me/Downloads/2026-11-01 오후 2.30.00 녹음.m4a', name: '2026-11-01 오후 2.30.00 녹음.m4a', durationSec: 1081 },
+  ],
   recordingsAccess: async () => (denied ? { ok: false, dir: '/Users/me/Documents/MeetingRecorder', code: 'EPERM' } : { ok: true }),
   dictSettings: async () => ({ enabled: true, language: 'ko', cleanup: true, provider: 'auto', vocabulary: 'PJY, Whisper', minutes: true, diarize: true, diarizeReady: true, hasHfToken: true, meetingSystemAudio: false, engine: { state: 'ready' } }),
   providers: async () => ({ 'claude-code': { installed: true, loggedIn: true, account: 'me@example.com' }, codex: { installed: true, loggedIn: false }, api: { installed: true, loggedIn: false } }),

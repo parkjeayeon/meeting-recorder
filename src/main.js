@@ -545,13 +545,14 @@ function recordingDir(dir) {
 ipcMain.handle('minutes:make', (_e, dir, speakers) => {
   runMinutes(recordingDir(dir), Number(speakers) || null);
 });
-// 다른 앱에서 녹음한 파일을 회의로 가져온다 (여러 개면 이름 순서대로 이어 붙임). paths가 없으면 파일 고르기 창을 띄운다
-ipcMain.handle('meeting:import', async (_e, paths = null) => {
+// 다른 앱에서 녹음한 파일을 회의로 가져온다 (여러 개면 이름 순서대로 이어 붙임)
+// meeting:pick — 파일 고르기 창(또는 끌어다 놓은 파일)을 확인 창에 보여 줄 목록으로. meeting:import — 실제로 가져와 회의록 시작
+ipcMain.handle('meeting:pick', async (_e, paths = null) => {
   let files = paths;
   if (!files?.length) {
     const picked = await dialog.showOpenDialog(win, {
       title: '녹음 파일 가져오기',
-      buttonLabel: '가져오기',
+      buttonLabel: '고르기',
       message: '여러 파일을 고르면 이름 순서대로 이어 붙여 회의 하나로 만듭니다',
       properties: ['openFile', 'multiSelections'],
       filters: [{ name: '녹음 파일', extensions: importAudio.EXTS.map((e) => e.slice(1)) }],
@@ -559,9 +560,14 @@ ipcMain.handle('meeting:import', async (_e, paths = null) => {
     if (picked.canceled || !picked.filePaths.length) return null;
     files = picked.filePaths;
   }
-  const dir = await importAudio.importAudio(files, RECORDINGS_DIR);
-  runMinutes(dir);
-  return { id: path.basename(dir), count: files.length };
+  return importAudio.describe(files);
+});
+ipcMain.handle('meeting:import', async (_e, paths, { notes = '', speakers = null } = {}) => {
+  if (!paths?.length) throw new Error('가져올 파일이 없습니다');
+  const n = Number(speakers) || null;
+  const dir = await importAudio.importAudio(paths, RECORDINGS_DIR, { notes: String(notes ?? ''), speakers: n });
+  runMinutes(dir, n);
+  return { id: path.basename(dir), count: paths.length };
 });
 ipcMain.handle('minutes:resume', (_e, dir) => {
   const d = recordingDir(dir);

@@ -183,6 +183,12 @@ code { font: 12px var(--mono); padding: 1px 5px; border-radius: 5px; background:
 .btn:hover { background: var(--panel-2); border-color: var(--ink-3); }
 .btn:active { transform: translateY(1px); }
 .btn:disabled { opacity: 0.45; pointer-events: none; }
+/* 진행 중인 버튼: 흐리게 하지 않고 글자는 그대로, 아이콘 자리에 도는 표시 */
+.btn.busy { pointer-events: none; }
+.btn.busy svg { display: none; }
+.btn.busy::before { content: ''; width: 11px; height: 11px; flex: none; border: 1.5px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .btn.busy::before { animation-duration: 2s; } }
 .btn.small { height: 28px; padding: 0 10px; font-size: 12.5px; }
 .btn.ghost { border-color: transparent; background: none; }
 .btn.ghost:hover { background: var(--shell-hover); }
@@ -222,6 +228,11 @@ code { font: 12px var(--mono); padding: 1px 5px; border-radius: 5px; background:
 .kinds button[aria-checked='true'] svg { color: var(--ink); }
 .sheet-foot { display: flex; align-items: center; gap: 8px; padding: 14px 18px 18px 24px; border-top: 1px solid var(--line); background: var(--panel-2); }
 .sheet-foot .inline-switch { margin-right: auto; }
+.import-files { margin: 0; padding-left: 20px; max-height: 120px; overflow: auto; font-size: 13px; color: var(--ink-2); line-height: 1.7; }
+.import-files .num { margin-left: 6px; color: var(--ink-3); }
+.import-notes { width: 100%; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); color: var(--ink); font: inherit; font-size: 13.5px; line-height: 1.55; resize: vertical; outline: none; }
+.import-notes:focus { border-color: var(--ink-3); }
+.sheet-hint { margin: 8px 0 0; font-size: 12px; color: var(--ink-3); }
 .btn.danger { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .btn.ok { color: var(--ok); }
 .icon-btn { width: 32px; height: 32px; display: inline-grid; place-items: center; border: 0; border-radius: 8px; background: none; color: var(--ink-2); }
@@ -391,6 +402,18 @@ ins { text-decoration: underline; text-decoration-color: var(--accent); text-dec
 
 .doc { max-width: 920px; padding-top: 18px; font-size: 14.5px; line-height: 1.7; }
 .doc .stamps { white-space: nowrap; }
+/* 본문 안 찾기 (⌘F) */
+.find-bar { position: absolute; top: 12px; right: 20px; z-index: 60; display: flex; align-items: center; gap: 2px; height: 38px; padding: 0 4px 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: var(--shadow-pop); animation: pop .14s cubic-bezier(.16, 1, .3, 1); }
+.find-bar > svg { width: 15px; height: 15px; color: var(--ink-3); margin-right: 4px; }
+.find-bar input { width: 200px; height: 30px; border: 0; outline: none; background: none; color: var(--ink); font-size: 13.5px; }
+.find-bar input::-webkit-search-cancel-button { display: none; }
+.find-count { min-width: 44px; padding: 0 6px; text-align: right; font: 12px var(--mono); color: var(--ink-3); }
+.find-bar.none .find-count { color: var(--accent); }
+.find-bar .icon-btn { width: 28px; height: 28px; }
+.find-bar .find-up svg { transform: rotate(90deg); }
+.find-bar .find-down svg { transform: rotate(-90deg); }
+::highlight(find) { background-color: rgba(250, 204, 21, 0.38); }
+::highlight(find-now) { background-color: rgb(249, 158, 11); color: #111; }
 /* 용어 설명: 밑줄(확인됨은 실선, LLM 추정은 점선) · 설명 카드 · 회의록 아래 용어 칸 */
 .term { cursor: pointer; border-bottom: 1px solid color-mix(in srgb, var(--ink-3) 70%, transparent); border-radius: 1px; outline: none; }
 .term.guess { border-bottom: 1px dashed var(--ink-3); }

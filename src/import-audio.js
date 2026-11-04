@@ -20,9 +20,20 @@ function run(cmd, args, { write = [] } = {}) {
   });
 }
 
-async function sampleRate(file) {
+async function probe(file) {
   const out = await run(AFINFO, [file]).catch(() => '');
-  return Number(/Data format:.*?(\d+) Hz/.exec(out)?.[1]) || null;
+  return { rate: Number(/Data format:.*?(\d+) Hz/.exec(out)?.[1]) || null, durationSec: Number(/estimated duration: ([\d.]+)/.exec(out)?.[1]) || null };
+}
+const sampleRate = async (file) => (await probe(file)).rate;
+
+// 이어 붙일 순서: 이름 순서 (녹음 앱은 보통 시각을 넣어 이름을 짓는다)
+const sortFiles = (files) => [...files].sort((a, b) => path.basename(a).localeCompare(path.basename(b), 'ko', { numeric: true }));
+
+// 가져오기 확인 창에 보여 줄 목록 (순서·길이). 형식이 맞지 않으면 여기서 알린다
+async function describe(files) {
+  const bad = files.find((f) => !EXTS.includes(path.extname(f).toLowerCase()));
+  if (bad) throw new Error(`가져올 수 없는 형식입니다: ${path.basename(bad)}`);
+  return Promise.all(sortFiles(files).map(async (f) => ({ path: f, name: path.basename(f), durationSec: (await probe(f)).durationSec })));
 }
 
 // WAV 안 data 덩어리의 위치와 길이
@@ -79,13 +90,14 @@ function folderName(d) {
 /**
  * @param {string[]} files 가져올 녹음 파일 (이름 순서대로 이어 붙인다)
  * @param {string} recordingsDir 녹음 폴더
+ * @param {{notes?: string, speakers?: number|null}} opts notes: 녹음에 담기지 않은 내용(회의록에 '녹음 외 메모'로), speakers: 참석 인원
  * @returns {Promise<string>} 만든 회의 폴더
  */
-async function importAudio(files, recordingsDir) {
+async function importAudio(files, recordingsDir, { notes = '', speakers = null } = {}) {
   if (!files.length) throw new Error('가져올 파일이 없습니다');
   const bad = files.find((f) => !EXTS.includes(path.extname(f).toLowerCase()));
   if (bad) throw new Error(`가져올 수 없는 형식입니다: ${path.basename(bad)}`);
-  const sorted = [...files].sort((a, b) => path.basename(a).localeCompare(path.basename(b), 'ko', { numeric: true }));
+  const sorted = sortFiles(files);
   const rates = await Promise.all(sorted.map(sampleRate));
   const rate = rates.every((r) => r && r <= 16000) ? 16000 : 48000;
 
@@ -141,6 +153,7 @@ async function importAudio(files, recordingsDir) {
     const meta = {
       mode: 'meeting', sampleRate: rate, bitDepth: 16, startedAt, endedAt: new Date(startedAt.getTime() + total * 1000),
       devices: null, files: { mic: { file: 'mic.wav', durationSec: Number(total.toFixed(2)) } }, imported: sources,
+      ...(speakers ? { speakers } : {}), ...(notes.trim() ? { notes: notes.trim().slice(0, 4000) } : {}),
     };
     fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2));
     return dir;
@@ -152,4 +165,4 @@ async function importAudio(files, recordingsDir) {
   }
 }
 
-module.exports = { importAudio, timeFromName, EXTS };
+module.exports = { importAudio, describe, timeFromName, EXTS };

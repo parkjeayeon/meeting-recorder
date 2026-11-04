@@ -874,14 +874,38 @@ function pageMeetings() {
   return { el, update };
 }
 
+// 녹음 파일 가져오기: 파일을 고르면(또는 끌어다 놓으면) 확인 창에서 순서·참석 인원·녹음에 담기지 않은 내용을 받고 가져온다
 let importing = false;
+let importPaths = [];
+let importSpeakers = '';
 async function importMeeting(paths = null) {
   if (importing) return;
+  const files = await api.pickAudio(paths);
+  if (!files?.length) return;
+  importPaths = files.map((f) => f.path);
+  $('importOrder').textContent = files.length > 1 ? `이름 순서대로 이어 붙여 회의 하나로 만듭니다` : '';
+  $('importFiles').replaceChildren(...files.map((f) => h('li', null, f.name, f.durationSec ? h('span', { class: 'num' }, clock(f.durationSec)) : null)));
+  const box = $('importSpeakers');
+  box.replaceChildren(...SPEAKER_CHOICES.map((v) => h('button', { type: 'button', role: 'radio', 'data-n': v, onclick: () => { importSpeakers = v; segPick(box, 'n', v); } }, speakerLabel(v))));
+  importSpeakers = '';
+  segPick(box, 'n', '');
+  $('importNotes').value = '';
+  $('importSheet').showModal();
+  $('importYes').focus();
+}
+$('importNo').onclick = () => $('importSheet').close();
+$('importClose').onclick = () => $('importSheet').close();
+$('importSheet').addEventListener('click', (e) => e.target === $('importSheet') && $('importSheet').close());
+$('importYes').onclick = async () => {
+  if (importing) return;
   importing = true;
+  const btn = $('importYes');
+  btn.classList.add('busy');
+  btn.lastChild.textContent = '가져오는 중…';
   try {
-    const r = await api.importMeeting(paths);
-    if (!r) return;
-    toast(r.count > 1 ? `녹음 파일 ${r.count}개를 이어 붙여 가져왔습니다` : '녹음 파일을 가져왔습니다', '녹취와 회의록을 만들기 시작합니다', {
+    const r = await api.importMeeting(importPaths, { notes: $('importNotes').value.trim(), speakers: importSpeakers || null });
+    $('importSheet').close();
+    toast(r.count > 1 ? `녹음 파일 ${r.count}개를 이어 붙여 가져왔습니다` : '녹음 파일을 가져왔습니다', '받아쓰기와 회의록을 만들기 시작합니다', {
       action: '보기', onAction: () => (location.hash = `#meeting/${encodeURIComponent(r.id)}`),
     });
     loadHistory();
@@ -889,8 +913,10 @@ async function importMeeting(paths = null) {
     toast('가져오지 못했습니다', err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { bad: true, ms: 8000 });
   } finally {
     importing = false;
+    btn.classList.remove('busy');
+    btn.lastChild.textContent = '가져오기';
   }
-}
+};
 
 // ── 회의 상세 ───────────────────────────────────────────────────────────
 const docCache = new Map(); // 회의 id → { minutes, transcript, scriptClean }
@@ -1027,6 +1053,7 @@ function pageMeeting(id) {
     player = r.firstFile ? playerBar(r, raw, color) : null;
 
     const body = h('div');
+    findScope = body;
     const matcher = termMatcher(doc.glossary?.terms);
     closeTermCard();
     removeAddBtn();
@@ -1042,7 +1069,7 @@ function pageMeeting(id) {
       else {
         const make = h('button', { class: 'btn primary' }, '정리본 만들기');
         make.onclick = async () => {
-          make.disabled = true;
+          make.classList.add('busy'); // 흐리게 하지 않고 진행 중 표시
           make.textContent = '만드는 중… (1~2분)';
           await api.cleanScript(r.dir);
           docCache.delete(id);
@@ -1062,6 +1089,7 @@ function pageMeeting(id) {
       body,
       chat && chatDrawer(r, doc));
     syncPlaying(true);
+    if (findBar) runFind({ keep: true }); // 탭을 바꾸거나 다시 그려도 찾던 말을 그대로 표시
   }
 
   function scriptView(r, lines, color, seekTo, matcher = null) {
@@ -1208,7 +1236,8 @@ function pageMeeting(id) {
     const terms = g?.terms ?? [];
     const guesses = terms.filter((t) => t.status !== 'confirmed');
     const make = h('button', { class: 'btn small', onclick: async () => {
-      make.disabled = true;
+      make.classList.add('busy');
+      make.setAttribute('aria-busy', 'true');
       make.textContent = '용어 찾는 중… (10초 안팎)';
       try {
         await api.makeGlossary(r.dir);
@@ -1243,7 +1272,8 @@ function pageMeeting(id) {
     const r = history.find((m) => m.id === id);
     const rect = sel.getRangeAt(0).getBoundingClientRect();
     addBtn = h('button', { class: 'btn small term-add', style: `top:${Math.max(8, rect.top - 38)}px;left:${Math.min(rect.left, innerWidth - 140)}px`, onmousedown: (e) => e.preventDefault(), onclick: async () => {
-      addBtn.disabled = true;
+      addBtn.classList.add('busy');
+      addBtn.setAttribute('aria-busy', 'true');
       addBtn.lastChild.textContent = '설명 찾는 중…';
       try {
         const t = await api.explainTerm(r.dir, text);
@@ -1389,14 +1419,14 @@ function pageMeeting(id) {
     if (!doc.review) {
       const make = h('button', { class: 'btn primary' }, '정리하기');
       make.onclick = async () => {
-        make.disabled = true;
+        make.classList.add('busy'); // 흐리게 하지 않고 진행 중 표시
         make.textContent = '정리하는 중…';
         try {
           await api.makeReview(r.dir);
           refreshDoc(r);
         } catch (err) {
           toast('정리하지 못했습니다', err.message, { bad: true });
-          make.disabled = false;
+          make.classList.remove('busy');
           make.textContent = '정리하기';
         }
       };
@@ -1485,7 +1515,7 @@ function pageMeeting(id) {
     const needsRewrite = review.items.some((it) => it.chat?.length || (it.status === 'applied' && it.kind !== 'word'));
     const go = h('button', { class: 'btn primary' }, icon('i-check'), openCount ? `남은 ${openCount}개는 그대로 두고 확인 마치기` : '확인 마치기');
     go.onclick = async () => {
-      go.disabled = true;
+      go.classList.add('busy'); // 흐리게 하지 않고 진행 중 표시
       go.lastChild.textContent = needsRewrite ? '회의록에 반영하는 중…' : '마치는 중…';
       try {
         const res = await api.finalizeReview(r.dir);
@@ -1494,7 +1524,7 @@ function pageMeeting(id) {
         loadHistory();
       } catch (err) {
         toast('확인을 마치지 못했습니다', err.message, { bad: true });
-        go.disabled = false;
+        go.classList.remove('busy');
         go.lastChild.textContent = '다시 시도';
       }
     };
@@ -1533,7 +1563,7 @@ function pageMeeting(id) {
               : h('span', { class: 'proposal-state ok' }, icon('i-check'), it.applied === p.guess || p.keep ? '적용됨' : `'${it.applied}'로 적용됨`);
             return h('div', { class: `proposal${done ? ' done' : ''}` },
               p.keep ? h('span', null, `${it?.heard ?? it?.heardNote ?? p.id}: 그대로 두기`) : [h('span', { class: 'heard' }, p.heard), icon('i-right'), h('b', null, p.guess)],
-              state ?? h('button', { class: 'btn small', disabled: busy, onclick: () => apply([p.keep ? { id: p.id, keep: true } : { id: p.id, heard: p.heard, guess: p.guess }]) },
+              state ?? h('button', { class: `btn small${busy ? ' busy' : ''}`, 'aria-busy': String(busy), onclick: () => apply([p.keep ? { id: p.id, keep: true } : { id: p.id, heard: p.heard, guess: p.guess }]) },
                 busy ? '적용 중…' : p.keep ? '그대로 두기' : '적용'));
           }),
           fixes.length > 1 && h('button', { class: 'btn small primary', disabled: fixes.some((p) => chat.applying.has(p.id)), onclick: () => apply(fixes.map((p) => ({ id: p.id, heard: p.heard, guess: p.guess }))) }, `${fixes.length}개 모두 적용`)));
@@ -1796,6 +1826,111 @@ function pageMeeting(id) {
 
   const onTime = () => syncPlaying();
   const onResize = () => player?.paint();
+  // ── 본문 안 찾기 (⌘F): 지금 보고 있는 탭의 본문만. CSS Highlight로 표시만 하고 글은 고치지 않는다 ──
+  let findScope = null; // draw()가 그린 탭 본문
+  let findBar = null;
+  let findHits = [];
+  let findIdx = -1;
+  const canHighlight = typeof Highlight !== 'undefined' && Boolean(CSS.highlights);
+  const clearFindMarks = () => canHighlight && (CSS.highlights.delete('find'), CSS.highlights.delete('find-now'));
+  function runFind({ keep = false } = {}) {
+    if (!findBar) return;
+    const q = findBar.querySelector('input').value.toLowerCase();
+    findHits = [];
+    if (q && findScope?.isConnected) {
+      // 본문 글자를 이어 붙여 찾는다 (용어 밑줄·시각 칩 경계를 넘는 말도 찾게)
+      const nodes = [];
+      let text = '';
+      const walker = document.createTreeWalker(findScope, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        nodes.push({ n, at: text.length });
+        text += n.nodeValue;
+      }
+      const hay = text.toLowerCase();
+      const nodeAt = (i) => {
+        let lo = 0;
+        let hi = nodes.length - 1;
+        while (lo < hi) {
+          const mid = (lo + hi + 1) >> 1;
+          if (nodes[mid].at <= i) lo = mid;
+          else hi = mid - 1;
+        }
+        return nodes[lo];
+      };
+      for (let i = hay.indexOf(q); i !== -1 && findHits.length < 5000; i = hay.indexOf(q, i + q.length)) {
+        const a = nodeAt(i);
+        const b = nodeAt(i + q.length - 1);
+        const range = document.createRange();
+        range.setStart(a.n, i - a.at);
+        range.setEnd(b.n, i + q.length - b.at);
+        findHits.push(range);
+      }
+    }
+    findIdx = !findHits.length ? -1 : keep ? Math.min(Math.max(findIdx, 0), findHits.length - 1) : 0;
+    showFind(!keep);
+  }
+  function stepFind(d) {
+    if (!findHits.length) return;
+    findIdx = (findIdx + d + findHits.length) % findHits.length;
+    showFind(true);
+  }
+  function showFind(scroll) {
+    clearFindMarks();
+    const q = findBar.querySelector('input').value;
+    findBar.querySelector('.find-count').textContent = !q ? '' : findHits.length ? `${findIdx + 1}/${findHits.length}` : '없음';
+    findBar.classList.toggle('none', Boolean(q) && !findHits.length);
+    if (!findHits.length || !canHighlight) return;
+    CSS.highlights.set('find', new Highlight(...findHits));
+    CSS.highlights.set('find-now', new Highlight(findHits[findIdx]));
+    if (!scroll) return;
+    const view = $('view');
+    const vr = view.getBoundingClientRect();
+    const rr = findHits[findIdx].getBoundingClientRect();
+    if (rr.top < vr.top + 64 || rr.bottom > vr.bottom - 40) view.scrollTop += rr.top - vr.top - vr.height / 3;
+  }
+  function openFind() {
+    if (!findBar) {
+      const input = h('input', { type: 'search', placeholder: '이 탭에서 찾기', spellcheck: false, 'aria-label': '이 탭 본문에서 찾기' });
+      input.oninput = () => runFind();
+      input.onkeydown = (e) => {
+        if (e.key === 'Enter' && !e.isComposing) {
+          e.preventDefault();
+          stepFind(e.shiftKey ? -1 : 1);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          closeFind();
+        }
+      };
+      findBar = h('div', { class: 'find-bar', role: 'search' }, icon('i-search'), input, h('span', { class: 'find-count' }),
+        h('button', { class: 'icon-btn find-up', title: '이전 (⇧↩)', 'aria-label': '이전', onclick: () => stepFind(-1) }, icon('i-left')),
+        h('button', { class: 'icon-btn find-down', title: '다음 (↩)', 'aria-label': '다음', onclick: () => stepFind(1) }, icon('i-left')),
+        h('button', { class: 'icon-btn', title: '닫기 (esc)', 'aria-label': '찾기 닫기', onclick: closeFind }, icon('i-x')));
+      document.querySelector('.panel').append(findBar);
+    }
+    const input = findBar.querySelector('input');
+    input.focus();
+    input.select();
+    if (input.value) runFind({ keep: true });
+  }
+  function closeFind() {
+    clearFindMarks();
+    findBar?.remove();
+    findBar = null;
+    findHits = [];
+    findIdx = -1;
+  }
+  const onFindKey = (e) => {
+    const k = e.key.toLowerCase();
+    if (e.metaKey && k === 'f') {
+      e.preventDefault();
+      openFind();
+    } else if (e.metaKey && k === 'g' && findBar) {
+      e.preventDefault();
+      stepFind(e.shiftKey ? -1 : 1);
+    } else if (e.key === 'Escape' && findBar && !cardEl && !e.target.closest?.('input, textarea, dialog')) closeFind();
+  };
+  document.addEventListener('keydown', onFindKey);
+
   const onKey = (e) => {
     if (e.target.closest('input, textarea, select, dialog') || e.metaKey) return;
     if (e.key === ' ') {
@@ -1822,6 +1957,8 @@ function pageMeeting(id) {
       document.removeEventListener('keydown', onKey);
       closeTermCard();
       removeAddBtn();
+      closeFind();
+      document.removeEventListener('keydown', onFindKey);
     },
   };
 }
@@ -2325,7 +2462,7 @@ const PERMS = [
 
 async function requestPerm(kind, btn) {
   if (btn) {
-    btn.disabled = true;
+    btn.classList.add('busy'); // 흐리게 하지 않고 진행 중 표시
     btn.textContent = '기다리는 중…';
   }
   renderPerms(await api.permRequest(kind));

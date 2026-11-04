@@ -49,7 +49,10 @@ app.whenReady().then(async () => {
   for (const [name, code] of [
     ['home', "location.hash='#home'"],
     ['meetings', "location.hash='#meetings'"],
-    ['meeting', `location.hash='#meeting/${id}'`],
+    ['import-sheet', "[...document.querySelectorAll('.page-head .btn')].find(b=>b.textContent.includes('파일 가져오기'))?.click()"],
+    ['meeting', `document.getElementById('importSheet').close(); location.hash='#meeting/${id}'`],
+    ['meeting-find', "document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'f',metaKey:true,bubbles:true})); setTimeout(()=>{const i=document.querySelector('.find-bar input'); i.value='배포'; i.dispatchEvent(new Event('input')); i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}));},100)"],
+    ['meeting-find-closed', "document.querySelector('.find-bar input')?.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}))"],
     ['meeting-review', "[...document.querySelectorAll('.tab')].find(t=>t.textContent.startsWith('확인 필요'))?.click()"],
     ['meeting-chat', "[...document.querySelectorAll('.ritem button')].find(b=>b.textContent.includes('채팅'))?.click(); setTimeout(()=>{const t=document.querySelector('.chat textarea'); t.value='캐시 얘기였어요'; t.dispatchEvent(new Event('input')); t.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter'}));},100)"],
     ['meeting-chat-applied', "[...document.querySelectorAll('.proposal button')].find(b=>b.textContent==='적용')?.click()"],
