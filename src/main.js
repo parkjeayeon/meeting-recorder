@@ -34,7 +34,7 @@ function writePortableSettings() {
   const s = dictation.getSettings();
   try {
     fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
-    fs.writeFileSync(portableFile(), JSON.stringify({ ...Object.fromEntries(PORTABLE_KEYS.map((k) => [k, s[k]])), savedAt: new Date() }, null, 2));
+    core.writeJsonAtomic(portableFile(), { ...Object.fromEntries(PORTABLE_KEYS.map((k) => [k, s[k]])), savedAt: new Date() });
   } catch {}
 }
 
@@ -424,7 +424,8 @@ ipcMain.handle('rec:stop', (_e, { discard = false } = {}) => {
     files[track] = { file: path.basename(w.filePath), durationSec: Number(w.durationSec.toFixed(2)) };
   }
   const meta = { mode, sampleRate, bitDepth: 16, startedAt, endedAt: new Date(), devices, files, ...(speakers ? { speakers } : {}) };
-  fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2));
+  // meta.json이 있어야 회의 목록에 나온다. 반쯤 쓰이면 녹음은 남아도 앱이 회의로 알아보지 못한다
+  core.writeJsonAtomic(path.join(dir, 'meta.json'), meta);
   recording = null;
   updateTray();
   if (SELFTEST) console.log('SELFTEST saved', path.basename(dir), JSON.stringify(files));
@@ -502,7 +503,7 @@ function runMinutes(dir, speakers = null, { resume = false } = {}) {
   const meta = readJson(path.join(dir, 'meta.json'));
   const durationSec = Math.max(0, ...Object.values(meta?.files ?? {}).map((f) => f.durationSec ?? 0));
   if (durationSec < MIN_MEETING_SEC) {
-    fs.writeFileSync(path.join(dir, 'minutes.json'), JSON.stringify({ status: 'short', durationSec, updatedAt: new Date() }, null, 2));
+    core.writeJsonAtomic(path.join(dir, 'minutes.json'), { status: 'short', durationSec, updatedAt: new Date() });
     send('minutes:status', { id: path.basename(dir), status: 'short' });
     sendOverlay('overlay:stage', { stage: 'done', status: 'meeting-short' });
     return Promise.resolve();
@@ -720,7 +721,7 @@ ipcMain.handle('minutes:todo', (_e, dir, index, done) => {
   const file = path.join(recordingDir(dir), 'minutes.md');
   let n = -1;
   const md = fs.readFileSync(file, 'utf8').replace(/^(\s*- \[)( |x)(\])/gim, (all, a, mark, b) => (++n === index ? `${a}${done ? 'x' : ' '}${b}` : all));
-  fs.writeFileSync(file, md);
+  core.writeFileAtomic(file, md);
   return md;
 });
 // 회의 삭제는 휴지통으로 옮긴다 (Finder에서 되살릴 수 있다)
@@ -731,7 +732,8 @@ ipcMain.handle('meeting:trash', async (_e, dir) => {
 });
 ipcMain.handle('dict:delete', (_e, id) => {
   const lines = fs.readFileSync(DICTATION_LOG, 'utf8').split('\n').filter(Boolean);
-  fs.writeFileSync(DICTATION_LOG, lines.filter((l) => !l.includes(`"id":${JSON.stringify(id)}`)).map((l) => `${l}\n`).join(''));
+  // 기록 전체를 다시 쓰므로 중간에 끊기면 받아쓰기 기록을 통째로 잃는다 → 원자적으로
+  core.writeFileAtomic(DICTATION_LOG, lines.filter((l) => !l.includes(`"id":${JSON.stringify(id)}`)).map((l) => `${l}\n`).join(''));
 });
 ipcMain.handle('script:clean', async (_e, dir) => {
   const r = await minutes.makeCleanScript(recordingDir(dir));
@@ -1248,6 +1250,11 @@ async function init() {
   if (!app.isPackaged && process.platform === 'darwin') app.dock?.setIcon(path.join(__dirname, '..', 'build', 'icon.png'));
   const saved = dictation.getSettings().recordingsDir;
   if (saved && fs.existsSync(saved)) setRecordingsDir(saved); // 지정한 폴더가 사라졌으면(외장 디스크 분리 등) 기본 폴더를 쓴다
+  // 셀프테스트는 실제 녹음 폴더·받아쓰기 기록에 쓰지 않는다 (예전에는 끝나고 손으로 지워야 했다)
+  if (SELFTEST) {
+    setRecordingsDir(fs.mkdtempSync(path.join(os.tmpdir(), 'mr-selftest-')));
+    console.log('SELFTEST recordings', RECORDINGS_DIR);
+  }
   mergePortableSettings();
   writePortableSettings();
   // 권한 대화상자를 기다리느라 fn 감지·독·로그인 항목 설정이 멈추지 않게 await하지 않는다

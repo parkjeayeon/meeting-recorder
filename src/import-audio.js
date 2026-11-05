@@ -8,6 +8,7 @@ const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
 const sandbox = require('./sandbox');
+const { writeJsonAtomic } = require('../lib/core/index.mjs'); // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
 
 const AFCONVERT = '/usr/bin/afconvert';
 const AFINFO = '/usr/bin/afinfo';
@@ -155,7 +156,7 @@ async function importAudio(files, recordingsDir, { notes = '', speakers = null }
       devices: null, files: { mic: { file: 'mic.wav', durationSec: Number(total.toFixed(2)) } }, imported: sources,
       ...(speakers ? { speakers } : {}), ...(notes.trim() ? { notes: notes.trim().slice(0, 4000) } : {}),
     };
-    fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2));
+    writeJsonAtomic(path.join(dir, 'meta.json'), meta);
     return dir;
   } catch (err) {
     if (dir) fs.rmSync(dir, { recursive: true, force: true });

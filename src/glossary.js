@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const dictation = require('./dictation');
 const { complete, parseJson } = require('./cleanup');
+const { writeJsonAtomic } = require('../lib/core/index.mjs'); // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
 
 const TIMEOUT_MS = 5 * 60 * 1000;
 const MAX_TERMS = 15;
@@ -51,7 +52,7 @@ function readGlossary(dir) {
 }
 
 function writeGlossary(dir, glossary) {
-  fs.writeFileSync(file(dir), JSON.stringify({ ...glossary, updatedAt: new Date() }, null, 2));
+  writeJsonAtomic(file(dir), { ...glossary, updatedAt: new Date() });
   return glossary;
 }
 

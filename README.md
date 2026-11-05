@@ -30,10 +30,12 @@ npm start            # 개발 모드 실행 (fn 감지 헬퍼 빌드 포함)
 npm run selftest     # fn 꾹 누르기·탭·두 번·세 번 누르기, 처리 중 무시, 회의 중 fn 무시, 짧은 회의 녹음 검증
 npm run test:ui      # 화면 테스트: 입력칸마다 진짜 키 입력(영어·Backspace), 오류 알림 글자 대비, 오래 걸리는 작업 중복 방지 (가짜 데이터, 약 20초)
 npm test             # 코어·명령줄 도구 단위 테스트 (Vitest, TypeScript 컴파일 포함)
+npm run test:crash   # 확인 필요 적용·되돌리기가 도중에 끊겼을 때 (강제 종료 포함, 약 30초)
+npm run test:diskfull # 디스크 가득 참에서 파일 쓰기 (RAM 디스크)
 npm run mr -- list   # 개발 중 명령줄 도구 실행
 npm run install-app  # .app 빌드 → 서명 → /Applications 설치
 ```
-`npm run dist`(`install-app`도)는 빌드 전에 타입 검사·단위 테스트·키보드 처리기 검사·화면 테스트를 돌리고, 하나라도 실패하면 멈춘다 ([docs/testing.md](docs/testing.md)).
+`npm run dist`(`install-app`도)는 빌드 전에 타입 검사·단위 테스트·키보드 처리기 검사·화면 테스트·끊김 시험을 돌리고, 하나라도 실패하면 멈춘다 ([docs/testing.md](docs/testing.md)).
 소스에서 빌드하려면 Node.js와 Xcode 명령줄 도구(swiftc)가 필요하다.
 
 - **서명**: `sh scripts/dev/make-signing-cert.sh`를 한 번 돌려 두면 키체인의 자체 서명 인증서로 서명해서, 다시 빌드해도 macOS 권한(문서 폴더·마이크·입력 모니터링·손쉬운 사용)이 유지된다. 인증서가 없으면 ad-hoc으로 서명하고, 그러면 다시 빌드할 때마다 권한을 다시 허용해야 한다 (문서 폴더 권한이 풀리면 회의 목록이 비어 보인다).

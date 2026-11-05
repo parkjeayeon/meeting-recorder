@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const dictation = require('./dictation');
 const { complete, parseJson } = require('./cleanup');
+const { writeJsonAtomic } = require('../lib/core/index.mjs'); // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
 
 const TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_FLOWS = 3;
@@ -160,7 +161,7 @@ function readFlow(dir) {
 }
 
 function writeFlow(dir, data) {
-  fs.writeFileSync(file(dir), JSON.stringify({ ...data, updatedAt: new Date() }, null, 2));
+  writeJsonAtomic(file(dir), { ...data, updatedAt: new Date() });
   return data;
 }
 

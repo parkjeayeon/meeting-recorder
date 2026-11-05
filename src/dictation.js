@@ -5,6 +5,7 @@ const fs = require('fs');
 const net = require('net');
 const { spawn } = require('child_process');
 const cleanupText = require('./cleanup');
+const { writeJsonAtomic } = require('../lib/core/index.mjs'); // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
 
 const MODEL_FILE = 'ggml-large-v3-turbo-q8_0.bin';
 const MODEL_URL = `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${MODEL_FILE}`;
@@ -86,7 +87,7 @@ function saveSettings(patch) {
     if (apiKey) stored.apiKeyEnc = safeStorage.encryptString(apiKey).toString('base64');
     else delete stored.apiKeyEnc;
   }
-  fs.writeFileSync(settingsPath(), JSON.stringify(stored, null, 2));
+  writeJsonAtomic(settingsPath(), stored); // 설정·암호화한 토큰이 들어 있다
   return getSettings();
 }
 

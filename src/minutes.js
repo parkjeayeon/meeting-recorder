@@ -9,7 +9,7 @@ const dictation = require('./dictation');
 const { complete, parseJson } = require('./cleanup');
 const sandbox = require('./sandbox');
 const glossary = require('./glossary');
-const { nameSpeakers } = require('../lib/core/index.mjs');
+const { nameSpeakers, writeFileAtomic, writeJsonAtomic, copyFileAtomic } = require('../lib/core/index.mjs'); // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
 
 const LONG_TIMEOUT_MS = 10 * 60 * 1000; // 1시간짜리 회의도 여유 있게
 const SPEAKER = { mic: '나', system: '상대방' };
@@ -180,7 +180,7 @@ function clock(sec) {
 }
 
 function writeStatus(dir, status) {
-  fs.writeFileSync(path.join(dir, 'minutes.json'), JSON.stringify({ ...status, updatedAt: new Date() }, null, 2));
+  writeJsonAtomic(path.join(dir, 'minutes.json'), { ...status, updatedAt: new Date() });
 }
 
 function readStatus(dir) {
@@ -434,7 +434,7 @@ async function run(dir, onStage, { speakers = null, prev = null } = {}) {
   // 다시 만들면 화자 구분 번호가 바뀔 수 있어 바꿔 둔 이름이 엉뚱한 사람에게 붙는다 → 지운다 (이어서 쓰면 녹취가 그대로라 둔다)
   if (meta.speakerNames && !resume) {
     delete meta.speakerNames;
-    fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2));
+    writeJsonAtomic(path.join(dir, 'meta.json'), meta);
   }
   const timing = resume ? { ...prev.timing } : {};
   let diarizeInfo = resume ? { speakers: prev.speakers ?? null, diarizeError: prev.diarizeError ?? null } : {};
@@ -464,7 +464,7 @@ async function run(dir, onStage, { speakers = null, prev = null } = {}) {
     const when = new Date(meta.startedAt).toLocaleString('ko-KR', { dateStyle: 'full', timeStyle: 'short' });
     // 정리본은 회의록과 동시에 만든다 (실패해도 회의록은 계속)
     const scriptJob = cleanScript(transcript, settings).then((r) => {
-      fs.writeFileSync(path.join(dir, 'script-clean.txt'), `${r.text}\n`);
+      writeFileAtomic(path.join(dir, 'script-clean.txt'), `${r.text}\n`);
       timing.scriptMs = Date.now() - t;
       return r;
     });
@@ -480,7 +480,7 @@ async function run(dir, onStage, { speakers = null, prev = null } = {}) {
     });
     timing.writeMs = Date.now() - t;
     if (!text) throw new Error('회의록이 비어 있습니다');
-    fs.writeFileSync(path.join(dir, 'minutes.md'), `${text}\n`);
+    writeFileAtomic(path.join(dir, 'minutes.md'), `${text}\n`);
     await scriptJob.catch(() => {});
     // 확인 필요 항목 목록과 용어 설명을 함께 만든다 (어느 쪽이 실패해도 회의록은 그대로). 흐름도·액션은 사용자가 요청할 때만 (flow.js, actions.js)
     await Promise.all([makeReview(dir).catch(() => {}), glossary.makeGlossary(dir).catch(() => {})]);
@@ -550,11 +550,11 @@ async function transcribeMeeting(dir, meta, settings, speakers, timing, report) 
     lines.sort((a, b) => a.start - b.start);
     // 중간 결과를 남겨 두면 나중에 스크립트 규칙을 바꿔도 녹취·화자 구분을 다시 돌리지 않아도 된다
     if (redo.length) timing.redo = redo;
-    fs.writeFileSync(path.join(dir, 'segments.json'), JSON.stringify({ model: timing.model, tracks, redo, segments: lines }));
-    if (diarization?.segments) fs.writeFileSync(path.join(dir, 'diarization.json'), JSON.stringify(diarization));
+    writeJsonAtomic(path.join(dir, 'segments.json'), { model: timing.model, tracks, redo, segments: lines }, 0);
+    if (diarization?.segments) writeJsonAtomic(path.join(dir, 'diarization.json'), diarization, 0);
 
     const { text: transcript, speakerCount } = buildTranscript(lines, diarization, tracks);
-    fs.writeFileSync(path.join(dir, 'transcript.txt'), transcript ? `${transcript}\n` : '');
+    writeFileAtomic(path.join(dir, 'transcript.txt'), transcript ? `${transcript}\n` : '');
     return { transcript, diarizeInfo: { speakers: speakerCount, diarizeError: diarization?.error ?? null } };
   } finally {
     server?.stop();
@@ -575,7 +575,7 @@ function renameSpeaker(dir, from, to) {
   if (name === key) delete names[key];
   else names[key] = name;
   meta.speakerNames = names;
-  fs.writeFileSync(file, JSON.stringify(meta, null, 2));
+  writeJsonAtomic(file, meta);
 }
 
 // 화자 이름 바꿔 끼우기(nameSpeakers)는 명령줄 도구와 같이 쓰도록 코어(src/core/names.mts)에 있다
@@ -623,7 +623,7 @@ function readReview(dir) {
 
 function writeReview(dir, review) {
   if (review.finalizedAt && review.items.some((it) => it.status === 'open')) delete review.finalizedAt; // 다시 연 항목이 있으면 초안으로
-  fs.writeFileSync(reviewFile(dir), JSON.stringify({ ...review, updatedAt: new Date() }, null, 2));
+  writeJsonAtomic(reviewFile(dir), { ...review, updatedAt: new Date() });
   return review;
 }
 
@@ -677,16 +677,22 @@ function legacyUndo(dir, item) {
   for (const f of ['transcript.txt', 'script-clean.txt', 'minutes.md']) {
     const backup = path.join(dir, f.replace(/\.(\w+)$/, '.before-review.$1'));
     if (!fs.existsSync(backup) || !fs.existsSync(path.join(dir, f))) continue;
-    const old = fs.readFileSync(backup, 'utf8').split('\n').filter((l) => l.includes(item.heard) && !l.includes(item.applied));
+    const all = fs.readFileSync(backup, 'utf8').split('\n');
     const cur = readText(dir, f).split('\n');
+    // 시각이 없는 줄(회의록)은 같은 자리의 줄로 맞춘다: 고칠 말 적용은 줄 수를 바꾸지 않아서, 보관본과 지금 파일의 줄 수가 같으면 자리가 같다.
+    // 같은 줄을 다른 항목도 고쳤으면 글자째 비교로는 못 찾는다 ("랩캐시도 … 넥스트" → "Memcached … Next.js")
+    const aligned = all.length === cur.length;
     const changed = [];
-    for (const o of old) {
+    all.forEach((o, i) => {
+      if (!o.includes(item.heard) || o.includes(item.applied)) return;
       const at = /^\[[\d:]+\]/.exec(o)?.[0];
       const fixed = o.split(item.heard).join(item.applied);
-      const to = at ? cur.find((l) => l.startsWith(at) && l.includes(item.applied) && !changed.some((c) => c.to === l)) : cur.includes(fixed) ? fixed : null;
-      if (!to) continue;
-      changed.push({ from: to.split(item.applied).join(item.heard), to });
-    }
+      let to = null;
+      if (at) to = cur.find((l) => l.startsWith(at) && l.includes(item.applied) && !changed.some((c) => c.to === l)) ?? null;
+      else if (aligned) to = cur[i]?.includes(item.applied) ? cur[i] : null;
+      else to = cur.includes(fixed) ? fixed : null;
+      if (to) changed.push({ from: to.split(item.applied).join(item.heard), to });
+    });
     found += changed.length;
     undo[f] = { changed, inserted: [] };
   }
@@ -706,16 +712,7 @@ function revertReview(dir, id) {
   if (item.redo?.appliedAt) {
     const r = item.redo;
     if (!r.replaced) throw new Error('이 항목은 되돌릴 기록이 없습니다 (되돌리기 기능 전에 반영함)');
-    for (const f of ['transcript.txt', 'script-clean.txt']) {
-      const p = path.join(dir, f);
-      if (fs.existsSync(p) && r.replaced[f]) fs.writeFileSync(p, spliceLines(readText(dir, f), r.start, r.end, r.replaced[f]));
-    }
-    const segFile = path.join(dir, 'segments.json');
-    const seg = readJsonFile(segFile);
-    if (seg?.segments && r.replaced.segments) {
-      seg.segments = [...seg.segments.filter((x) => x.track !== r.track || x.start < r.start || x.start >= r.end), ...r.replaced.segments].sort((a, b) => a.start - b.start);
-      fs.writeFileSync(segFile, JSON.stringify(seg));
-    }
+    restoreRedoRange(dir, r);
     delete r.appliedAt;
     delete r.replaced;
     item.chat = (item.chat ?? []).filter((c) => !/구간을 다시 받아써 녹취에 반영함/.test(c.user));
@@ -737,12 +734,26 @@ function revertReview(dir, id) {
         }
       }
       lines = lines.filter((l) => !u.inserted.includes(l));
-      fs.writeFileSync(p, lines.join('\n'));
+      writeFileAtomic(p, lines.join('\n'));
     }
   }
   for (const k of ['applied', 'count', 'undo']) delete item[k];
   item.status = 'open';
   return writeReview(dir, review);
+}
+
+// 다시 받아쓴 구간을 원래 줄·녹취 구간으로 돌린다 (반영이 끝났든 도중에 끊겼든, 같은 구간을 다시 바꿔도 결과가 같다)
+function restoreRedoRange(dir, r) {
+  for (const f of ['transcript.txt', 'script-clean.txt']) {
+    const p = path.join(dir, f);
+    if (fs.existsSync(p) && r.replaced[f]) writeFileAtomic(p, spliceLines(readText(dir, f), r.start, r.end, r.replaced[f]));
+  }
+  const segFile = path.join(dir, 'segments.json');
+  const seg = readJsonFile(segFile);
+  if (seg?.segments && r.replaced.segments) {
+    seg.segments = [...seg.segments.filter((x) => x.track !== r.track || x.start < r.start || x.start >= r.end), ...r.replaced.segments].sort((a, b) => a.start - b.start);
+    writeJsonAtomic(segFile, seg, 0);
+  }
 }
 
 // 고칠 말 적용: 녹취·정리본·회의록 본문에서 같은 글자를 모두 바꾼다 (처음 고치기 전에 원본을 한 번 보관)
@@ -753,9 +764,16 @@ function applyReview(dir, fixes) {
   for (const f of files) {
     const p = path.join(dir, f);
     const backup = path.join(dir, f.replace(/\.(\w+)$/, '.before-review.$1'));
-    if (fs.existsSync(p) && !fs.existsSync(backup)) fs.copyFileSync(p, backup);
+    if (fs.existsSync(p) && !fs.existsSync(backup)) copyFileAtomic(p, backup); // 반쯤 복사된 보관본은 되돌리기를 엉뚱하게 만든다
   }
   const texts = Object.fromEntries(files.map((f) => [f, readText(dir, f)]));
+  // 같은 글자를 모두 바꾼다. 회의록의 확인 필요 섹션은 원래 기록으로 남기고 본문만 고친다. 바꾼 개수를 돌려준다
+  const replaceAll = (f, heard, guess) => {
+    const [body, ...rest] = f === 'minutes.md' ? texts[f].split(/(?=^## 확인 필요)/m) : [texts[f]];
+    texts[f] = body.split(heard).join(guess) + rest.join('');
+    return body.split(heard).length - 1;
+  };
+  const resumed = [];
   for (const fix of fixes) {
     const item = review.items.find((it) => it.id === fix.id);
     if (!item) continue;
@@ -765,21 +783,20 @@ function applyReview(dir, fixes) {
     }
     const heard = fix.heard ?? item.heard;
     const guess = (fix.guess ?? '').trim();
-    if (!heard || !guess || heard === guess || !texts['transcript.txt'].includes(heard)) continue;
+    if (!heard || !guess || heard === guess) continue;
+    if (!texts['transcript.txt'].includes(heard)) {
+      // 지난번 적용이 녹취를 고쳐 쓴 뒤 기록(review.json)을 쓰기 전에 끊긴 경우: 녹취에 고칠 말은 없고 고친 말이 있으며
+      // 고치기 전 보관본에는 고칠 말이 있었다 → 남은 파일(정리본·회의록)을 마저 고치고, 되돌리기 기록은 파일을 쓴 뒤 보관본과 맞대어 채운다
+      if (item.status === 'open' && texts['transcript.txt'].includes(guess) && readText(dir, 'transcript.before-review.txt').includes(heard)) {
+        for (const f of files.slice(1)) replaceAll(f, heard, guess);
+        resumed.push({ item, heard, guess });
+      }
+      continue;
+    }
     let count = 0;
     const cleanHad = texts['script-clean.txt'].includes(heard);
     const before = Object.fromEntries(files.map((f) => [f, texts[f]])); // 되돌리기용: 바뀐 줄만 기억한다
-    for (const f of files) {
-      if (f === 'minutes.md') {
-        // 확인 필요 섹션은 원래 기록으로 남기고 본문만 고친다
-        const [body, ...rest] = texts[f].split(/(?=^## 확인 필요)/m);
-        count += body.split(heard).length - 1;
-        texts[f] = body.split(heard).join(guess) + rest.join('');
-      } else {
-        count += texts[f].split(heard).length - 1;
-        texts[f] = texts[f].split(heard).join(guess);
-      }
-    }
+    for (const f of files) count += replaceAll(f, heard, guess);
     // 유실 구간을 채운 경우: 정리본이 그 줄('아 그렇구나' 같은 맞장구)을 쳐내 바꿀 글자가 없으면,
     // 원본에서 고쳐진 줄을 정리본의 같은 시각 자리에 넣는다 (오인식 단어는 쳐낸 줄이면 그대로 둔다)
     const undo = Object.fromEntries(files.map((f) => [f, { changed: changedLines(before[f], texts[f]), inserted: [] }]));
@@ -793,7 +810,19 @@ function applyReview(dir, fixes) {
     }
     Object.assign(item, { status: 'applied', heard, applied: guess, count, undo });
   }
-  for (const f of files) if (fs.existsSync(path.join(dir, f))) fs.writeFileSync(path.join(dir, f), texts[f]);
+  // 내용 파일 먼저, 기록(review.json)은 마지막에: 그 사이에 끊기면 "고쳤는데 기록이 없음"이 남고, 다시 적용하면 이어서 기록한다 (아래 resumed).
+  // 반대 순서면 "기록은 있는데 안 고쳐짐"이 되어 되돌리기가 엉뚱한 줄을 건드린다
+  for (const f of files) if (fs.existsSync(path.join(dir, f))) writeFileAtomic(path.join(dir, f), texts[f]);
+  for (const { item, heard, guess } of resumed) {
+    // 다른 항목이 같은 말을 같은 말로 고쳐 둔 줄은 그 항목 몫이다 (이 항목 기록에 넣으면 이걸 되돌릴 때 그것까지 되돌아간다).
+    // 다른 말을 고친 항목과 한 줄을 같이 고친 경우는 둘 다의 몫이라 빼지 않는다
+    const same = review.items.filter((it) => it !== item && it.status === 'applied' && it.heard === heard && it.applied === guess);
+    const taken = new Set(same.flatMap((it) => Object.values(it.undo ?? {}).flatMap((u) => u.changed.map((c) => c.to))));
+    const undo = legacyUndo(dir, { heard, applied: guess });
+    for (const u of Object.values(undo ?? {})) u.changed = u.changed.filter((c) => !taken.has(c.to));
+    const count = Object.values(undo ?? {}).reduce((n, u) => n + u.changed.length, 0);
+    if (count) Object.assign(item, { status: 'applied', heard, applied: guess, count, undo });
+  }
   return writeReview(dir, review);
 }
 
@@ -987,6 +1016,8 @@ function retranscribeRange(dir, itemId, start, end) {
         .map((x) => ({ start: x.start + cut.start, end: x.end + cut.start, text: x.text }))
         .filter((x) => (x.start + x.end) / 2 >= s && (x.start + x.end) / 2 < e); // 앞뒤 여유분에 걸친 말은 옆 줄과 겹치므로 뺀다
       const lines = labelRedoLines(dir, segs, track, tracks);
+      // 지난 반영이 도중에 끊겼으면(원래 줄만 기록되고 반영 표시가 없음) 그 구간을 먼저 원래대로 돌린 뒤 새 결과로 바꾼다
+      if (item.redo?.replaced && !item.redo.appliedAt) restoreRedoRange(dir, item.redo);
       item.redo = { start: s, end: e, track, gain: cut.gain, lines, model: server ? 'large-v3' : 'large-v3-turbo', at: new Date() };
       writeReview(dir, review);
       return { start: s, end: e, gain: cut.gain, text: lines.map(formatLine).join('\n'), empty: !lines.length };
@@ -1023,29 +1054,37 @@ function applyRetranscribe(dir, itemId) {
   if (!item?.redo) throw new Error('다시 받아쓴 결과가 없습니다');
   const { start, end, lines, track } = item.redo;
   if (!lines.length) throw new Error('다시 받아써도 알아들을 수 있는 말이 없었습니다');
-  const replaced = {}; // 되돌리기용: 이 구간에 원래 있던 줄
+  if (item.redo.appliedAt) return review; // 이미 반영함 (두 번 눌러도 원래 줄 기록을 덮지 않게)
   const inRange = (l) => {
     const m = /^\[([\d:]+)\]/.exec(l);
     return m && parseClock(m[1]) >= Math.floor(start) && parseClock(m[1]) < end;
   };
-  for (const f of ['transcript.txt', 'script-clean.txt']) {
-    const p = path.join(dir, f);
-    if (!fs.existsSync(p)) continue;
-    const backup = path.join(dir, f.replace(/\.(\w+)$/, '.before-review.$1'));
-    if (!fs.existsSync(backup)) fs.copyFileSync(p, backup);
-    replaced[f] = readText(dir, f).split('\n').filter(inRange);
-    fs.writeFileSync(p, spliceLines(readText(dir, f), start, end, lines.map(formatLine)));
-  }
-  // 나중에 스크립트를 다시 만들어도 반영되도록 녹취 구간(segments.json)도 바꾼다
+  const files = ['transcript.txt', 'script-clean.txt'].filter((f) => fs.existsSync(path.join(dir, f)));
   const segFile = path.join(dir, 'segments.json');
   const seg = readJsonFile(segFile);
+  // 되돌리기용으로 이 구간에 원래 있던 줄을 파일을 고치기 '전에' 기록해 둔다. 고치는 중에 끊기면 다음에 누를 때 이 기록을 그대로 쓴다
+  // (나중에 기록하면, 끊긴 뒤 다시 누를 때 이미 바뀐 줄을 원래 줄로 기억해 되돌릴 수 없게 된다)
+  if (!item.redo.replaced) {
+    const before = {};
+    for (const f of files) before[f] = readText(dir, f).split('\n').filter(inRange);
+    if (seg?.segments) before.segments = seg.segments.filter((x) => x.track === track && x.start >= start && x.start < end);
+    item.redo.replaced = before;
+    writeReview(dir, review);
+  }
+  const replaced = item.redo.replaced;
+  for (const f of files) {
+    const p = path.join(dir, f);
+    const backup = path.join(dir, f.replace(/\.(\w+)$/, '.before-review.$1'));
+    if (!fs.existsSync(backup)) copyFileAtomic(p, backup);
+    writeFileAtomic(p, spliceLines(readText(dir, f), start, end, lines.map(formatLine)));
+  }
+  // 나중에 스크립트를 다시 만들어도 반영되도록 녹취 구간(segments.json)도 바꾼다 (같은 구간을 다시 바꿔도 결과가 같다)
   if (seg?.segments) {
-    replaced.segments = seg.segments.filter((x) => x.track === track && x.start >= start && x.start < end);
     seg.segments = [
       ...seg.segments.filter((x) => x.track !== track || x.start < start || x.start >= end),
       ...lines.map(({ start: a, end: b, text, track: t }) => ({ start: a, end: b, text, track: t })),
     ].sort((a, b) => a.start - b.start);
-    fs.writeFileSync(segFile, JSON.stringify(seg));
+    writeJsonAtomic(segFile, seg, 0);
   }
   const text = lines.map(formatLine).join('\n');
   Object.assign(item, { status: 'applied', applied: '구간 다시 받아씀', count: lines.length });
@@ -1091,13 +1130,13 @@ async function finalizeReview(dir) {
     const text = out.text.trim().replace(/^```(?:markdown)?\s*|\s*```$/g, '');
     if (!/^#\s+\S/.test(text) || !/^## 요약/m.test(text)) throw new Error('회의록을 마무리하지 못했습니다 (형식이 맞지 않음)');
     const backup = path.join(dir, 'minutes.before-finalize.md');
-    if (!fs.existsSync(backup)) fs.writeFileSync(backup, md);
-    fs.writeFileSync(path.join(dir, 'minutes.md'), `${text}\n`);
+    if (!fs.existsSync(backup)) writeFileAtomic(backup, md);
+    writeFileAtomic(path.join(dir, 'minutes.md'), `${text}\n`);
     const title = text.match(/^#\s+(.+)$/m)?.[1]?.trim();
     const statusFile = path.join(dir, 'minutes.json');
     try {
       const st = JSON.parse(fs.readFileSync(statusFile, 'utf8'));
-      if (title) fs.writeFileSync(statusFile, JSON.stringify({ ...st, title }, null, 2));
+      if (title) writeJsonAtomic(statusFile, { ...st, title });
     } catch {}
     rewritten = true;
     provider = out.provider;
@@ -1112,7 +1151,7 @@ function makeCleanScript(dir) {
   const job = queue.then(async () => {
     const transcript = fs.readFileSync(path.join(dir, 'transcript.txt'), 'utf8');
     const r = await cleanScript(transcript, dictation.getSettings());
-    fs.writeFileSync(path.join(dir, 'script-clean.txt'), `${r.text}\n`);
+    writeFileAtomic(path.join(dir, 'script-clean.txt'), `${r.text}\n`);
     return r;
   });
   queue = job.catch(() => {});

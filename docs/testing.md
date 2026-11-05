@@ -8,8 +8,15 @@
 2. 단위 테스트 `npm test` (컴파일 후 Vitest, 1초 안팎)
 3. 키보드 처리기 검사 `node scripts/dev/check-handlers.js` (1초 미만)
 4. 화면 테스트 `npm run test:ui` (약 20초)
+5. 끊김 시험 `npm run test:crash` (약 30초, 아래)
 
 3·4는 아래 "주의할 점"의 두 항목.
+
+## 끊김 시험 — `npm run test:crash`, `npm run test:diskfull`
+파일을 쓰는 도중 끊겼을 때(디스크 가득 참·강제 종료·전원) 데이터가 남는지 본다 ([결정 45](decisions.md)).
+- `npm test`의 `src/core/write.test.mts`: 쓰기·기록(fsync)·이름 바꾸기 단계마다 실패를 흉내 내 원래 파일이 남고 임시 파일이 지워지는지. 다른 프로세스(Electron의 Node)가 읽는 동안 바꿔 쓰기를 150번 해 반쯤 쓴 파일을 한 번도 보지 않는지, 쓰는 도중 강제 종료 40번 뒤에도 파일이 이전 전체 또는 새 전체인지. 비교용으로 예전 방식(덮어쓰기)의 숫자도 출력한다 (드물어서 매번 걸리지는 않는다).
+- `npm run test:crash` (`scripts/dev/review-crash-check.js`, 빌드 전에 자동): 가짜 회의 폴더에서 확인 필요 적용·되돌리기·구간 다시 받아쓰기 반영이 끊긴 지점을 하나씩 만들고, 다시 누르면 끝나는지와 되돌리면 처음과 바이트까지 같은지. 자식 프로세스가 적용하는 도중 아무 때나 강제 종료 40번.
+- `npm run test:diskfull` (`scripts/dev/disk-full-check.js`, 손으로): 2MB RAM 디스크를 만들어 채운 뒤 바꿔 쓰기. 관리자 권한은 필요 없고 끝나면 디스크를 뗀다 (도는 몇 초 동안 Finder에 `mrfull…` 디스크가 잠깐 보인다).
 
 ## 단위 테스트 — `npm test`
 `src/core`(회의 데이터 읽기)와 `src/cli`(명령줄 도구 `mr`)를 Vitest로 시험한다. 가짜 녹음 폴더(`src/test/fixture.mts`, 지어낸 예시)를 임시 폴더에 만들어 쓴다.
@@ -33,7 +40,7 @@ fn 이벤트를 흉내 내 실제 녹음 흐름을 시험한다 (`src/main.js`�
 | 회의 녹음 중 fn | 무시 (새 녹음 없음) |
 | 회의 녹음 2.8초 | `saved …_meeting`, 회의록을 만들지 않음(`minutes.json`의 `status: short`) |
 
-**주의:** 셀프테스트는 실제 녹음 폴더에 쓴다. 끝나면 `…_meeting` 테스트 폴더를 휴지통으로 옮기고, `dictations.jsonl`에 추가된 줄만 지운다 (**파일을 통째로 되돌리지 않는다** — 그 사이 실제 받아쓰기 기록이 지워진 적이 있다).
+셀프테스트는 임시 녹음 폴더(`SELFTEST recordings …`로 출력)에 녹음·받아쓰기 기록을 남겨 실제 녹음 폴더와 `dictations.jsonl`은 건드리지 않는다 (2026-11-05부터. 예전에는 실제 폴더에 써서 손으로 지웠고, `dictations.jsonl`을 통째로 되돌리다 실제 기록을 지운 적이 있다). 다만 앱 데이터(설정·모델·whisper-server 번호 파일)는 같이 쓰므로 설치된 앱은 먼저 끈다 — 켜 둔 채 돌리면 설치된 앱의 whisper-server를 고아로 보고 정리한다.
 
 ## 화면 캡처 — `scripts/dev/screens.js`
 가짜 데이터(`scripts/dev/stub-preload.js`)로 메인 창을 **숨긴 채** 띄워 화면별 PNG를 남긴다. 메인 프로세스를 띄우지 않으므로 녹음·fn·권한·실제 기록에 영향이 없고, 설치된 앱이 켜져 있어도 된다.

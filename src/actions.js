@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const dictation = require('./dictation');
 const { complete, parseJson } = require('./cleanup');
+const { writeJsonAtomic } = require('../lib/core/index.mjs'); // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
 
 const TIMEOUT_MS = 10 * 60 * 1000;
 const MIN_LINES = 8; // 이보다 짧은 녹취(인사 한마디 등)는 부르지 않는다
@@ -73,7 +74,7 @@ function readActions(dir) {
 }
 
 function writeActions(dir, data) {
-  fs.writeFileSync(file(dir), JSON.stringify({ ...data, updatedAt: new Date() }, null, 2));
+  writeJsonAtomic(file(dir), { ...data, updatedAt: new Date() });
   return data;
 }
 
