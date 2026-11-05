@@ -12,6 +12,8 @@ const glossary = require('./glossary');
 const flowMod = require('./flow');
 const actionsMod = require('./actions');
 const setup = require('./setup');
+// 회의 데이터 읽기는 명령줄 도구(mr)와 같이 쓰는 코어(TypeScript·ESM, npm run build:ts → lib/)로 (결정 43)
+const core = require('../lib/core/index.mjs');
 
 const SELFTEST = process.argv.includes('--selftest');
 const TAP_MAX_MS = 300; // 이보다 짧게 눌렀다 떼면 실수로 누른 것으로 보고 버린다
@@ -515,7 +517,7 @@ function runMinutes(dir, speakers = null, { resume = false } = {}) {
       send('minutes:status', { id: path.basename(dir), ...s });
       if (s.status === 'queued') sendOverlay('overlay:stage', { stage: 'done', status: 'meeting-saved' });
       if (s.status === 'done') {
-        const rv = reviewSummary(dir);
+        const rv = core.reviewSummary(dir);
         sendOverlay('overlay:stage', { stage: 'done', status: 'minutes-done', text: `${s.title ?? ''}${rv?.open ? ` · 확인 필요 ${rv.open}개` : ''}` });
       }
       if (s.status === 'error') sendOverlay('overlay:stage', { stage: 'done', status: 'minutes-error', error: s.error });
@@ -596,17 +598,9 @@ ipcMain.handle('minutes:read', (_e, dir) => {
     glossary: glossaryWithNames(d, names),
     speech: minutes.speakerTurns(d),
     flow: flowWithNames(d, names),
-    actions: actionsWithNames(d, names),
+    actions: core.readActionsNamed(d, names),
   };
 });
-// 액션 글의 '화자 N'도 바꾼 이름으로 (파일은 그대로)
-function actionsWithNames(d, names) {
-  const data = actionsMod.readActions(d);
-  const fix = (t) => minutes.nameSpeakers(t, names, { prose: true });
-  for (const a of data?.actions ?? []) Object.assign(a, { owner: fix(a.owner), task: fix(a.task) });
-  for (const a of data?.advice ?? []) Object.assign(a, { from: fix(a.from), to: fix(a.to), text: fix(a.text), why: fix(a.why) });
-  return data;
-}
 ipcMain.handle('actions:make', (_e, dir) => actionsMod.makeActions(recordingDir(dir)));
 ipcMain.handle('actions:toggle', (_e, dir, id, done) => actionsMod.toggleAction(recordingDir(dir), id, done));
 // 흐름도 글의 '화자 N'도 바꾼 이름으로 보여 준다 (파일은 그대로)
@@ -784,12 +778,6 @@ function readDictationLog() {
 }
 
 // 회의 목록에 '초안 · 확인 N개' / '확정'을 표시하기 위한 요약
-function reviewSummary(dir) {
-  const review = readJson(path.join(dir, 'review.json'));
-  if (!review) return null;
-  return { open: review.items.filter((it) => it.status === 'open').length, total: review.items.length, finalized: Boolean(review.finalizedAt) };
-}
-
 function listHistory(limit = 300) {
   const items = [...readDictationLog(), ...listFolders(limit)];
   return items.sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt)).slice(0, limit);
@@ -816,12 +804,8 @@ function listFolders(limit) {
       }
       // 인터넷이 끊겨 멈춘 회의는 앱을 다시 켜도 연결을 기다렸다가 이어서 쓴다
       if (minutesState?.status === 'error' && minutesState.offline && !activeMinutes.has(dir) && !waitingOnline.has(dir)) waitForOnline(dir);
-      const durationSec = Math.max(0, ...Object.values(meta.files ?? {}).map((f) => f.durationSec ?? 0));
-      let summary = null;
-      try {
-        summary = /^## 요약\s*\n([\s\S]*?)(?=\n## |(?![\s\S]))/m.exec(fs.readFileSync(path.join(dir, 'minutes.md'), 'utf8'))?.[1].trim() ?? null;
-        summary = minutes.nameSpeakers(summary, meta.speakerNames, { prose: true });
-      } catch {}
+      const durationSec = core.durationOf(meta);
+      const summary = core.readSummary(dir, meta.speakerNames);
       return {
         id: name,
         dir,
@@ -834,7 +818,7 @@ function listFolders(limit) {
         transcript,
         minutes: minutesState,
         summary,
-        review: reviewSummary(dir),
+        review: core.reviewSummary(dir),
       };
     })
     .filter(Boolean);

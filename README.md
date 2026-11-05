@@ -29,9 +29,11 @@ npm install
 npm start            # 개발 모드 실행 (fn 감지 헬퍼 빌드 포함)
 npm run selftest     # fn 꾹 누르기·탭·두 번·세 번 누르기, 처리 중 무시, 회의 중 fn 무시, 짧은 회의 녹음 검증
 npm run test:ui      # 화면 테스트: 입력칸마다 진짜 키 입력(영어·Backspace), 오류 알림 글자 대비, 오래 걸리는 작업 중복 방지 (가짜 데이터, 약 20초)
+npm test             # 코어·명령줄 도구 단위 테스트 (Vitest, TypeScript 컴파일 포함)
+npm run mr -- list   # 개발 중 명령줄 도구 실행
 npm run install-app  # .app 빌드 → 서명 → /Applications 설치
 ```
-`npm run dist`(`install-app`도)는 빌드 전에 키보드 처리기 검사와 화면 테스트를 돌리고, 하나라도 실패하면 멈춘다 ([docs/testing.md](docs/testing.md)).
+`npm run dist`(`install-app`도)는 빌드 전에 타입 검사·단위 테스트·키보드 처리기 검사·화면 테스트를 돌리고, 하나라도 실패하면 멈춘다 ([docs/testing.md](docs/testing.md)).
 소스에서 빌드하려면 Node.js와 Xcode 명령줄 도구(swiftc)가 필요하다.
 
 - **서명**: `sh scripts/dev/make-signing-cert.sh`를 한 번 돌려 두면 키체인의 자체 서명 인증서로 서명해서, 다시 빌드해도 macOS 권한(문서 폴더·마이크·입력 모니터링·손쉬운 사용)이 유지된다. 인증서가 없으면 ad-hoc으로 서명하고, 그러면 다시 빌드할 때마다 권한을 다시 허용해야 한다 (문서 폴더 권한이 풀리면 회의 목록이 비어 보인다).
@@ -187,6 +189,24 @@ Homebrew 설치, Claude Code·Codex 호출(자체 샌드박스·읽기 전용), 
 
 앱 데이터는 `~/Library/Application Support/meeting-recorder/`: 설정(`dictation.json`, 토큰은 키체인으로 암호화), 모델(`models/`), 화자 구분 환경(`diarize-env/`, `python/`, `bin/uv`), 화자 구분 모델(`hf-cache/`).
 
+## 명령줄 도구 (`mr`)
+
+AI 에이전트(Claude Code·Codex 등)나 스크립트가 회의 내용을 가져다 쓰는 읽기 전용 명령. 앱에 들어 있어 따로 설치할 것(Node 등)이 없다.
+
+```bash
+"/Applications/Meeting Recorder.app/Contents/Resources/mr" install   # ~/.local/bin/mr로 설치 (PATH에 없으면 추가하는 줄을 알려 줌)
+mr list --limit 10          # 회의 목록 (id·시각·길이·제목·요약·회의록 상태·확인 필요)
+mr minutes latest           # 가장 최근 회의록
+mr actions 2026-11-01_14    # 할 일·알아 둘 것 (id는 하나로 정해지는 앞부분이어도 된다)
+mr script latest --raw      # 정리본 줄 (--raw: 원본 녹취)
+mr speakers latest          # 화자 이름·말한 시간
+mr schema actions           # 출력 JSON Schema
+```
+- 파이프·에이전트에서는 JSON, 터미널에서는 Markdown (`--json`/`--md`). 화자 이름은 앱에서 바꾼 이름으로 나온다.
+- 녹음 폴더는 앱 설정을 따른다 (`--dir`, `MR_RECORDINGS_DIR`로 바꿈). 처음 실행할 때 macOS가 이 명령을 실행한 앱(터미널 등)에 문서 폴더 접근을 물을 수 있다.
+- 오류는 stderr에 `{"error":{"code","message","hint"}}`, 종료 코드는 사용법 오류 2·그 밖 1.
+- 회의 내용을 에이전트에 넘기면 그 에이전트의 LLM 서비스로 전송된다.
+
 ## 필요한 macOS 권한 (설치한 앱은 Meeting Recorder에, 개발 모드는 터미널 앱에 부여)
 - 마이크
 - 입력 모니터링: fn 키 감지 (`native/fn-listener`)
@@ -204,6 +224,8 @@ Homebrew 설치, Claude Code·Codex 호출(자체 샌드박스·읽기 전용), 
 - `src/actions.js`: 액션 (할 일·조언을 LLM이 뽑고 녹취 인용으로 확인)
 - `src/flow.js`: 흐름도 (요청할 때 원본·정리본·회의록으로 흐름을 뽑고 녹취 인용으로 검증, 그림마다 채팅·다시 만들기)
 - `src/glossary.js`: 용어 설명 (LLM이 고르기·한 단어 설명·확인·고치기)
+- `src/core/`: Electron 없는 회의 데이터 읽기 (TypeScript·ESM, `npm run build:ts` → `lib/`). 화자 이름 바꿔 끼우기, 요약·확인 필요 요약, 액션, 스크립트 해석, TypeBox 스키마. 메인 프로세스와 명령줄 도구가 같이 쓴다
+- `src/cli/`: 명령줄 도구 `mr` (`mr.mts` 명령 처리, `mr.sh` 앱 안 실행 스크립트 → `Contents/Resources/mr`)
 - `src/minutes.js`: 회의 녹취(같은 문장 반복 구간 다시 받아쓰기) + 화자 구분 → 스크립트·정리본·회의록, 확인 필요(목록·적용·채팅·확인 마치기), 화자 이름 표시
 - `native/fn-listener.swift`: CGEventTap(listen-only)으로 fn down/up을 stdout으로 출력
 - `native/permissions.swift`: 권한 확인·요청, ⌘V 입력, 앞에 있는 앱 이름

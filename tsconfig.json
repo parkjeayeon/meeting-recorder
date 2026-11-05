@@ -1,0 +1,19 @@
+{
+  // 코어(src/core)·명령줄 도구(src/cli)만 TypeScript(ESM, .mts)로 쓴다. 나머지 src/*.js는 아직 CommonJS — 메인 프로세스가 require()로 이 ESM을 불러 쓴다 (결정 43).
+  // 실행은 언제나 앱에 들어 있는 Electron의 Node(45 → Node 24)라서 target·@types/node를 그 버전에 맞춘다. 사용자 Mac의 Node와는 상관없다.
+  "compilerOptions": {
+    "target": "es2024",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "rootDir": "src",
+    "outDir": "lib",
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "skipLibCheck": true,
+    "noEmitOnError": true
+  },
+  "include": ["src/core/**/*.mts", "src/cli/**/*.mts", "src/test/**/*.mts"]
+}

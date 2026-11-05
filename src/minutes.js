@@ -9,6 +9,7 @@ const dictation = require('./dictation');
 const { complete, parseJson } = require('./cleanup');
 const sandbox = require('./sandbox');
 const glossary = require('./glossary');
+const { nameSpeakers } = require('../lib/core/index.mjs');
 
 const LONG_TIMEOUT_MS = 10 * 60 * 1000; // 1시간짜리 회의도 여유 있게
 const SPEAKER = { mic: '나', system: '상대방' };
@@ -577,35 +578,7 @@ function renameSpeaker(dir, from, to) {
   fs.writeFileSync(file, JSON.stringify(meta, null, 2));
 }
 
-const escapeRe = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-// 스크립트(`[화자 1] 말`)는 대괄호 안만, 회의록 같은 글은 화자 표시로 쓰인 곳만 바꾼다.
-// '화자 N'은 다른 말과 헷갈리지 않고, 그 밖의 표시('나' 등)는 앞이 글자가 아니고 뒤가 끝·조사일 때만.
-function nameSpeakers(text, names, { prose = false } = {}) {
-  const keys = Object.keys(names ?? {}).sort((a, b) => b.length - a.length);
-  if (!text || !keys.length) return text;
-  const pattern = keys.map((key) => {
-    const k = escapeRe(key);
-    if (!prose) return `\\[${k}\\]`;
-    if (/^화자 \d+$/.test(key)) return `${k}(?!\\d)`;
-    return `(?<![가-힣A-Za-z0-9])${k}(?=$|[^가-힣A-Za-z0-9]|(?:은|는|이|가|과|와|의|을|를|도|만|에게|께서)(?![가-힣]))`;
-  });
-  // 한 번에 바꿔서 '화자 1' → '화자 2'처럼 이름이 다른 표시와 같아도 이어서 바뀌지 않게 한다.
-  // 글에서는 뒤에 붙은 조사를 이름 받침에 맞춘다 ("화자 1은" → "멘토는")
-  const re = new RegExp(`(?:${pattern.join('|')})${prose ? '(?:(은|는|이|가|과|와|을|를)(?![가-힣]))?' : ''}`, 'g');
-  return text.replace(re, (m, josa) => {
-    if (!prose) return `[${names[m.slice(1, -1)]}]`;
-    const name = names[josa ? m.slice(0, -josa.length) : m];
-    return name + (josa ? fitJosa(name, josa) : '');
-  });
-}
-
-const JOSA = { 은: ['은', '는'], 는: ['은', '는'], 이: ['이', '가'], 가: ['이', '가'], 과: ['과', '와'], 와: ['과', '와'], 을: ['을', '를'], 를: ['을', '를'] };
-function fitJosa(name, josa) {
-  const c = name.charCodeAt(name.length - 1);
-  if (c < 0xac00 || c > 0xd7a3) return josa; // 한글로 끝나지 않으면 그대로
-  return JOSA[josa][(c - 0xac00) % 28 ? 0 : 1];
-}
+// 화자 이름 바꿔 끼우기(nameSpeakers)는 명령줄 도구와 같이 쓰도록 코어(src/core/names.mts)에 있다
 
 // ── 확인 필요: 회의록이 확신하지 못한 부분을 하나씩 고치거나(추정 적용·직접 입력·채팅) 그대로 둔다 ──
 const REVIEW_SYSTEM = `You turn the "확인 필요" notes of Korean meeting minutes into a review list.

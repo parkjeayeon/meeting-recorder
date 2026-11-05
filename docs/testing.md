@@ -3,11 +3,22 @@
 자동 시험과 손으로 확인하는 방법, 그리고 주의할 점.
 
 ## 빌드 전 자동 검사 — `npm run dist`
-`npm run dist`(`npm run install-app`도)는 빌드 전에 아래 두 가지를 돌리고, 실패하면 빌드하지 않는다.
-1. 키보드 처리기 검사 `node scripts/dev/check-handlers.js` (1초 미만)
-2. 화면 테스트 `npm run test:ui` (약 20초)
+`npm run dist`(`npm run install-app`도)는 빌드 전에 아래를 차례로 돌리고, 실패하면 빌드하지 않는다.
+1. 타입 검사 `npm run typecheck` (`src/core`·`src/cli`의 TypeScript)
+2. 단위 테스트 `npm test` (컴파일 후 Vitest, 1초 안팎)
+3. 키보드 처리기 검사 `node scripts/dev/check-handlers.js` (1초 미만)
+4. 화면 테스트 `npm run test:ui` (약 20초)
 
-자세한 내용은 아래 "주의할 점"의 두 항목.
+3·4는 아래 "주의할 점"의 두 항목.
+
+## 단위 테스트 — `npm test`
+`src/core`(회의 데이터 읽기)와 `src/cli`(명령줄 도구 `mr`)를 Vitest로 시험한다. 가짜 녹음 폴더(`src/test/fixture.mts`, 지어낸 예시)를 임시 폴더에 만들어 쓴다.
+- 화자 이름 바꿔 끼우기(조사 맞추기, '화자 1'과 '화자 10', '나'가 낱말 속에서 안 바뀜, 맞바꾸기), 스크립트 해석·말한 시간
+- 녹음 폴더 찾기 순서, 목록(받아쓰기·녹음 중 폴더 제외, 최근부터, `--limit`·`--since`), id 고르기(`latest`·앞부분·여럿이면 오류·폴더 밖 경로 거부)
+- 명령마다 출력이 `src/core/schema.mts`의 스키마에 맞는지, 오류 형식·종료 코드, 설치
+- 빌드한 `lib/cli/bin.mjs`를 Electron의 Node(`ELECTRON_RUN_AS_NODE=1`)로 실제 실행 — 앱 안의 `mr`과 같은 방식
+
+출력 모양을 바꾸면 스키마도 같이 바꾼다 (에이전트가 기대어 쓰는 약속이라서).
 
 ## 셀프테스트 — `npm run selftest`
 fn 이벤트를 흉내 내 실제 녹음 흐름을 시험한다 (`src/main.js`의 `runFnSimulation`). 창을 띄우지 않고 결과를 `SELFTEST …` 줄로 출력한다.
