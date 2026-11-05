@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import Value from 'typebox/value';
 import type Type from 'typebox';
 import { nameSpeakers, type SpeakerNames } from './names.mjs';
@@ -45,8 +46,13 @@ const denied = (dir: string) =>
   new MeetingError('NO_ACCESS', `macOS가 녹음 폴더 접근을 막았습니다: ${dir}`, '시스템 설정 › 개인정보 보호 및 보안 › 파일 및 폴더(또는 전체 디스크 접근 권한)에서 이 명령을 실행한 앱(터미널 등)에 문서 폴더 접근을 허용하세요');
 
 // ── 녹음 폴더 찾기 ──────────────────────────────────────────────
-// 앱 설정 폴더 이름은 package.json의 name을 따른다 (Electron의 userData). 이름을 바꾸면 여기도 바꾼다
-export const settingsFile = (home = os.homedir()) => path.join(home, 'Library', 'Application Support', 'meeting-recorder', 'dictation.json');
+// 앱 설정 폴더(Electron의 userData) 이름은 Electron과 같은 규칙으로 package.json에서 읽는다: productName, 없으면 name.
+// 앱 안(app.asar)에서도 개발 폴더에서도 lib/core/ → ../../package.json
+function appFolderName(): string {
+  const pkg = JSON.parse(fs.readFileSync(fileURLToPath(new URL('../../package.json', import.meta.url)), 'utf8'));
+  return pkg.productName ?? pkg.name;
+}
+export const settingsFile = (home = os.homedir()) => path.join(home, 'Library', 'Application Support', appFolderName(), 'dictation.json');
 export const defaultRecordingsDir = (home = os.homedir()) => path.join(home, 'Documents', 'MeetingRecorder');
 
 export interface Root {

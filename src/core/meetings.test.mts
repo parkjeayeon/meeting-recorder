@@ -9,6 +9,11 @@ import * as schema from './schema.mjs';
 const fx = makeFixture();
 afterAll(fx.cleanup);
 
+it('앱 설정 폴더 이름은 package.json에서 (Electron의 userData와 같은 규칙)', () => {
+  const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+  expect(settingsFile('/h')).toBe(path.join('/h', 'Library', 'Application Support', pkg.productName ?? pkg.name, 'dictation.json'));
+});
+
 describe('findRoot', () => {
   it('--dir > 환경 변수 > 앱 설정 > 기본 폴더', () => {
     expect(findRoot({ dir: '/x', env: { MR_RECORDINGS_DIR: '/y' }, home: fx.home })).toEqual({ dir: '/x', from: 'option' });
