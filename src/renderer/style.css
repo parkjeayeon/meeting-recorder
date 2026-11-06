@@ -1021,3 +1021,100 @@ dialog[open] { animation: pop .22s cubic-bezier(.16, 1, .3, 1); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ── 질문으로 찾기 (결정 51): 오른쪽 아래 둥근 버튼 → 채팅 창, 회의 목록에 질문 탭 ── */
+.chip.ask { display: inline-flex; align-items: center; gap: 6px; border-style: dashed; }
+.chip.ask svg { width: 13px; height: 13px; }
+.chip.ask .num { margin-left: 0; }
+.chip.ask[aria-pressed='true'] { border-style: solid; }
+.chip.ask .x { display: grid; place-items: center; width: 16px; height: 16px; margin: 0 -5px 0 0; border-radius: 50%; color: inherit; opacity: .55; }
+.chip.ask .x:hover { opacity: 1; background: var(--shell-on); }
+.chip.ask .x svg { width: 10px; height: 10px; stroke-width: 2; }
+.chip.ask.bad { color: var(--accent); }
+.spin { width: 11px; height: 11px; border-radius: 50%; border: 1.6px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; flex: none; }
+/* 찾을 범위: 조건 칩 (칩 하나 = 조건 하나, 칩끼리 AND) */
+.conds-bar { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.cchip { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border: 1px dashed var(--line-2); border-radius: 999px; background: none; color: var(--ink-3); font-size: 12px; font-weight: 550; white-space: nowrap; transition: border-color .15s ease-out, color .15s ease-out; }
+.cchip:hover { border-color: var(--ink-3); color: var(--ink-2); }
+.cchip svg { width: 12px; height: 12px; }
+.cchip.set { border-style: solid; border-color: transparent; background: var(--ink); color: var(--panel); padding-right: 4px; }
+.cchip.set .x { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; opacity: .7; }
+.cchip.set .x:hover { opacity: 1; background: rgba(255, 255, 255, .16); }
+.cchip.set .x svg { width: 10px; height: 10px; stroke-width: 2; }
+.cchip[aria-expanded='true'] { border-color: var(--ink-3); color: var(--ink); }
+.cchip.set[aria-expanded='true'] { color: var(--panel); box-shadow: 0 0 0 3px var(--accent-wash-2); }
+.cpop { position: absolute; z-index: 50; bottom: calc(100% + 8px); left: 0; width: 288px; display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: var(--shadow-pop); animation: pop .16s cubic-bezier(.16, 1, .3, 1); }
+.cpop h4 { margin: 0; font-size: 12.5px; font-weight: 650; color: var(--ink); }
+.cpop p { margin: -6px 0 0; font-size: 11.5px; color: var(--ink-3); }
+.cpop .opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.cpop .opts button { height: 28px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel); color: var(--ink-2); font: 500 12.5px var(--sans); }
+.cpop .opts button.num { font-family: var(--mono); }
+.cpop .opts button:hover { border-color: var(--ink-3); color: var(--ink); }
+.cpop .opts button[aria-pressed='true'] { background: var(--ink); border-color: var(--ink); color: var(--panel); }
+.cpop .field { display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 8px; font-size: 12.5px; color: var(--ink-3); }
+.cpop .field:focus-within { border-color: var(--ink-3); box-shadow: 0 0 0 3px var(--accent-wash); }
+.cpop .field input { flex: 1; min-width: 0; height: auto; padding: 0; border: 0; outline: none; box-shadow: none; background: none; font: 500 13px var(--mono); color: var(--ink); color-scheme: inherit; }
+/* 날짜 칸은 위아래로: 나란히 두면 날짜 칸 기본 너비 때문에 팝오버 밖으로 넘친다 */
+.cpop .dates { display: flex; flex-direction: column; gap: 6px; }
+.cpop .dates .field { width: 100%; box-sizing: border-box; overflow: hidden; }
+.cpop .dates small { width: 26px; font-size: 11.5px; color: var(--ink-3); flex: none; }
+.cpop .dates input { width: 100%; }
+.ask-examples { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.ask-examples button { height: 26px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel-2); color: var(--ink-2); font-size: 12px; }
+.ask-examples button:hover { border-color: var(--line-2); color: var(--ink); }
+.ask-hint { font-size: 12.5px; line-height: 1.6; color: var(--ink-3); }
+/* 채팅 창 */
+.askpanel { position: fixed; z-index: 35; right: 24px; bottom: 88px; width: 380px; height: min(600px, calc(100vh - 140px)); display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); box-shadow: var(--shadow-pop); transform-origin: bottom right; }
+.askpanel.opening { animation: pop .22s cubic-bezier(.16, 1, .3, 1); }
+.askpanel header { display: flex; align-items: center; gap: 8px; padding: 12px 12px 12px 16px; border-bottom: 1px solid var(--line); font-weight: 650; }
+.askpanel header svg { width: 16px; height: 16px; }
+.askpanel header span { flex: 1; }
+.asklog { flex: 1; overflow: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 14px; }
+.bubble.me { align-self: flex-end; max-width: 85%; padding: 8px 12px; border-radius: 12px 12px 4px 12px; background: var(--ink); color: var(--panel); font-size: 13.5px; overflow-wrap: anywhere; }
+.bubble.me small { display: block; opacity: .65; font-size: 11.5px; margin-top: 2px; }
+.bubble.ai { display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--ink-2); }
+.bubble.ai .busy-line { display: flex; gap: 8px; align-items: center; }
+.bubble.ai.note, .bubble.ai.warn { gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); }
+.bubble.ai.warn { border-color: var(--accent-wash-2); background: var(--accent-wash); }
+.bubble.ai .warn-line { display: flex; align-items: center; gap: 6px; color: var(--ink); }
+.bubble.ai.warn .warn-line { color: var(--accent); }
+.bubble.ai .warn-line svg { width: 14px; height: 14px; color: currentColor; }
+.bubble.ai.note .warn-line svg { color: var(--ink-3); }
+.bubble.ai .warn-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.bubble.ai .conds { display: flex; flex-wrap: wrap; gap: 4px; }
+.askcompose { padding: 12px; border-top: 1px solid var(--line); }
+.composer { display: flex; flex-direction: column; gap: 8px; padding: 10px 10px 8px 12px; border: 1px solid var(--line-2); border-radius: 14px; background: var(--panel); transition: border-color .15s ease-out, box-shadow .15s ease-out; }
+.composer:focus-within { border-color: var(--ink-3); box-shadow: 0 0 0 3px var(--accent-wash); }
+.composer textarea { min-height: 22px; max-height: 120px; height: auto; resize: none; padding: 0; border: 0; box-shadow: none; background: none; font: inherit; font-size: 13.5px; line-height: 1.5; color: var(--ink); outline: none; }
+.composer .bottom { display: flex; align-items: center; gap: 8px; }
+.composer .bottom .conds-bar { flex: 1; }
+.ask-send { display: grid; place-items: center; width: 30px; height: 30px; flex: none; border: 0; border-radius: 50%; background: var(--ink); color: var(--panel); }
+.ask-send:disabled { background: var(--panel-3); color: var(--ink-3); }
+.ask-send svg { width: 15px; height: 15px; margin: 1px 1px 0 0; }
+/* 둥근 버튼: 어느 화면에서든. 찾는 동안 둘레가 돌고, 확인 안 한 결과 수를 뱃지로 */
+.fab { position: fixed; z-index: 36; right: 24px; bottom: 24px; display: grid; place-items: center; width: 52px; height: 52px; border: 0; border-radius: 50%; background: var(--ink); color: var(--panel); box-shadow: var(--shadow-pop); transition: transform .2s cubic-bezier(.16, 1, .3, 1); }
+.fab:hover { transform: scale(1.06); }
+.fab svg { width: 20px; height: 20px; }
+.fab-ring { position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--accent); border-right-color: transparent; border-bottom-color: transparent; animation: spin 1.1s linear infinite; }
+.fab-badge { position: absolute; top: -2px; right: -2px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font: 700 11px/20px var(--mono); box-shadow: 0 0 0 2px var(--panel); }
+.fab-toast { position: fixed; z-index: 34; right: 88px; bottom: 32px; display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 6px 0 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink-2); font-size: 12.5px; box-shadow: var(--shadow-pop); animation: fab-in .28s cubic-bezier(.16, 1, .3, 1); }
+.fab-toast svg { width: 14px; height: 14px; color: var(--ok); }
+.fab-toast.bad svg { color: var(--accent); }
+.fab-toast b { color: var(--ink); font-weight: 650; }
+.fab-toast .go { height: 26px; padding: 0 10px; border-radius: 999px; background: var(--ink); color: var(--panel); font-weight: 600; display: grid; place-items: center; }
+@keyframes fab-in { from { opacity: 0; transform: translateX(10px); } }
+@media (prefers-reduced-motion: reduce) { .fab-ring, .askpanel.opening, .fab-toast, .spin { animation: none; } }
+/* 질문 탭 머리 */
+.askhead { display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; margin-bottom: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel-2); }
+.askhead .qline { display: flex; align-items: center; gap: 10px; }
+.askhead .qline > svg { width: 16px; height: 16px; color: var(--ink-3); flex: none; }
+.askhead .qline b { flex: 1; font-size: 16px; font-weight: 700; letter-spacing: -0.015em; overflow-wrap: anywhere; }
+.askhead .conds { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--ink-3); }
+.askhead .err { color: var(--accent); font-size: 12.5px; }
+.cond { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 6px; background: var(--panel); border: 1px solid var(--line); color: var(--ink-2); font-size: 11.5px; font-weight: 550; }
+.askhead .steps { display: flex; flex-wrap: wrap; gap: 18px; margin: 0; padding: 0; font-size: 12.5px; color: var(--ink-3); }
+.askhead .steps span { display: inline-flex; align-items: center; gap: 6px; }
+.askhead .steps .now { color: var(--ink); font-weight: 600; }
+.askhead .steps .ok svg { width: 13px; height: 13px; color: var(--ok); }
+.askhead .steps .later { margin-left: auto; }
+.ltitle .reason { color: var(--ink-2); }

@@ -25,6 +25,7 @@ fs.writeFileSync(path.join(meeting, 'review.json'), JSON.stringify({ items: [
   { id: 'r2', kind: 'word', at: '00:06', heard: '화요일', applied: '수요일', count: 1, note: '요일', status: 'applied', undo: { 'transcript.txt': { changed: [], inserted: [] } } },
 ] }));
 process.env.STUB_MEETING_DIR = meeting;
+process.env.STUB_MANY = process.env.STUB_MANY ?? '2'; // 질문 탭에 '잠깐 언급된 회의'까지 나오게
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 setTimeout(() => {
@@ -191,6 +192,90 @@ app.whenReady().then(async () => {
   const sent = await js('window.stubCalls().importMeeting ?? null');
   const sentAt = sent?.startedAt ? new Date(sent.startedAt) : null;
   results.push(['가져오기 날짜 고치기', future === null && sentAt && sentAt.getFullYear() === 2026 && sentAt.getMonth() === 9 && sentAt.getDate() === 20 && sentAt.getHours() === 9 && sentAt.getMinutes() === 30, `미래 막음 ${future === null} · 보낸 시각 ${sentAt?.toString().slice(0, 21)}`]);
+
+  // 질문으로 찾기: 둥근 버튼은 어느 화면에서든 보이고, 찾는 동안 다른 화면에 있어도 끝나면 알림·뱃지 → '보기'로 회의 화면의 질문 탭
+  await js(`document.getElementById('importSheet')?.close(); location.hash='#home'`);
+  await wait(400);
+  const fabOn = {};
+  for (const r of ['home', 'dictations', 'meetings', 'stats']) {
+    await js(`location.hash='#${r}'`);
+    await wait(250);
+    fabOn[r] = await js(`Boolean(document.querySelector('.fab')) && getComputedStyle(document.querySelector('.fab')).position === 'fixed'`);
+  }
+  results.push(['둥근 버튼이 모든 화면에', Object.values(fabOn).every(Boolean), JSON.stringify(fabOn)]);
+  const openPanel = async () => {
+    if (!(await js(`Boolean(document.querySelector('.askpanel'))`))) await js(`document.querySelector('.fab').click()`);
+    await wait(200);
+  };
+  const ask = async (text) => {
+    await openPanel();
+    await js(`(() => { const t = document.querySelector('.askpanel textarea'); t.value = ${JSON.stringify(text)}; t.dispatchEvent(new Event('input')); document.querySelector('.ask-send').click(); })()`);
+    await wait(150);
+  };
+  // 질문 입력칸: 진짜 키 입력 (영어·Backspace가 막히지 않는지)
+  await js(`location.hash='#home'`);
+  await wait(300);
+  await openPanel();
+  await js(`(() => { const t = document.querySelector('.askpanel textarea'); t.focus(); t.value = ''; t.dispatchEvent(new Event('input')); })()`);
+  key('A', 'a');
+  key('B', 'b');
+  key('Backspace');
+  await wait(150);
+  const typed = await js(`document.querySelector('.askpanel textarea')?.value`);
+  results.push(['질문으로 찾기 입력', typed === 'a', `값 ${JSON.stringify(typed)} (기대 "a")`]);
+  // 최근 몇 개: 숫자만 들어간다 (진짜 키로)
+  await js(`document.querySelector('.cchip[data-chip="count"]').click()`);
+  await wait(200);
+  await js(`document.querySelector('.cpop input')?.focus()`);
+  key('1', '1');
+  key('2', '2');
+  key('A', 'a');
+  await wait(150);
+  const countVal = await js(`({ v: document.querySelector('.cpop input')?.value, chip: document.querySelector('.cchip[data-chip="count"]')?.textContent })`);
+  results.push(['최근 몇 개는 숫자만', countVal.v === '12' && countVal.chip.includes('최근 12개'), JSON.stringify(countVal)]);
+  await js(`document.querySelector('.cchip[data-chip="count"] .x')?.click()`);
+  // 기간: 처음엔 비어 있고, 누르면 최근 7일
+  const before7 = await js(`document.querySelector('.cchip[data-chip="range"]').textContent`);
+  await js(`document.querySelector('.cchip[data-chip="range"]').click()`);
+  await wait(200);
+  const after7 = await js(`document.querySelector('.cchip[data-chip="range"]').textContent`);
+  results.push(['기간은 누르면 최근 7일', before7 === '기간' && /–/.test(after7) && Boolean(await js(`[...document.querySelectorAll('.cpop .opts button')].find(b=>b.textContent==='최근 7일')?.getAttribute('aria-pressed')==='true'`)), `${JSON.stringify(before7)} → ${JSON.stringify(after7)}`]);
+  await js(`document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))`); // 팝오버 닫기
+  // 질문 속 기간(작년)과 기간 칩(최근 7일)이 겹치지 않으면 찾지 않고 경고, '기간 칩 빼고'로 다시
+  await ask('작년 배포 회의');
+  await wait(700);
+  const warn = await js(`document.querySelector('.bubble.warn')?.textContent ?? null`);
+  const chipHidden = await js(`location.hash='#meetings'; new Promise(r=>setTimeout(()=>r(![...document.querySelectorAll('.chip.ask')].length), 300))`);
+  results.push(['기간이 안 겹치면 찾지 않음', Boolean(warn?.includes('찾지 않았습니다') && warn.includes('기간 칩 빼고')) && chipHidden, `${JSON.stringify(warn?.slice(0, 40))} · 탭 없음 ${chipHidden}`]);
+  await openPanel();
+  await js(`[...document.querySelectorAll('.bubble.warn button')].find(b=>b.textContent.includes('기간 칩 빼고'))?.click()`);
+  await wait(200);
+  const retried = await js('window.stubCalls().askStart?.at(-1) ?? null');
+  results.push(['기간 칩 빼고 다시 찾기', retried?.question === '작년 배포 회의' && !retried.scope.from && !retried.scope.to, JSON.stringify(retried)]);
+  await wait(1200);
+  // 다른 화면에서 찾기 → 끝나면 알림·뱃지 → 보기
+  await js(`document.querySelector('.askpanel header .icon-btn')?.click(); location.hash='#home'`);
+  await wait(300);
+  await ask('배포 관련 회의');
+  await js(`document.querySelector('.askpanel header .icon-btn')?.click()`);
+  await wait(250);
+  const ring = await js(`Boolean(document.querySelector('.fab .fab-ring'))`);
+  await wait(1100);
+  const done = await js(`({ toast: document.querySelector('.fab-toast')?.textContent ?? null, badge: document.querySelector('.fab-badge')?.textContent ?? null, ring: Boolean(document.querySelector('.fab .fab-ring')) })`);
+  results.push(['다른 화면에서 끝나면 알림·뱃지', ring && !done.ring && Boolean(done.toast?.includes('2건을 찾았습니다')) && Number(done.badge) >= 1, `찾는 중 둘레 ${ring} · ${JSON.stringify(done)}`]);
+  await js(`document.querySelector('.fab-toast')?.click()`);
+  await wait(600);
+  const tab = await js(`({ hash: location.hash, pressed: document.querySelector('.chip.ask[aria-pressed="true"]')?.textContent ?? null, groups: [...document.querySelectorAll('.mix-sec .sec-h h2')].map(x=>x.textContent), reasons: [...document.querySelectorAll('.ltitle .reason')].map(x=>x.textContent), badge: document.querySelector('.fab-badge')?.textContent ?? null })`);
+  results.push(['질문 탭: 주로 다룸·잠깐 언급과 이유', tab.hash === '#meetings' && Boolean(tab.pressed?.includes('배포')) && JSON.stringify(tab.groups) === '["주제로 다룬 회의","잠깐 언급된 회의"]' && tab.reasons.includes('배포 일정을 정한 회의'), JSON.stringify(tab)]);
+  // 실패한 질문은 탭에 표시되고 채팅에서 다시 찾을 수 있다, 탭 닫기는 메인 프로세스에서도 지운다
+  await ask('실패하는 질문');
+  await wait(1200);
+  const bad = await js(`({ chip: Boolean(document.querySelector('.chip.ask.bad')), bubble: document.querySelector('.askpanel .bubble.warn')?.textContent ?? null })`);
+  results.push(['찾기 실패 표시', bad.chip && Boolean(bad.bubble?.includes('시간 초과')), JSON.stringify(bad)]);
+  await js(`document.querySelector('.askpanel header .icon-btn')?.click(); document.querySelector('.chip.ask.bad .x')?.click()`);
+  await wait(300);
+  const removed = await js(`({ calls: window.stubCalls().askRemove ?? [], left: document.querySelectorAll('.chip.ask').length })`);
+  results.push(['질문 탭 닫기', removed.calls.length >= 2 && removed.left === 2, JSON.stringify(removed)]);
 
   let failed = 0;
   for (const [name, ok, detail] of results) {

@@ -12,6 +12,7 @@ const glossary = require('./glossary');
 const flowMod = require('./flow');
 const actionsMod = require('./actions');
 const usageMod = require('./usage');
+const askMod = require('./ask');
 const setup = require('./setup');
 // 회의 데이터 읽기는 명령줄 도구(mr)와 같이 쓰는 코어(TypeScript·ESM, npm run build:ts → lib/)로 (결정 43)
 const core = require('../lib/core/index.mjs');
@@ -860,6 +861,22 @@ ipcMain.handle('dict:repaste', async (_e, text) => {
 ipcMain.handle('dict:providers', (_e, opts) => dictation.cleanupProviders(opts));
 ipcMain.handle('usage:get', (_e, opts) => usageMod.usage(opts));
 
+// ── 질문으로 회의 찾기 (src/ask.js, 결정 51): 메인 프로세스에서 돌아 화면을 옮기거나 창을 닫아도 이어진다 ──
+// 회의 상태는 화면의 meetState와 같은 말로 (done 확정·확인할 것 없음 / open 확인 남음 / draft 마치기 전 / fail / short / none 녹음만 / busy)
+function askMeetings() {
+  return listFolders().filter((r) => r.mode === 'meeting').map((r) => {
+    const s = r.minutes?.status;
+    const rv = r.review;
+    const status = ['queued', 'transcribe', 'write'].includes(s) ? 'busy' : s === 'error' ? 'fail' : s === 'short' || s === 'empty' ? 'short' : s !== 'done' ? 'none'
+      : !rv || rv.finalized ? 'done' : rv.open ? 'open' : rv.total ? 'draft' : 'done';
+    return { id: r.id, dir: r.dir, startedAt: r.startedAt, title: r.minutes?.title ?? null, summary: r.summary ?? null, status };
+  });
+}
+ipcMain.handle('ask:start', (_e, question, scope) => askMod.start(question, scope));
+ipcMain.handle('ask:list', () => askMod.list());
+ipcMain.handle('ask:remove', (_e, id) => askMod.remove(id));
+ipcMain.handle('ask:seen', (_e, id) => askMod.seen(id));
+
 // ── 연결 설정 창: 토큰·키 저장, 삭제, 확인 ─────────────────────────────────
 const DIARIZE_MODEL = 'pyannote/speaker-diarization-community-1';
 const EXTERNAL_LINKS = new Set([
@@ -1096,6 +1113,7 @@ ipcMain.handle('recordings:reset', async () => {
   dictation.saveSettings({ recordingsDir: null });
   mergePortableSettings();
   writePortableSettings();
+  askMod.init({ getMeetings: askMeetings, onChange: (job) => send('ask:update', job) });
   return { dir: DEFAULT_RECORDINGS_DIR, isDefault: true };
 });
 

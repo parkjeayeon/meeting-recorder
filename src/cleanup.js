@@ -45,9 +45,9 @@ function workDir() {
   return dir;
 }
 
-function run(bin, args, { timeout, input } = {}) {
+function run(bin, args, { timeout, input, env } = {}) {
   return new Promise((resolve, reject) => {
-    const child = execFile(bin, args, { cwd: workDir(), timeout, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
+    const child = execFile(bin, args, { cwd: workDir(), timeout, maxBuffer: 4 * 1024 * 1024, ...(env ? { env: { ...process.env, ...env } } : {}) }, (err, stdout, stderr) => {
       if (err) reject(Object.assign(err, { stderr }));
       else resolve({ stdout, stderr });
     });
@@ -95,7 +95,8 @@ function wrap(text) {
   return `<transcript>\n${text}\n</transcript>`;
 }
 
-async function viaClaudeCode({ system, input, effort, timeout }) {
+// cache: false면 캐시를 만들지 않는다 — 다시 읽을 일 없는 호출은 캐시를 만드는 값(보통 입력보다 비쌈)만 든다 (결정 51)
+async function viaClaudeCode({ system, input, effort, timeout, cache = true }) {
   const out = await run(findBin('claude-code'), [
     '-p',
     '--model', 'opus',
@@ -106,7 +107,7 @@ async function viaClaudeCode({ system, input, effort, timeout }) {
     '--setting-sources', '',
     '--no-session-persistence',
     '--output-format', 'text',
-  ], { timeout, input });
+  ], { timeout, input, env: cache ? null : { DISABLE_PROMPT_CACHING: '1' } });
   return out.stdout.trim();
 }
 
@@ -145,10 +146,10 @@ async function viaApi({ system, input, effort, timeout, apiKey, maxTokens }) {
 const CALLERS = { 'claude-code': viaClaudeCode, codex: viaCodex, api: viaApi };
 
 // 로그인된 계정으로 한 번 호출한다. 받아쓰기 다듬기와 회의록 작성이 함께 쓴다.
-async function complete({ system, input, choice, apiKey, effort = 'low', timeouts = TIMEOUT_MS, maxTokens = 4096 }) {
+async function complete({ system, input, choice, apiKey, effort = 'low', timeouts = TIMEOUT_MS, maxTokens = 4096, cache = true }) {
   const provider = await resolveProvider(choice, { hasApiKey: Boolean(apiKey) });
   if (!provider) throw Object.assign(new Error('로그인된 Claude Code·Codex 계정이나 API 키가 없습니다'), { noProvider: true });
-  const text = await CALLERS[provider]({ system, input, effort, timeout: timeouts[provider], apiKey, maxTokens });
+  const text = await CALLERS[provider]({ system, input, effort, timeout: timeouts[provider], apiKey, maxTokens, cache });
   return { text, provider };
 }
 

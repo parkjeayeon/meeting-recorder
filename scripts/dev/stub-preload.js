@@ -112,6 +112,20 @@ const impl = {
     return { added: [review.items.at(-1).id], reply: '00:02의 "배포"를 항목으로 더했습니다.' };
   },
   // 사용 한도 예시 (Claude Code: 세션·주간·모델 주간, Codex: 주간 + 크레딧). 몇 번 불렸는지 센다
+  askStart: async (question, scope) => {
+    calls.askStart = [...(calls.askStart ?? []), { question, scope }];
+    return stubAsk(question, scope);
+  },
+  askList: async () => [...askJobs.values()].map((j) => ({ ...j })),
+  askRemove: async (id) => {
+    askJobs.delete(id);
+    calls.askRemove = [...(calls.askRemove ?? []), id];
+  },
+  askSeen: async (id) => {
+    const j = askJobs.get(id);
+    if (j) j.seen = true;
+  },
+  onAsk: (cb) => (askCb = cb),
   usage: async ({ force = false } = {}) => {
     calls.usage = [...(calls.usage ?? []), force];
     const at = (h) => new Date(Date.now() + h * 3600e3).toISOString();
@@ -136,6 +150,32 @@ const impl = {
   ],
 };
 const calls = {};
+// 질문으로 찾기 흉내 (LLM 없이): 단계를 짧게 지나 끝난다. "작년"이 든 질문에 올해 기간 칩을 주면 기간이 겹치지 않아 멈춘다.
+// "실패"가 든 질문은 오류로 끝난다. 결과는 예시 회의에서 고른다 (첫 회의는 주로 다룸, 둘째는 잠깐 언급)
+const askJobs = new Map();
+let askCb = noop;
+const ASK_MS = Number(process.env.STUB_ASK_MS) || 300;
+function stubAsk(question, scope) {
+  const y = new Date().getFullYear();
+  const job = { id: `a${askJobs.size + 1}`, q: question, scope, status: 'running', stage: 'parse', t0: Date.now(), ms: null, conds: null, results: [], candidates: 0, seen: false, error: null };
+  askJobs.set(job.id, job);
+  const step = (fn, ms) => setTimeout(() => { if (askJobs.has(job.id)) { fn(); askCb({ ...job }); } }, ms);
+  const lastYear = /작년/.test(question);
+  step(() => {
+    job.conds = { from: lastYear ? `${y - 1}-01-01` : null, to: lastYear ? `${y - 1}-12-31` : null, status: null, focus: 'any', topic: '배포', terms: ['배포', '릴리스'] };
+    if (lastYear && scope.from && scope.from > `${y - 1}-12-31`) Object.assign(job, { status: 'blocked', stage: 'blocked', ms: Date.now() - job.t0 });
+    else job.stage = 'search';
+  }, ASK_MS);
+  step(() => { if (job.status === 'running') Object.assign(job, { stage: 'judge', candidates: 3 }); }, ASK_MS * 2);
+  step(() => {
+    if (job.status !== 'running') return;
+    if (/실패/.test(question)) return Object.assign(job, { status: 'error', stage: 'error', error: '시간 초과', ms: Date.now() - job.t0 });
+    const ids = [meeting, ...manyMeetings(Number(process.env.STUB_MANY) || 0)].filter(Boolean).map((m) => m.id);
+    job.results = [{ id: ids[0], level: 'main', reason: '배포 일정을 정한 회의', quote: '배포는 다음 주 화요일' }, ids[1] && { id: ids[1], level: 'mention', reason: '끝에 배포 얘기가 잠깐 나옴', quote: null }].filter(Boolean);
+    Object.assign(job, { status: 'done', stage: 'done', ms: Date.now() - job.t0 });
+  }, ASK_MS * 3);
+  return { ...job };
+}
 // STUB_MANY=80: 회의가 많을 때의 목록 화면 (지어낸 제목·요약, 이틀에 하나꼴로 석 달)
 function manyMeetings(n) {
   const topics = ['주간 회의', '배포 점검', '디자인 리뷰', '채용 면접', '고객사 미팅', '1:1', '분기 계획', '장애 회고', '온보딩', '예산 검토'];
