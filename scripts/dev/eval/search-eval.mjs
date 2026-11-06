@@ -29,6 +29,9 @@ const args = Object.fromEntries(process.argv.slice(2).reduce((a, x, i, all) => (
 const SIZES = (args.sizes ?? '60,300').split(',').map(Number);
 const METHODS = (args.methods ?? 'M0,M1,M2').split(',');
 const CONC = Number(args.concurrency ?? 4);
+// LLM: codex(기본) | claude-code (앱과 같은 플래그: 시스템 지시문 바꿔 끼움·도구 끔·MCP·설정·메모리 안 읽음)
+const PROVIDER = args.provider ?? 'codex';
+const CLAUDE = ['/opt/homebrew/bin/claude', '/usr/local/bin/claude', path.join(os.homedir(), '.local/bin/claude')].find((p) => fs.existsSync(p));
 // 찾을 범위 (화면의 "최근 N개"·"기간"과 같음): 넣은 것끼리 AND, 안 넣으면 조건 없음. 정답도 범위 안에서만 센다
 const SCOPE = { count: args['scope-count'] ? Number(args['scope-count']) : null, from: args['scope-from'] ?? null, to: args['scope-to'] ?? null };
 const runId = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -113,6 +116,28 @@ function buildIndex(corpus) {
 
 // ── Codex 호출 (토큰 사용량을 받으려고 --json) ──
 const CWD = fs.mkdtempSync(path.join(os.tmpdir(), 'mr-eval-codex-'));
+// 지정한 LLM으로 부른다. 돌려주는 모양은 같다: { text, usage: { input_tokens(전체 입력), cached_input_tokens, output_tokens }, ms, ok, error }
+const llm = (prompt, opts) => (PROVIDER === 'claude-code' ? claude(prompt, opts) : codex(prompt, opts));
+function claude(prompt, { effort = 'low', timeout = 300000 } = {}) {
+  return new Promise((resolve) => {
+    const t0 = Date.now();
+    const p = spawn(CLAUDE, ['-p', '--model', 'opus', '--effort', effort, '--system-prompt', 'Follow the instructions in the user message exactly and output only what it asks for.', '--tools', '', '--strict-mcp-config', '--setting-sources', '', '--no-session-persistence', '--output-format', 'json'], { cwd: CWD });
+    let out = '';
+    let err = '';
+    const timer = setTimeout(() => p.kill('SIGKILL'), timeout);
+    p.stdout.on('data', (d) => (out += d));
+    p.stderr.on('data', (d) => (err += d));
+    p.on('close', (code) => {
+      clearTimeout(timer);
+      let d = null;
+      try { d = JSON.parse(out); } catch {}
+      const u = d?.usage ?? {};
+      const usage = d ? { input_tokens: (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0), cached_input_tokens: u.cache_read_input_tokens ?? 0, output_tokens: u.output_tokens ?? 0 } : null;
+      resolve({ text: d?.result ?? '', usage, ms: Date.now() - t0, ok: code === 0 && Boolean(d?.result) && !d?.is_error, error: code === 0 ? (d?.is_error ? String(d?.result).slice(0, 200) : null) : (err.trim().split('\n').pop() ?? `exit ${code}`) });
+    });
+    p.stdin.end(prompt);
+  });
+}
 function codex(prompt, { effort = 'low', timeout = 300000 } = {}) {
   return new Promise((resolve) => {
     const t0 = Date.now();
@@ -202,7 +227,7 @@ ${list}
 </meetings>
 
 <request>${q}</request>`;
-  const r = await codex(prompt);
+  const r = await llm(prompt);
   const ids = new Set(corpus.map((m) => m.id));
   const got = (parseJson(r.text)?.ids ?? []).filter((id) => ids.has(id));
   return { ids: [...new Set(got)], calls: [{ stage: 'select', ...r, chars: prompt.length }] };
@@ -218,7 +243,7 @@ Return only JSON: {"from":"YYYY-MM-DD" or null,"to":"YYYY-MM-DD" or null,"status
   (b) how people actually say it out loud in a meeting — everyday words and verb stems, even when the request uses formal words ("멈췄", "안 됐", "터졌", "버티", "느려", "뽑", "아껴", "넘겨").
   Each 2-6 characters, no particles or endings, so they match any conjugation. Empty list if the request has no topic (only time/status).
 <request>${q}</request>`;
-  const r1 = await codex(p1);
+  const r1 = await llm(p1);
   const calls = [{ stage: 'parse', ...r1, chars: p1.length }];
   const c = parseJson(r1.text) ?? {};
   const from = /^\d{4}-\d{2}-\d{2}$/.test(c.from ?? '') ? new Date(`${c.from}T00:00:00`) : null;
@@ -251,7 +276,7 @@ Return only JSON: {"relevant":[{"id":"c1","reason":"한 줄 이유","quote":"근
 <candidates>
 ${blocks.join('\n')}
 </candidates>`;
-    const r3 = await codex(p3);
+    const r3 = await llm(p3);
     calls.push({ stage: 'judge', ...r3, chars: p3.length, n: batch.length });
     for (const it of parseJson(r3.text)?.relevant ?? []) {
       const s = shown.get(it?.id);
@@ -281,12 +306,12 @@ const real = await realMeetings();
 const synthAll = makeSynthetic(Math.max(...SIZES));
 const queries = [...QUERIES, ...real.queries.map((rq) => ({ ...rq, gold: (m) => (m.meta.tags ?? []).includes(rq.tag) }))]
   .filter((q) => !args.queries || args.queries.split(',').includes(q.id));
-const overheadCall = await codex('Reply with just: OK');
+const overheadCall = await llm('Reply with just: OK');
 const overhead = overheadCall.usage?.input_tokens ?? 0;
 const limitBefore = await codexLimits();
-const config = { runId, label: args.label ?? '', scope: SCOPE, sizes: SIZES, methods: METHODS, queries: queries.map((q) => q.id), real: real.meetings.length, candMax: CAND_MAX, snippets: SNIPS, codexOverheadInput: overhead, codexLimitBefore: limitBefore, today: TODAY, node: process.version };
+const config = { runId, label: args.label ?? '', provider: PROVIDER, scope: SCOPE, sizes: SIZES, methods: METHODS, queries: queries.map((q) => q.id), real: real.meetings.length, candMax: CAND_MAX, snippets: SNIPS, codexOverheadInput: overhead, codexLimitBefore: limitBefore, today: TODAY, node: process.version };
 fs.writeFileSync(path.join(runDir, 'config.json'), JSON.stringify(config, null, 2));
-console.log(`실행 ${runId} · 질문 ${queries.length} · 크기 ${SIZES} · 방식 ${METHODS} · 실제 회의 ${real.meetings.length} · Codex 기본 입력 ${overhead} 토큰 · 사용 한도 ${limitBefore}%`);
+console.log(`실행 ${runId} · 질문 ${queries.length} · 크기 ${SIZES} · 방식 ${METHODS} · 실제 회의 ${real.meetings.length} · LLM ${PROVIDER} 기본 입력 ${overhead} 토큰 · Codex 사용 한도 ${limitBefore}%`);
 
 const rows = [];
 for (const size of SIZES) {
@@ -348,7 +373,7 @@ for (const r of rows) {
   groups.get(k).push(r);
 }
 const pct = (x) => `${(x * 100).toFixed(0)}%`;
-const lines = [`# 검색 평가 ${runId}${config.label ? ` · ${config.label}` : ''}`, '', `질문 ${queries.length}개 · 실제 회의 ${real.meetings.length}개 · Codex 호출 기본 입력 ${overhead} 토큰(질문과 상관없이 부를 때마다) · Codex 주간 사용 ${limitBefore}% → ${limitAfter}%`, '',
+const lines = [`# 검색 평가 ${runId}${config.label ? ` · ${config.label}` : ''}`, '', `LLM ${PROVIDER} · 질문 ${queries.length}개 · 실제 회의 ${real.meetings.length}개 · 호출 기본 입력 ${overhead} 토큰(질문과 상관없이 부를 때마다) · Codex 주간 사용 ${limitBefore}% → ${limitAfter}%`, '',
   '| 방식 | 회의 수 | 정밀도 | 재현율 | F1 | 정확히 맞음 | 곁다리 언급 찾음 | 실제 회의 찾음 | 질문당 입력 토큰 | (캐시) | 질문당 출력 | 질문당 호출 | 평균 시간 | 오류 |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|'];
 const history = [];
 for (const [k, rs] of groups) {

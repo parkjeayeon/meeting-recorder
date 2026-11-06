@@ -138,6 +138,10 @@
   .bubble.me { align-self: flex-end; max-width: 85%; padding: 8px 12px; border-radius: 12px 12px 4px 12px; background: var(--ink); color: var(--panel); font-size: 13.5px; }
   .bubble.me small { display: block; opacity: .65; font-size: 11.5px; margin-top: 2px; }
   .bubble.ai { display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--ink-2); }
+  .bubble.ai.note { gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); color: var(--ink-2); }
+  .bubble.ai.note .warn-line { display: flex; align-items: center; gap: 6px; color: var(--ink); }
+  .bubble.ai.note .warn-line svg { width: 14px; height: 14px; color: var(--ink-3); }
+  .bubble.ai.note .warn-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
   .bubble.ai.warn { gap: 6px; padding: 10px 12px; border: 1px solid var(--accent-wash-2); border-radius: 12px; background: var(--accent-wash); color: var(--ink-2); }
   .bubble.ai.warn .warn-line { display: flex; align-items: center; gap: 6px; color: var(--accent); }
   .bubble.ai.warn .warn-line svg { width: 14px; height: 14px; }
@@ -318,6 +322,9 @@
         <div class="seg" id="askui" role="group" aria-label="질문 화면">
           <button data-a="bar">질문 1 검색창</button><button data-a="drawer">2 서랍</button><button data-a="palette">3 팔레트</button><button data-a="fab">4 둥근 버튼</button>
         </div>
+        <div class="seg" id="prov" role="group" aria-label="다듬기 계정">
+          <button data-p="codex">Codex</button><button data-p="claude-code">Claude Code</button>
+        </div>
       </div>
       <div class="top-acts"><button class="btn rec"><svg><use href="#i-rec"/></svg><span>회의 녹음</span></button></div>
     </header>
@@ -442,6 +449,9 @@ const visible = () => all.filter((FILTERS.find((f) => f[0] === filter) ?? FILTER
 // 실제로는 메인 프로세스에서 돈다: 조건 풀기(LLM) → 이 Mac에서 전문 검색 → 후보 추리기(LLM). 여기서는 시간만 흉내 낸다.
 // 화면을 다시 그리거나 다른 탭·화면으로 가도 작업은 계속된다 (상태는 askTabs에, 타이머는 화면과 상관없이)
 let askUI = 'bar';
+// 설정 › 다듬기 계정 흉내: Codex면 채팅 첫머리에 비용 안내
+let labProvider = 'codex';
+let providerNoteClosed = false;
 // 왼쪽 메뉴: 회의 말고는 자리만 있는 화면 (둥근 버튼이 어느 화면에서든 보이고, 찾던 작업이 이어지는지 보려고)
 let route = 'meetings';
 const ROUTE_NAME = { home: '홈', dictations: '받아쓰기', meetings: '회의', dictionary: '사전', stats: '통계' };
@@ -647,6 +657,17 @@ function askHead(t) {
       : h('div', { class: 'conds' }, `${t.results.length}건 · ${t.candidates ? `후보 ${t.candidates}개 중 추림 · ` : ''}${secs(t)} 걸림`));
 }
 
+// 채팅 첫머리: 다듬기 계정이 Codex면 질문 하나에 드는 비용을 알린다 (Codex는 부를 때마다 기본 입력이 크다, docs/measurements.md)
+function providerNote() {
+  if (labProvider !== 'codex' || providerNoteClosed) return null;
+  return h('div', { class: 'bubble ai note' },
+    h('span', { class: 'warn-line' }, icon('i-alert'), h('b', null, '지금 다듬기 계정이 Codex예요')),
+    h('span', null, 'Codex는 부를 때마다 기본 입력이 약 1만 6천 토큰 붙어서, 질문 하나에 약 1만 7천~4만 4천 토큰을 씁니다(대부분 캐시). Claude Code는 같은 질문에 고정 몫이 약 500토큰이라 훨씬 적게 듭니다.'),
+    h('div', { class: 'warn-acts' },
+      h('button', { class: 'btn small', onclick: () => { labProvider = 'claude-code'; draw(); } }, '설정 › 다듬기 열기'),
+      h('button', { class: 'btn small ghost', onclick: () => { providerNoteClosed = true; draw(); } }, '알겠어요')));
+}
+
 // 질문 속 기간과 기간 칩이 겹치지 않을 때: 찾지 않고 이유와 고칠 방법을 보인다
 const qRange = (c) => `${shortDay(fmtDay(c.from))} – ${shortDay(fmtDay(c.to))}`;
 function blockedBubble(t) {
@@ -743,7 +764,7 @@ function askPanel(cls) {
     ta.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } };
     return h('aside', { class: cls },
       h('header', null, icon('i-chat'), h('span', null, '질문으로 찾기'), h('button', { class: 'icon-btn', 'aria-label': '닫기', onclick: () => { askOpen = false; draw(); } }, icon('i-x'))),
-      h('div', { class: 'asklog' }, askTabs.length ? askTabs.map((t) => [
+      h('div', { class: 'asklog' }, providerNote(), askTabs.length ? askTabs.map((t) => [
         h('div', { class: 'bubble me' }, t.q, h('small', null, `범위 ${scopeText(t.scope)}`)),
         t.status === 'blocked' ? blockedBubble(t) : h('div', { class: 'bubble ai' }, t.status === 'running'
           ? [h('span', { style: 'display:flex;gap:8px;align-items:center' }, h('span', { class: 'spin' }), stageText(t), h('span', { class: 'num', 'data-ask-time': t.id }, secs(t)))]
@@ -1041,12 +1062,14 @@ function draw(keepFocus = false) {
   $('navCount').textContent = String(all.length);
   for (const b of document.querySelectorAll('#variant button')) b.setAttribute('aria-pressed', String(b.dataset.v === variant));
   for (const b of document.querySelectorAll('#askui button')) b.setAttribute('aria-pressed', String(b.dataset.a === askUI));
+  for (const b of document.querySelectorAll('#prov button')) b.setAttribute('aria-pressed', String(b.dataset.p === labProvider));
   document.getElementById('askui').style.display = variant === 'mix' ? '' : 'none';
   for (const b of document.querySelectorAll('#size button')) b.setAttribute('aria-pressed', String(Number(b.dataset.n) === size && Boolean(b.dataset.clean) === clean && Boolean(b.dataset.sparse) === sparse));
 }
 for (const b of document.querySelectorAll('#variant button')) b.onclick = () => { variant = b.dataset.v; $('view').scrollTop = 0; draw(); };
 for (const b of document.querySelectorAll('#size button')) b.onclick = () => { size = Number(b.dataset.n); clean = Boolean(b.dataset.clean); sparse = Boolean(b.dataset.sparse); all = makeMeetings(size, { clean, sparse }); filter = 'all'; q = ''; $('view').scrollTop = 0; draw(); };
 for (const b of document.querySelectorAll('#askui button')) b.onclick = () => { askUI = b.dataset.a; askOpen = false; draw(); };
+for (const b of document.querySelectorAll('#prov button')) b.onclick = () => { labProvider = b.dataset.p; providerNoteClosed = false; draw(); };
 for (const a of document.querySelectorAll('.nav-item[data-route]')) a.onclick = (e) => { e.preventDefault(); route = a.dataset.route; $('view').scrollTop = 0; draw(); };
 document.addEventListener('keydown', (e) => { if (e.metaKey && e.key === 'j' && askUI === 'palette') { e.preventDefault(); askOpen = true; draw(); } });
 // 바깥을 누르면 검색창 아래 패널 닫기
