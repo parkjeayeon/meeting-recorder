@@ -1193,7 +1193,8 @@ let importPaths = [];
 let importSpeakers = '';
 async function importMeeting(paths = null) {
   if (importing) return;
-  const files = await api.pickAudio(paths);
+  const picked = await api.pickAudio(paths);
+  const files = picked?.files;
   if (!files?.length) return;
   importPaths = files.map((f) => f.path);
   $('importOrder').textContent = files.length > 1 ? `이름 순서대로 이어 붙여 회의 하나로 만듭니다` : '';
@@ -1203,6 +1204,15 @@ async function importMeeting(paths = null) {
   importSpeakers = '';
   segPick(box, 'n', '');
   $('importNotes').value = '';
+  // 회의 날짜: 짐작한 시각을 채우고 어디서 짐작했는지 알린다 (고칠 수 있다)
+  const at = new Date(picked.guess?.at ?? Date.now());
+  const p2 = (n) => String(n).padStart(2, '0');
+  $('importDate').value = `${at.getFullYear()}-${p2(at.getMonth() + 1)}-${p2(at.getDate())}`;
+  $('importTime').value = `${p2(at.getHours())}:${p2(at.getMinutes())}`;
+  const today = new Date();
+  $('importDate').max = `${today.getFullYear()}-${p2(today.getMonth() + 1)}-${p2(today.getDate())}`;
+  $('importWhenSrc').textContent = { name: '파일 이름에서 읽었습니다', mtime: '파일 시각으로 짐작했습니다 · 다르면 고쳐 주세요', now: '녹음 시각을 알 수 없어 지금으로 넣었습니다 · 고쳐 주세요' }[picked.guess?.source] ?? '';
+  $('importWhenSrc').classList.toggle('warn', picked.guess?.source !== 'name');
   $('importSheet').showModal();
   $('importYes').focus();
 }
@@ -1211,12 +1221,16 @@ $('importClose').onclick = () => $('importSheet').close();
 $('importSheet').addEventListener('click', (e) => e.target === $('importSheet') && $('importSheet').close());
 $('importYes').onclick = async () => {
   if (importing) return;
+  const startedAt = new Date(`${$('importDate').value}T${$('importTime').value || '00:00'}`);
+  if (!$('importDate').value || Number.isNaN(startedAt.getTime())) return toast('회의 날짜를 넣어 주세요', '', { bad: true });
+  if (startedAt.getTime() > Date.now() + 60e3) return toast('아직 오지 않은 시각입니다', '회의를 시작한 날짜와 시각을 넣어 주세요', { bad: true });
+  if (startedAt.getFullYear() < 2000) return toast('날짜를 확인해 주세요', '2000년 이후 날짜만 넣을 수 있습니다', { bad: true });
   importing = true;
   const btn = $('importYes');
   btn.classList.add('busy');
   btn.lastChild.textContent = '가져오는 중…';
   try {
-    const r = await api.importMeeting(importPaths, { notes: $('importNotes').value.trim(), speakers: importSpeakers || null });
+    const r = await api.importMeeting(importPaths, { notes: $('importNotes').value.trim(), speakers: importSpeakers || null, startedAt: startedAt.toISOString() });
     $('importSheet').close();
     toast(r.count > 1 ? `녹음 파일 ${r.count}개를 이어 붙여 가져왔습니다` : '녹음 파일을 가져왔습니다', '받아쓰기와 회의록을 만들기 시작합니다', {
       action: '보기', onAction: () => (location.hash = `#meeting/${encodeURIComponent(r.id)}`),

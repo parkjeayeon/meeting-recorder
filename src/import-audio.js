@@ -37,6 +37,19 @@ async function describe(files) {
   return Promise.all(sortFiles(files).map(async (f) => ({ path: f, name: path.basename(f), durationSec: (await probe(f)).durationSec })));
 }
 
+// 녹음 시각 짐작 (가져오기 확인 창에 미리 채운다, 사용자가 고칠 수 있다): 첫 파일 이름의 시각 → 첫 파일 수정 시각(녹음이 끝난 때)에서 길이를 뺀 것 → 지금.
+// 수정 시각은 메신저·AirDrop으로 받으면 받은 시각이 되고, 압축을 풀면 1970년이 되기도 해서 있을 수 없는 값이면 버린다
+const sane = (d) => d instanceof Date && !Number.isNaN(d.getTime()) && d.getFullYear() >= 2000 && d.getTime() <= Date.now() + 86400e3;
+async function guessStart(files) {
+  const first = sortFiles(files)[0];
+  const named = timeFromName(path.basename(first));
+  if (named) return { at: named, source: 'name' };
+  const { durationSec } = await probe(first);
+  const fromMtime = new Date(fs.statSync(first).mtimeMs - (durationSec ?? 0) * 1000);
+  if (sane(fromMtime)) return { at: fromMtime, source: 'mtime' };
+  return { at: new Date(), source: 'now' };
+}
+
 // WAV 안 data 덩어리의 위치와 길이
 function dataChunk(file) {
   const fd = fs.openSync(file, 'r');
@@ -104,10 +117,11 @@ function folderName(d) {
 /**
  * @param {string[]} files 가져올 녹음 파일 (이름 순서대로 이어 붙인다)
  * @param {string} recordingsDir 녹음 폴더
- * @param {{notes?: string, speakers?: number|null}} opts notes: 녹음에 담기지 않은 내용(회의록에 '녹음 외 메모'로), speakers: 참석 인원
+ * @param {{notes?: string, speakers?: number|null, startedAt?: string|null}} opts notes: 녹음에 담기지 않은 내용(회의록에 '녹음 외 메모'로), speakers: 참석 인원,
+ *   startedAt: 확인 창에서 사용자가 정한 회의 시각 (없거나 있을 수 없는 값이면 짐작)
  * @returns {Promise<string>} 만든 회의 폴더
  */
-async function importAudio(files, recordingsDir, { notes = '', speakers = null } = {}) {
+async function importAudio(files, recordingsDir, { notes = '', speakers = null, startedAt: chosen = null } = {}) {
   if (!files.length) throw new Error('가져올 파일이 없습니다');
   const bad = files.find((f) => !EXTS.includes(path.extname(f).toLowerCase()));
   if (bad) throw new Error(`가져올 수 없는 형식입니다: ${path.basename(bad)}`);
@@ -130,7 +144,7 @@ async function importAudio(files, recordingsDir, { notes = '', speakers = null }
     // 녹음 시각: 첫 파일 이름의 시각, 없으면 첫 파일 수정 시각(녹음이 끝난 때)에서 길이를 뺀다
     const durations = parts.map((p) => p.size / 2 / rate);
     const total = durations.reduce((a, b) => a + b, 0);
-    let startedAt = timeFromName(path.basename(sorted[0])) ?? new Date(fs.statSync(sorted[0]).mtimeMs - durations[0] * 1000);
+    let startedAt = chosen && sane(new Date(chosen)) ? new Date(chosen) : timeFromName(path.basename(sorted[0])) ?? new Date(fs.statSync(sorted[0]).mtimeMs - durations[0] * 1000);
     // 수정 시각도 이상하면(압축 풀기 등으로 1970년·미래) 지금으로. 폴더 이름이 늘 네 자리 연도라 목록에서 사라지지 않게
     if (!(startedAt.getFullYear() >= 2000 && startedAt.getTime() <= Date.now() + 86400e3)) startedAt = new Date();
     let name = folderName(startedAt);
@@ -181,4 +195,4 @@ async function importAudio(files, recordingsDir, { notes = '', speakers = null }
   }
 }
 
-module.exports = { importAudio, describe, timeFromName, EXTS };
+module.exports = { importAudio, describe, guessStart, timeFromName, EXTS };

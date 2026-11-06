@@ -1,7 +1,16 @@
+import fs from 'node:fs';
 import { createRequire } from 'node:module';
-import { describe, expect, it } from 'vitest';
+import os from 'node:os';
+import path from 'node:path';
+import { afterAll, describe, expect, it } from 'vitest';
 
-const { timeFromName } = createRequire(import.meta.url)('../import-audio.js') as { timeFromName: (name: string, now?: Date) => Date | null };
+type Guess = { at: Date; source: 'name' | 'mtime' | 'now' };
+const mod = createRequire(import.meta.url)('../import-audio.js') as {
+  timeFromName: (name: string, now?: Date) => Date | null;
+  guessStart: (files: string[]) => Promise<Guess>;
+  importAudio: (files: string[], dir: string, opts?: { startedAt?: string | null }) => Promise<string>;
+};
+const { timeFromName } = mod;
 const now = new Date(2026, 10, 6, 20, 0, 0);
 const at = (name: string) => {
   const d = timeFromName(name, now);
@@ -49,4 +58,38 @@ describe('timeFromName (가져온 녹음 파일 이름의 시각)', () => {
       expect(d.getTime(), name).toBeLessThanOrEqual(now.getTime() + 86400e3);
     }
   });
+});
+
+// ── 확인 창에서 고른 회의 날짜로 가져오기 (실제 afconvert 변환) ──
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mr-import-test-'));
+afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
+function wav(name: string, sec = 1, mtime?: Date) {
+  const rate = 16000;
+  const n = rate * sec;
+  const b = Buffer.alloc(44 + n * 2);
+  b.write('RIFF', 0); b.writeUInt32LE(36 + n * 2, 4); b.write('WAVEfmt ', 8); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22);
+  b.writeUInt32LE(rate, 24); b.writeUInt32LE(rate * 2, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34); b.write('data', 36); b.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i++) b.writeInt16LE(Math.round(Math.sin(i / 10) * 3000), 44 + i * 2);
+  const f = path.join(tmp, name);
+  fs.writeFileSync(f, b);
+  if (mtime) fs.utimesSync(f, mtime, mtime);
+  return f;
+}
+
+describe.runIf(process.platform === 'darwin' && fs.existsSync('/usr/bin/afconvert'))('가져오기 회의 날짜', () => {
+  it('짐작: 파일 이름 → 수정 시각 − 길이 → 지금 (있을 수 없는 수정 시각은 버림)', async () => {
+    expect((await mod.guessStart([wav('통화 01012345678_261106_174715.wav')])).source).toBe('name');
+    const g = await mod.guessStart([wav('새 녹음.wav', 2, new Date(2026, 9, 3, 10, 0, 2))]);
+    expect([g.source, g.at.getHours(), g.at.getMinutes(), g.at.getSeconds()]).toEqual(['mtime', 10, 0, 0]);
+    expect((await mod.guessStart([wav('압축 푼 녹음.wav', 1, new Date(1980, 0, 1))])).source).toBe('now');
+  });
+
+  it('고른 날짜로 폴더·meta.json을 만든다, 있을 수 없는 날짜면 짐작으로', async () => {
+    const root = fs.mkdtempSync(path.join(tmp, 'rec-'));
+    const dir = await mod.importAudio([wav('a.wav')], root, { startedAt: new Date(2025, 2, 4, 9, 30).toISOString() });
+    expect(path.basename(dir)).toBe('2025-03-04_09-30-00_meeting');
+    expect(new Date(JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8')).startedAt).getTime()).toBe(new Date(2025, 2, 4, 9, 30).getTime());
+    const dir2 = await mod.importAudio([wav('2026-01-02 10-00-00.wav')], root, { startedAt: '2099-01-01T00:00:00Z' });
+    expect(path.basename(dir2)).toBe('2026-01-02_10-00-00_meeting');
+  }, 30000);
 });

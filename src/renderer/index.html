@@ -151,6 +151,13 @@
       <ol class="import-files" id="importFiles"></ol>
     </section>
     <section class="sheet-sec">
+      <div class="sheet-label"><b>회의 날짜</b><span id="importWhenSrc"></span></div>
+      <div class="import-when">
+        <input type="date" id="importDate" aria-label="회의 날짜" required />
+        <input type="time" id="importTime" aria-label="회의 시작 시각" step="60" required />
+      </div>
+    </section>
+    <section class="sheet-sec">
       <div class="sheet-label"><b>참석 인원</b><span>알려 주면 누가 말했는지 더 정확하게 나눕니다</span></div>
       <div class="segbar" id="importSpeakers" role="radiogroup" aria-label="참석 인원"></div>
     </section>

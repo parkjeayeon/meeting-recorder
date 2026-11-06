@@ -176,6 +176,22 @@ app.whenReady().then(async () => {
   results.push(['사용량 새로 고침', JSON.stringify(usageCalls.slice(-1)) === '[true]', `호출 ${JSON.stringify(usageCalls)}`]);
   await js(`document.getElementById('settings')?.close()`);
 
+  // 녹음 가져오기 창: 짐작한 회의 날짜가 채워지고(파일 이름에서), 고친 날짜로 가져온다. 아직 오지 않은 시각은 막는다
+  await js(`location.hash='#meetings'`);
+  await wait(500);
+  await js(`[...document.querySelectorAll('.page-head .btn')].find(b=>b.textContent.includes('파일 가져오기'))?.click()`);
+  await wait(500);
+  const when = await js(`({ d: document.getElementById('importDate').value, t: document.getElementById('importTime').value, src: document.getElementById('importWhenSrc').textContent })`);
+  results.push(['가져오기 날짜 채움', when.d === '2026-11-01' && when.t === '14:00' && when.src.includes('파일 이름'), JSON.stringify(when)]);
+  await js(`document.getElementById('importDate').value='2099-01-01'; document.getElementById('importYes').click()`);
+  await wait(300);
+  const future = await js('window.stubCalls().importMeeting ?? null');
+  await js(`document.getElementById('importDate').value='2026-10-20'; document.getElementById('importTime').value='09:30'; document.getElementById('importYes').click()`);
+  await wait(500);
+  const sent = await js('window.stubCalls().importMeeting ?? null');
+  const sentAt = sent?.startedAt ? new Date(sent.startedAt) : null;
+  results.push(['가져오기 날짜 고치기', future === null && sentAt && sentAt.getFullYear() === 2026 && sentAt.getMonth() === 9 && sentAt.getDate() === 20 && sentAt.getHours() === 9 && sentAt.getMinutes() === 30, `미래 막음 ${future === null} · 보낸 시각 ${sentAt?.toString().slice(0, 21)}`]);
+
   let failed = 0;
   for (const [name, ok, detail] of results) {
     if (!ok) failed++;

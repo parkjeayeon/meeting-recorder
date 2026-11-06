@@ -567,12 +567,14 @@ ipcMain.handle('meeting:pick', async (_e, paths = null) => {
     if (picked.canceled || !picked.filePaths.length) return null;
     files = picked.filePaths;
   }
-  return importAudio.describe(files);
+  // 확인 창: 파일 목록(순서·길이)과 짐작한 녹음 시각
+  const [list, guess] = await Promise.all([importAudio.describe(files), importAudio.guessStart(files)]);
+  return { files: list, guess: { at: guess.at.toISOString(), source: guess.source } };
 });
-ipcMain.handle('meeting:import', async (_e, paths, { notes = '', speakers = null } = {}) => {
+ipcMain.handle('meeting:import', async (_e, paths, { notes = '', speakers = null, startedAt = null } = {}) => {
   if (!paths?.length) throw new Error('가져올 파일이 없습니다');
   const n = Number(speakers) || null;
-  const dir = await importAudio.importAudio(paths, RECORDINGS_DIR, { notes: String(notes ?? ''), speakers: n });
+  const dir = await importAudio.importAudio(paths, RECORDINGS_DIR, { notes: String(notes ?? ''), speakers: n, startedAt: typeof startedAt === 'string' ? startedAt : null });
   runMinutes(dir, n);
   return { id: path.basename(dir), count: paths.length };
 });
