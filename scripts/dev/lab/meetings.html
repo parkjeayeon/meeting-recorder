@@ -89,9 +89,18 @@
   .chip.ask .x svg { width: 10px; height: 10px; stroke-width: 2; }
   .spin { width: 11px; height: 11px; border-radius: 50%; border: 1.6px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; flex: none; }
   @keyframes spin { to { transform: rotate(1turn); } }
-  .scope { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .scope { display: flex; flex-direction: column; gap: 8px; }
+  .scope-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 28px; }
+  .scope-row > .scope-label:first-child { width: 42px; flex: none; }
+  .scope .clear { display: grid; place-items: center; width: 22px; height: 22px; border: 0; border-radius: 50%; background: none; color: var(--ink-3); }
+  .scope .clear:hover { background: var(--panel-3); color: var(--ink); }
+  .scope .clear svg { width: 11px; height: 11px; }
+  .num-in { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel); font-size: 12px; color: var(--ink-3); }
+  .num-in:focus-within { border-color: var(--ink-3); box-shadow: 0 0 0 3px var(--accent-wash); }
+  .num-in input { width: 44px; border: 0; outline: none; background: none; font: 500 12.5px var(--mono); color: var(--ink); text-align: right; }
+  .scope-sum { font-size: 12px; color: var(--ink-2); font-weight: 550; }
   .scope .seg button { height: 26px; padding: 0 10px; font-size: 12px; }
-  .scope input[type=date] { height: 28px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel); font: 500 12px var(--mono); color: var(--ink); color-scheme: inherit; }
+  .scope input[type=date] { width: 132px; height: 28px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel); font: 500 12px var(--mono); color: var(--ink); color-scheme: inherit; }
   .scope-label { font-size: 12px; color: var(--ink-3); }
   .examples { display: flex; flex-wrap: wrap; gap: 6px; }
   .examples button { height: 26px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel-2); color: var(--ink-2); font-size: 12px; }
@@ -122,7 +131,8 @@
   .fab svg { width: 20px; height: 20px; }
   .fab-ring { position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--accent); border-right-color: transparent; border-bottom-color: transparent; animation: spin 1.1s linear infinite; }
   .fab-badge { position: absolute; top: -2px; right: -2px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font: 700 11px/20px var(--mono); box-shadow: 0 0 0 2px var(--panel); }
-  .askdrawer.fabpanel { top: auto; bottom: 88px; right: 24px; height: min(560px, calc(100vh - 140px)); transform-origin: bottom right; animation: pop .22s cubic-bezier(.16, 1, .3, 1); }
+  .askdrawer.fabpanel { top: auto; bottom: 88px; right: 24px; height: min(600px, calc(100vh - 140px)); transform-origin: bottom right; }
+  .askdrawer.fabpanel.opening { animation: pop .22s cubic-bezier(.16, 1, .3, 1); }
   @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.97); } }
   @media (prefers-reduced-motion: reduce) { .fab-ring, .askdrawer.fabpanel { animation: none; } }
   /* 3. 팔레트 */
@@ -402,10 +412,12 @@ const visible = () => all.filter((FILTERS.find((f) => f[0] === filter) ?? FILTER
 let askUI = 'bar';
 let askTabs = [];
 let askOpen = false;
-let askScope = { kind: 'all', from: '', to: '' };
+// 찾을 범위: 개수와 기간은 따로. 비워 두면 조건에 없고, 넣으면 AND로 묶인다 (최근 N개 안에서 그리고 기간 안에서)
+let askScope = { count: null, from: '', to: '' };
 let askDraft = '';
+let askJustOpened = false; // 둥근 버튼으로 막 열었을 때만 열리는 움직임 (다시 그릴 때마다 되풀이하지 않게)
 let askSeq = 0;
-const SCOPES = [['all', '전체'], ['20', '최근 20개'], ['50', '최근 50개'], ['100', '최근 100개'], ['range', '기간']];
+const COUNT_PRESETS = [50, 100, 150];
 const EXAMPLES = ['작년 2월에 한 회의', '성능 시험 관련 회의', '올해 장애 얘기한 회의', '확인 안 끝난 배포 회의'];
 const SYN = [
   [/성능|부하|속도|버티|응답/, '성능 시험', ['성능 시험', '부하 테스트', '응답 시간', '버티', '느려']],
@@ -445,8 +457,10 @@ function startAsk(text) {
     tab.stage = tab.conds.terms.length ? 'search' : 'done';
     draw(true);
     let pool = [...all];
-    if (tab.scope.kind === 'range' && tab.scope.from) pool = pool.filter((m) => m.at >= new Date(tab.scope.from) && (!tab.scope.to || m.at <= new Date(`${tab.scope.to}T23:59`)));
-    else if (tab.scope.kind !== 'all') pool = pool.slice(0, Number(tab.scope.kind));
+    const sc = tab.scope;
+    if (sc.count) pool = pool.slice(0, sc.count); // 최근 N개 (all은 최신순)
+    if (sc.from) pool = pool.filter((m) => m.at >= new Date(`${sc.from}T00:00`));
+    if (sc.to) pool = pool.filter((m) => m.at <= new Date(`${sc.to}T23:59:59`));
     const c = tab.conds;
     pool = pool.filter((m) => (!c.from || m.at >= c.from) && (!c.to || m.at <= new Date(c.to.getTime() + 864e5 - 1)) && (!c.status || needsHand(m)));
     if (c.terms.length) {
@@ -474,19 +488,49 @@ setInterval(() => {
   for (const t of askTabs.filter((x) => x.status === 'running')) for (const el of document.querySelectorAll(`[data-ask-time="${t.id}"]`)) el.textContent = secs(t);
 }, 1000);
 
-function scopePicker(onChange = () => {}) {
-  const box = h('div', { class: 'scope' }, h('span', { class: 'scope-label' }, '범위'),
-    h('div', { class: 'seg' }, SCOPES.map(([k, label]) => h('button', { type: 'button', 'aria-pressed': String(askScope.kind === k), onclick: (e) => { e.preventDefault(); askScope.kind = k; onChange(); } }, label))));
-  if (askScope.kind === 'range') {
-    const f = h('input', { type: 'date', value: askScope.from, 'aria-label': '시작' });
-    const t = h('input', { type: 'date', value: askScope.to, 'aria-label': '끝' });
-    f.onchange = () => (askScope.from = f.value);
-    t.onchange = () => (askScope.to = t.value);
-    box.append(f, h('span', { class: 'scope-label' }, '~'), t);
+// 범위 칸: 바꿔도 화면 전체를 다시 그리지 않고 이 칸만 고친다 (채팅 창이 깜빡이거나 입력이 끊기지 않게)
+function scopePicker() {
+  const count = h('input', { type: 'text', inputmode: 'numeric', placeholder: '개수', value: askScope.count ?? '', 'aria-label': '최근 몇 개', maxlength: 5 });
+  const presets = COUNT_PRESETS.map((n) => h('button', { type: 'button', 'aria-pressed': String(askScope.count === n), onmousedown: (e) => e.preventDefault(), onclick: () => setCount(askScope.count === n ? null : n) }, String(n)));
+  const clearCount = h('button', { type: 'button', class: 'clear', 'aria-label': '개수 지우기', hidden: !askScope.count, onclick: () => setCount(null) }, icon('i-x'));
+  const from = h('input', { type: 'date', value: askScope.from, 'aria-label': '시작일' });
+  const to = h('input', { type: 'date', value: askScope.to, 'aria-label': '끝일' });
+  const clearRange = h('button', { type: 'button', class: 'clear', 'aria-label': '기간 지우기', hidden: !askScope.from && !askScope.to, onclick: () => { askScope.from = askScope.to = ''; from.value = to.value = ''; sync(); } }, icon('i-x'));
+  const summary = h('span', { class: 'scope-sum' });
+  function sync() {
+    presets.forEach((b, k) => b.setAttribute('aria-pressed', String(askScope.count === COUNT_PRESETS[k])));
+    clearCount.hidden = !askScope.count;
+    clearRange.hidden = !askScope.from && !askScope.to;
+    from.max = to.value || '';
+    to.min = from.value || '';
+    summary.textContent = scopeText(askScope);
   }
-  return box;
+  function setCount(n) {
+    askScope.count = n;
+    count.value = n ?? '';
+    sync();
+  }
+  // 숫자만: 다른 글자는 바로 지운다
+  count.oninput = () => {
+    const v = count.value.replace(/\D/g, '').replace(/^0+/, '');
+    if (v !== count.value) count.value = v;
+    askScope.count = v ? Number(v) : null;
+    sync();
+  };
+  from.onchange = () => { askScope.from = from.value; sync(); };
+  to.onchange = () => { askScope.to = to.value; sync(); };
+  sync();
+  return h('div', { class: 'scope' },
+    h('div', { class: 'scope-row' }, h('span', { class: 'scope-label' }, '최근'), h('div', { class: 'seg' }, presets), h('label', { class: 'num-in' }, count, h('span', null, '개')), clearCount),
+    h('div', { class: 'scope-row' }, h('span', { class: 'scope-label' }, '기간'), from, h('span', { class: 'scope-label' }, '~'), to, clearRange),
+    h('div', { class: 'scope-row' }, h('span', { class: 'scope-label' }, '찾을 곳'), summary));
 }
-const scopeText = (sc) => (sc.kind === 'all' ? '전체' : sc.kind === 'range' ? `${sc.from || '처음'} ~ ${sc.to || '오늘'}` : `최근 ${sc.kind}개`);
+const scopeText = (sc) => {
+  const parts = [];
+  if (sc.count) parts.push(`최근 ${sc.count}개`);
+  if (sc.from || sc.to) parts.push(`${sc.from || '처음'} ~ ${sc.to || '오늘'}`);
+  return parts.length ? parts.join(' 그리고 ') : '모든 회의';
+};
 const examples = (onPick) => h('div', { class: 'examples' }, EXAMPLES.map((x) => h('button', { type: 'button', onmousedown: (e) => e.preventDefault(), onclick: () => onPick(x) }, x)));
 
 function askChips() {
@@ -545,7 +589,7 @@ function askEntry() {
     if (askOpen) wrap.append(h('div', { class: 'askpop', onmousedown: (e) => e.target.tagName !== 'INPUT' && e.preventDefault() },
       h('b', null, '질문으로 찾기'),
       h('span', { class: 'scope-label' }, '입력하는 동안은 제목·요약에서 바로 거르고, Enter를 누르면 녹취까지 찾아 새 탭을 만듭니다. 30초쯤 걸리며 다른 화면으로 가도 계속 찾습니다.'),
-      scopePicker(() => draw(true)), examples((x) => { const t = startAsk(x); askOpen = false; filter = `ask:${t.id}`; draw(); })));
+      scopePicker(), examples((x) => { const t = startAsk(x); askOpen = false; filter = `ask:${t.id}`; draw(); })));
     return wrap;
   }
   if (askUI === 'fab') return null; // 오른쪽 아래 둥근 버튼으로
@@ -556,11 +600,12 @@ function askOverlay() {
   const running = askTabs.filter((t) => t.status === 'running');
   if ((askUI === 'drawer' || askUI === 'fab') && (askOpen || askUI === 'fab')) {
     const parts = [];
-    if (askOpen) parts.push(askPanel(askUI === 'fab' ? 'askdrawer fabpanel' : 'askdrawer'));
+    if (askOpen) parts.push(askPanel(askUI === 'fab' ? `askdrawer fabpanel${askJustOpened ? ' opening' : ''}` : 'askdrawer'));
+    askJustOpened = false;
     if (askUI === 'fab') {
       // 오른쪽 아래 고정 둥근 버튼: 찾는 동안 둘레가 돌고, 확인 안 한 결과 수를 뱃지로
       const unseen = askTabs.filter((t) => t.status === 'done' && !t.seen).length;
-      parts.push(h('button', { class: `fab${running.length ? ' busy' : ''}${askOpen ? ' on' : ''}`, 'aria-label': '질문으로 찾기', title: running.length ? `질문 ${running.length}개 찾는 중` : '질문으로 찾기', onclick: () => { askOpen = !askOpen; draw(); } },
+      parts.push(h('button', { class: `fab${running.length ? ' busy' : ''}${askOpen ? ' on' : ''}`, 'aria-label': '질문으로 찾기', title: running.length ? `질문 ${running.length}개 찾는 중` : '질문으로 찾기', onclick: () => { askOpen = !askOpen; askJustOpened = askOpen; draw(); } },
         icon(askOpen ? 'i-x' : 'i-chat'), running.length > 0 && h('span', { class: 'fab-ring' }), !askOpen && unseen > 0 && h('span', { class: 'fab-badge' }, String(unseen))));
     }
     return parts;
@@ -576,7 +621,7 @@ function askOverlay() {
       parts.push(h('div', { class: 'askpal-back', onclick: (e) => { if (e.target === e.currentTarget) { askOpen = false; draw(); } } },
         h('div', { class: 'askpal' },
           h('div', { class: 'big' }, icon('i-search'), input),
-          h('div', { class: 'sec' }, scopePicker(() => draw())),
+          h('div', { class: 'sec' }, scopePicker()),
           h('div', { class: 'sec' }, h('span', { class: 'scope-label' }, askTabs.length ? '최근 질문' : '이렇게 물어보세요'), examples((x) => { askDraft = x; draw(); })),
           h('div', { class: 'foot' }, h('span', null, '녹취까지 찾아 새 탭을 만듭니다 · 30초쯤 · 다른 화면으로 가도 계속'), h('kbd', null, '⏎'), '찾기', h('kbd', null, 'esc'), '닫기'))));
     }
@@ -602,7 +647,7 @@ function askPanel(cls) {
             t.conds && h('div', { class: 'conds' }, t.conds.from && h('span', { class: 'cond' }, `${fmtDay(t.conds.from)} ~ ${fmtDay(t.conds.to)}`), t.conds.terms.slice(0, 3).map((x) => h('span', { class: 'cond' }, x))),
             t.results.length > 0 && h('button', { class: 'btn small', style: 'align-self:flex-start', onclick: () => { filter = `ask:${t.id}`; $('view').scrollTop = 0; draw(); } }, '탭 보기', icon('i-right'))]),
       ]) : h('div', { class: 'scope-label' }, '찾고 싶은 회의를 말로 적으세요. 기간·주제·상태를 함께 적어도 됩니다.', examples((x) => { askDraft = x; draw(); }))),
-      h('div', { class: 'askcompose' }, scopePicker(() => draw()), h('div', { class: 'row' }, ta, h('button', { class: 'btn primary', onclick: send }, '찾기'))));
+      h('div', { class: 'askcompose' }, scopePicker(), h('div', { class: 'row' }, ta, h('button', { class: 'btn primary', onclick: send }, '찾기'))));
   }
 }
 
@@ -907,7 +952,7 @@ askUI = params.get('ask') ?? askUI;
 all = makeMeetings(size, { clean, sparse });
 draw();
 // 미리 보기용: 끝난 질문 하나와 진행 중인 질문 하나
-if (params.get('seed') === '1') { startAsk('성능 시험 관련 회의'); askTabs[0].t0 -= 30000; setTimeout(() => { askScope = { kind: '50', from: '', to: '' }; startAsk('작년 2월에 한 회의'); askScope = { kind: 'all', from: '', to: '' }; }, 5200); }
+if (params.get('seed') === '1') { startAsk('성능 시험 관련 회의'); askTabs[0].t0 -= 30000; setTimeout(() => { askScope = { count: 50, from: '', to: '' }; startAsk('작년 2월에 한 회의'); askScope = { count: null, from: '', to: '' }; }, 5200); }
 </script>
 </body>
 </html>

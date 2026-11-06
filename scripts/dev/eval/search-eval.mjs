@@ -29,6 +29,8 @@ const args = Object.fromEntries(process.argv.slice(2).reduce((a, x, i, all) => (
 const SIZES = (args.sizes ?? '60,300').split(',').map(Number);
 const METHODS = (args.methods ?? 'M0,M1,M2').split(',');
 const CONC = Number(args.concurrency ?? 4);
+// 찾을 범위 (화면의 "최근 N개"·"기간"과 같음): 넣은 것끼리 AND, 안 넣으면 조건 없음. 정답도 범위 안에서만 센다
+const SCOPE = { count: args['scope-count'] ? Number(args['scope-count']) : null, from: args['scope-from'] ?? null, to: args['scope-to'] ?? null };
 const runId = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 const runDir = path.join(OUT, runId);
 fs.mkdirSync(runDir, { recursive: true });
@@ -282,7 +284,7 @@ const queries = [...QUERIES, ...real.queries.map((rq) => ({ ...rq, gold: (m) => 
 const overheadCall = await codex('Reply with just: OK');
 const overhead = overheadCall.usage?.input_tokens ?? 0;
 const limitBefore = await codexLimits();
-const config = { runId, label: args.label ?? '', sizes: SIZES, methods: METHODS, queries: queries.map((q) => q.id), real: real.meetings.length, candMax: CAND_MAX, snippets: SNIPS, codexOverheadInput: overhead, codexLimitBefore: limitBefore, today: TODAY, node: process.version };
+const config = { runId, label: args.label ?? '', scope: SCOPE, sizes: SIZES, methods: METHODS, queries: queries.map((q) => q.id), real: real.meetings.length, candMax: CAND_MAX, snippets: SNIPS, codexOverheadInput: overhead, codexLimitBefore: limitBefore, today: TODAY, node: process.version };
 fs.writeFileSync(path.join(runDir, 'config.json'), JSON.stringify(config, null, 2));
 console.log(`실행 ${runId} · 질문 ${queries.length} · 크기 ${SIZES} · 방식 ${METHODS} · 실제 회의 ${real.meetings.length} · Codex 기본 입력 ${overhead} 토큰 · 사용 한도 ${limitBefore}%`);
 
@@ -291,7 +293,12 @@ for (const size of SIZES) {
   // 크기가 작으면 큰 묶음에서 고르게 뽑는다 (기간이 같게)
   const step = synthAll.length / size;
   const synth = Array.from({ length: size }, (_, i) => synthAll[Math.floor(i * step)]);
-  const corpus = [...real.meetings, ...synth].sort((a, b) => b.at.localeCompare(a.at));
+  let corpus = [...real.meetings, ...synth].sort((a, b) => b.at.localeCompare(a.at));
+  const total = corpus.length;
+  if (SCOPE.count) corpus = corpus.slice(0, SCOPE.count);
+  if (SCOPE.from) corpus = corpus.filter((m) => m.at >= new Date(`${SCOPE.from}T00:00:00`).toISOString());
+  if (SCOPE.to) corpus = corpus.filter((m) => m.at <= new Date(`${SCOPE.to}T23:59:59`).toISOString());
+  console.log(`회의 ${total}개 중 범위 안 ${corpus.length}개`);
   fs.writeFileSync(path.join(runDir, `corpus-${size}.json`), JSON.stringify(corpus.map(({ id, real: r, at, status, title, meta }) => ({ id, real: r, at, status, title, meta })), null, 1));
   const index = buildIndex(corpus);
   const tasks = [];
