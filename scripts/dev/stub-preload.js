@@ -95,6 +95,14 @@ const impl = {
   trashMeeting: async (d) => {
     calls.trashed = [...(calls.trashed ?? []), d];
   },
+  // 확인 필요 직접 추가 흉내: 요청을 기억하고 항목 하나를 더한다
+  addReview: async (_d, request) => {
+    calls.addReview = request;
+    const review = JSON.parse(read('review.json') ?? '{"items":[]}');
+    review.items.push({ id: `r${review.items.length + 1}`, kind: 'word', at: '00:02', heard: '배포', heardNote: '배포', guess: '릴리스', note: '사용자가 짚은 말', status: 'open', source: 'user', request });
+    fs.writeFileSync(path.join(dir, 'review.json'), JSON.stringify(review));
+    return { added: [review.items.at(-1).id], reply: '00:02의 "배포"를 항목으로 더했습니다.' };
+  },
   copy: async (text) => {
     calls.copied = text;
   },

@@ -666,6 +666,7 @@ ipcMain.handle('meeting:watch', (_e, dir) => {
   } catch {}
 });
 ipcMain.handle('review:make', (_e, dir) => minutes.makeReview(recordingDir(dir)));
+ipcMain.handle('review:add', (_e, dir, request) => minutes.addReview(recordingDir(dir), request));
 // 확인 필요에서 오인식 단어·이름을 고치면 고친 말을 사전에 넣는다 → 다음 녹음부터 Whisper가 그 말을 더 잘 알아듣는다.
 // 짧은 낱말만 (문장·설명은 넣지 않음). 사전 화면에서 언제든 지울 수 있다
 const VOCAB_KINDS = new Set(['word', 'name']);

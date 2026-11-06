@@ -56,6 +56,7 @@ app.whenReady().then(async () => {
     ['본문 찾기(⌘F)', "document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'f',metaKey:true,bubbles:true}))", '.find-bar input'],
     ['확인 필요 고칠 말', "document.querySelector('.find-bar input')?.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'})); [...document.querySelectorAll('.tab')].find(t=>t.textContent.startsWith('확인 필요'))?.click()", '.ritem-fix input'],
     ['확인 필요 채팅', "[...document.querySelectorAll('.ritem button')].find(b=>b.textContent.includes('채팅'))?.click()", '.chat textarea'],
+    ['확인 필요 직접 추가', "document.querySelector('.ritem-done input')?.blur(); [...document.querySelectorAll('button')].find(b=>b.textContent.startsWith('남은 것'))?.click()", '.review-add textarea'],
     ['처리함 고치기', "document.querySelector('.chat-head .icon-btn')?.click(); setTimeout(()=>{[...document.querySelectorAll('button')].find(b=>b.textContent.startsWith('처리함'))?.click(); setTimeout(()=>[...document.querySelectorAll('.ritem-done button')].find(b=>b.textContent.includes('고치기'))?.click(), 200)}, 200)", '.ritem-done input'],
   ];
 
@@ -139,6 +140,27 @@ app.whenReady().then(async () => {
   const trashed = await js('window.stubCalls().trashed ?? []');
   const left = await js(`document.querySelectorAll('.stray-row').length`);
   results.push(['폴더 휴지통으로', trashed.length === 1 && trashed[0].endsWith('112-06-26_02-26-26_meeting') && left === 2, `옮김 ${JSON.stringify(trashed)} · 남은 줄 ${left}`]);
+
+  // 회의록에서 글자를 고르면 '확인 필요에 추가' → 확인 필요 탭의 입력칸에 그 말이 들어간다. 보내면 항목이 하나 늘어난다
+  await js(`location.hash='#meeting/${id}'`);
+  await wait(800);
+  await tabClick('회의록');
+  await wait(400);
+  await js(`(() => { const doc = document.querySelector('.doc'); if (!doc) return 'no doc'; const w = document.createTreeWalker(doc, NodeFilter.SHOW_TEXT); let t; while ((t = w.nextNode()) && !t.textContent.includes('일정')); if (!t) return 'no text'; const i = t.textContent.indexOf('일정'); const r = document.createRange(); r.setStart(t, i); r.setEnd(t, i + 2); getSelection().removeAllRanges(); getSelection().addRange(r); t.parentElement.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })); return 'ok'; })()`);
+  await wait(300);
+  const flagBtn = `[...document.querySelectorAll('.term-add button')].find(b=>b.textContent.includes('확인 필요에 추가'))`;
+  const offered = await js(`Boolean(${flagBtn})`);
+  await js(`${flagBtn}?.click()`);
+  await wait(500);
+  const draft = await js(`document.querySelector('.review-add textarea')?.value ?? null`);
+  results.push(['고른 말을 확인 필요에 추가', offered && draft === '"일정" ', offered ? `입력칸 ${JSON.stringify(draft)}` : '버튼이 뜨지 않음']);
+  const before = await js(`document.querySelectorAll('.ritem').length`);
+  await js(`(() => { const t = document.querySelector('.review-add textarea'); t.value = '"일정"은 일정표야'; t.dispatchEvent(new Event('input')); [...document.querySelectorAll('.review-add button')][0].click(); })()`);
+  await wait(800);
+  const asked = await js('window.stubCalls().addReview ?? null');
+  const after = await js(`document.querySelectorAll('.ritem').length`);
+  const cleared = await js(`document.querySelector('.review-add textarea')?.value`);
+  results.push(['확인 필요 직접 추가 보내기', asked === '"일정"은 일정표야' && after === before + 1 && cleared === '', `요청 ${JSON.stringify(asked)} · 항목 ${before}→${after} · 입력칸 ${JSON.stringify(cleared)}`]);
 
   let failed = 0;
   for (const [name, ok, detail] of results) {

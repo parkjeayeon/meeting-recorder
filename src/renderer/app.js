@@ -1031,6 +1031,7 @@ function pageMeeting(id) {
   const el = h('div', { class: 'page' });
   let tab = null;
   const reviewSel = new Set(); // 확인 필요에서 고른 항목
+  let addDraft = ''; // 확인 필요 › 직접 추가 입력칸 (다시 그려도 남게)
   const guessDraft = new Map(); // 항목별로 고쳐 쓴 '고칠 말'
   let reviewFilter = 'open';
   let chat = null; // { ids, messages: [{ role, text, proposals }], busy }
@@ -1091,7 +1092,8 @@ function pageMeeting(id) {
     const tabs = [];
     if (doc.minutes) tabs.push(['minutes', '회의록']);
     const reviewOpen = doc.review?.items?.filter((it) => it.status === 'open').length ?? 0;
-    if (doc.review?.items?.length || /^## 확인 필요/m.test(doc.minutes ?? '')) tabs.push(['review', '확인 필요', doc.review ? `${reviewOpen}` : null]);
+    // 확인 필요: 회의록이 있으면 늘 (목록이 놓친 것을 직접 추가할 수 있게)
+    if (doc.minutes && doc.transcript) tabs.push(['review', '확인 필요', doc.review ? `${reviewOpen}` : null]);
     // 액션: 확인된 할 일·조언이 있을 때만 (대화에 따라 생기고 무조건 생기지 않는다)
     const acts = doc.actions;
     if (acts && (acts.actions?.length || acts.advice?.length)) tabs.push(['actions', '액션', acts.actions.length ? `${acts.actions.filter((a) => !a.done).length}` : null]);
@@ -1857,10 +1859,11 @@ function pageMeeting(id) {
     if (!text || text.length > 40 || !sel.rangeCount || !el.querySelector('.doc, .script')?.contains(sel.anchorNode)) return;
     const r = history.find((m) => m.id === id);
     const rect = sel.getRangeAt(0).getBoundingClientRect();
-    addBtn = h('button', { class: 'btn small term-add', style: `top:${Math.max(8, rect.top - 38)}px;left:${Math.min(rect.left, innerWidth - 140)}px`, onmousedown: (e) => e.preventDefault(), onclick: async () => {
-      addBtn.classList.add('busy');
-      addBtn.setAttribute('aria-busy', 'true');
-      addBtn.lastChild.textContent = '설명 찾는 중…';
+    const short = text.length > 12 ? `${text.slice(0, 12)}…` : text;
+    const explain = h('button', { class: 'btn small', onmousedown: (e) => e.preventDefault(), onclick: async () => {
+      explain.classList.add('busy');
+      explain.setAttribute('aria-busy', 'true');
+      explain.lastChild.textContent = '설명 찾는 중…';
       try {
         const t = await api.explainTerm(r.dir, text);
         toast(`'${t.term}' 설명을 더했습니다`, t.note);
@@ -1870,7 +1873,23 @@ function pageMeeting(id) {
       removeAddBtn();
       window.getSelection()?.removeAllRanges();
       refreshDoc(r);
-    } }, icon('i-plus'), h('span', null, `'${text.length > 12 ? `${text.slice(0, 12)}…` : text}' 설명 추가`));
+    } }, icon('i-plus'), h('span', null, `'${short}' 설명 추가`));
+    // 잘못 들린 말이면 확인 필요로: 입력칸에 고른 말을 넣어 두고 고칠 말·설명을 이어 쓰게 한다
+    const cached = docCache.get(id);
+    const review = cached?.minutes && cached?.transcript && h('button', { class: 'btn small', onmousedown: (e) => e.preventDefault(), onclick: () => {
+      addDraft = `"${text}" `;
+      tab = 'review';
+      reviewFilter = 'open';
+      removeAddBtn();
+      window.getSelection()?.removeAllRanges();
+      draw();
+      requestAnimationFrame(() => {
+        const box = el.querySelector('.review-add textarea');
+        box?.focus();
+        box?.setSelectionRange(box.value.length, box.value.length);
+      });
+    } }, icon('i-flag'), h('span', null, '확인 필요에 추가'));
+    addBtn = h('div', { class: 'term-add', style: `top:${Math.max(8, rect.top - 38)}px;left:${Math.min(rect.left, innerWidth - 300)}px` }, explain, review);
     document.body.append(addBtn);
   }
   el.addEventListener('mouseup', () => setTimeout(offerExplain));
@@ -2097,7 +2116,9 @@ function pageMeeting(id) {
   // 확인 필요: 항목마다 추정 적용 · 직접 고치기 · 채팅 · 그대로 두기, 여러 개 골라 한 번에
   function reviewView(r, doc) {
     const box = h('div', { class: 'review' });
-    if (!doc.review) {
+    // 확인 필요 섹션이 없는 회의록: 정리할 것은 없고 직접 추가만 한다
+    const review = doc.review ?? (/^## 확인 필요/m.test(doc.minutes ?? '') ? null : { items: [] });
+    if (!review) {
       const make = h('button', { class: 'btn primary' }, '정리하기');
       make.onclick = async () => {
         make.classList.add('busy'); // 흐리게 하지 않고 진행 중 표시
@@ -2114,7 +2135,7 @@ function pageMeeting(id) {
       box.append(h('div', { class: 'state' }, h('b', null, '확인 필요 항목을 하나씩 처리할 수 있게 정리합니다'), h('p', null, '회의록의 "확인 필요"를 항목별로 나누고, 고칠 말 추정이 있으면 채워 둡니다.'), h('div', { class: 'row' }, make)));
       return box;
     }
-    const items = doc.review.items;
+    const items = review.items;
     const open = items.filter((it) => it.status === 'open');
     const done = items.filter((it) => it.status !== 'open');
     const shown = reviewFilter === 'open' ? open : done;
@@ -2144,7 +2165,8 @@ function pageMeeting(id) {
           h('button', { class: 'chip', 'aria-pressed': String(reviewFilter === 'open'), onclick: () => { reviewFilter = 'open'; draw(); } }, '남은 것', num(open.length)),
           h('button', { class: 'chip', 'aria-pressed': String(reviewFilter === 'done'), onclick: () => { reviewFilter = 'done'; draw(); } }, '처리함', num(done.length)))));
 
-    box.append(finalizePanel(r, doc.review, open.length));
+    box.append(reviewAdd(r));
+    if (items.length) box.append(finalizePanel(r, review, open.length));
     if (!shown.length) {
       box.append(h('div', { class: 'empty' }, h('b', null, reviewFilter === 'open' ? '확인할 항목이 없습니다' : '아직 처리한 항목이 없습니다'), reviewFilter === 'open' && items.length ? '모두 처리했습니다.' : ''));
       return box;
@@ -2200,6 +2222,49 @@ function pageMeeting(id) {
   }
 
   // 확인 마치기: 남은 항목은 그대로 둔 것으로 하고, 채팅·이름 등 문장에 영향이 있는 결과만 회의록에 반영한다
+  // 확인 필요 › 직접 추가: 목록이 놓친 것을 말로 짚으면 녹취에서 찾아 항목으로 만든다 (그 뒤는 다른 항목과 같이 적용·채팅·되돌리기)
+  function reviewAdd(r) {
+    const key = `${r.dir}|확인추가`;
+    const input = h('textarea', { rows: 1, placeholder: '놓친 게 있나요? 예: "통신 한정성"은 "안정성"이야 · 12분쯤 나온 회사 이름이 이상해', spellcheck: false });
+    input.value = addDraft;
+    const fit = () => {
+      input.style.height = 'auto';
+      input.style.height = `${Math.min(input.scrollHeight, 140)}px`;
+    };
+    const btn = h('button', { class: 'btn small primary' }, icon('i-plus'), h('span', null, '확인 필요에 추가'));
+    const send = async () => {
+      const text = input.value.trim();
+      if (!text || jobs.has(key)) return;
+      try {
+        const res = await runJob(key, '녹취에서 찾는 중…', () => api.addReview(r.dir, text));
+        if (res.added.length) {
+          addDraft = '';
+          reviewFilter = 'open';
+          toast(`확인 필요에 ${res.added.length}개를 더했습니다`, res.reply);
+        } else toast('더할 항목을 찾지 못했습니다', res.reply || '녹취에서 그 말을 찾지 못했습니다. 들린 그대로 적어 보세요', { ms: 9000 });
+      } catch (err) {
+        toast('더하지 못했습니다', err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { bad: true });
+      }
+      await refreshDoc(r);
+      loadHistory();
+    };
+    input.oninput = () => {
+      addDraft = input.value;
+      fit();
+    };
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        send();
+      }
+    };
+    btn.onclick = send;
+    markBusy(btn, key);
+    if (jobs.has(key)) input.disabled = true;
+    requestAnimationFrame(fit);
+    return h('div', { class: 'review-add' }, input, btn);
+  }
+
   function finalizePanel(r, review, openCount) {
     if (review.finalizedAt) {
       const f = review.finalize ?? {};
@@ -2207,7 +2272,7 @@ function pageMeeting(id) {
         h('div', { class: 'finalize-text' }, h('b', null, '확인을 마쳤습니다'),
           h('span', null, `고침 ${f.applied ?? 0} · 그대로 둠 ${f.kept ?? 0}${f.rewritten ? ' · 회의록의 해당 부분을 고쳐 썼습니다 (이전 회의록은 minutes.before-finalize.md로 보관)' : ' · 회의록 문장은 그대로입니다'}`)));
     }
-    const needsRewrite = review.items.some((it) => it.chat?.length || (it.status === 'applied' && it.kind !== 'word'));
+    const needsRewrite = review.items.some((it) => it.chat?.length || (it.status === 'applied' && (it.kind !== 'word' || it.source === 'user' || it.source === 'inline')));
     const go = h('button', { class: 'btn primary' }, icon('i-check'), openCount ? `남은 ${openCount}개는 그대로 두고 확인 마치기` : '확인 마치기');
     go.onclick = async () => {
       go.classList.add('busy'); // 흐리게 하지 않고 진행 중 표시

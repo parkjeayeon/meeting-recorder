@@ -73,6 +73,7 @@ contextBridge.exposeInMainWorld('recorderApi', {
   cleanScript: (dir) => ipcRenderer.invoke('script:clean', dir),
   toggleTodo: (dir, index, done) => ipcRenderer.invoke('minutes:todo', dir, index, done),
   makeReview: (dir) => ipcRenderer.invoke('review:make', dir),
+  addReview: (dir, request) => ipcRenderer.invoke('review:add', dir, request),
   applyReview: (dir, fixes) => ipcRenderer.invoke('review:apply', dir, fixes),
   setReviewStatus: (dir, ids, status) => ipcRenderer.invoke('review:status', dir, ids, status),
   chatReview: (dir, ids, messages) => ipcRenderer.invoke('review:chat', dir, ids, messages),
