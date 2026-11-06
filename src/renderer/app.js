@@ -808,7 +808,7 @@ function dictItem(r, { compact = false } = {}) {
   const acts = h('div', { class: 'dacts' },
     copyButton(text),
     h('button', {
-      class: 'icon-btn', title: '창을 닫고 직전에 쓰던 앱에 다시 입력', 'aria-label': '다시 입력',
+      class: 'icon-btn', title: '다시 붙여넣기', 'aria-label': '다시 붙여넣기', // 창을 닫고 직전에 쓰던 앱에 붙여 넣는다
       onclick: async () => {
         const status = await api.repaste(text);
         if (status !== 'pasted') toast('클립보드에 복사했습니다', '⌘V로 붙여 넣으세요');
