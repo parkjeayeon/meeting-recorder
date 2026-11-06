@@ -138,6 +138,10 @@
   .bubble.me { align-self: flex-end; max-width: 85%; padding: 8px 12px; border-radius: 12px 12px 4px 12px; background: var(--ink); color: var(--panel); font-size: 13.5px; }
   .bubble.me small { display: block; opacity: .65; font-size: 11.5px; margin-top: 2px; }
   .bubble.ai { display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--ink-2); }
+  .bubble.ai.warn { gap: 6px; padding: 10px 12px; border: 1px solid var(--accent-wash-2); border-radius: 12px; background: var(--accent-wash); color: var(--ink-2); }
+  .bubble.ai.warn .warn-line { display: flex; align-items: center; gap: 6px; color: var(--accent); }
+  .bubble.ai.warn .warn-line svg { width: 14px; height: 14px; }
+  .bubble.ai.warn .warn-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
   .bubble.ai .conds { display: flex; flex-wrap: wrap; gap: 4px; }
   .askcompose { padding: 12px; border-top: 1px solid var(--line); }
   .composer { display: flex; flex-direction: column; gap: 8px; padding: 10px 10px 8px 12px; border: 1px solid var(--line-2); border-radius: 14px; background: var(--panel); transition: border-color .15s ease-out, box-shadow .15s ease-out; }
@@ -492,6 +496,22 @@ function startAsk(text) {
   (async () => {
     await wait(1800); // 조건 풀기 (LLM 한 번)
     tab.conds = parseAsk(text);
+    // 질문 속 기간과 기간 칩을 먼저 맞대 본다: 겹치는 날이 없으면 찾지 않고 멈춘다 (둘을 AND로 묶으면 늘 0건이라)
+    const sc0 = tab.scope;
+    if (tab.conds.from && (sc0.from || sc0.to)) {
+      const chipFrom = sc0.from ? new Date(`${sc0.from}T00:00`) : new Date(0);
+      const chipTo = sc0.to ? new Date(`${sc0.to}T23:59:59`) : new Date(8.64e15);
+      const qTo = new Date(tab.conds.to.getTime() + 864e5 - 1);
+      if (qTo < chipFrom || tab.conds.from > chipTo) {
+        tab.status = 'blocked';
+        tab.stage = 'blocked';
+        tab.ms = Date.now() - tab.t0;
+        if (filter === `ask:${tab.id}`) filter = 'all';
+        askOpen = askOpen || askUI === 'fab' || askUI === 'drawer'; // 경고는 채팅 창에서 보이게
+        draw(true);
+        return;
+      }
+    }
     tab.stage = tab.conds.terms.length ? 'search' : 'done';
     draw(true);
     let pool = [...all];
@@ -601,7 +621,7 @@ const scopeText = (sc) => {
 const examples = (onPick) => h('div', { class: 'examples' }, EXAMPLES.map((x) => h('button', { type: 'button', onmousedown: (e) => e.preventDefault(), onclick: () => onPick(x) }, x)));
 
 function askChips() {
-  return askTabs.map((t) => h('button', { class: 'chip ask', 'aria-pressed': String(filter === `ask:${t.id}`), title: t.q, onclick: () => { filter = `ask:${t.id}`; $('view').scrollTop = 0; draw(); } },
+  return askTabs.filter((t) => t.status !== 'blocked').map((t) => h('button', { class: 'chip ask', 'aria-pressed': String(filter === `ask:${t.id}`), title: t.q, onclick: () => { filter = `ask:${t.id}`; $('view').scrollTop = 0; draw(); } },
     t.status === 'running' ? h('span', { class: 'spin' }) : icon('i-search'),
     t.conds?.topic ?? (t.q.length > 14 ? `${t.q.slice(0, 14)}…` : t.q),
     t.status === 'running' ? h('span', { class: 'num', 'data-ask-time': t.id }, secs(t)) : h('span', { class: 'num' }, String(t.results.length)),
@@ -625,6 +645,17 @@ function askHead(t) {
       ? h('div', { class: 'steps' }, STAGES.filter(([k]) => k !== 'search' || !c || c.terms.length).map(([k, label], i) => h('span', { class: i < at ? 'ok' : i === at ? 'now' : '' }, i < at ? icon('i-check') : i === at ? h('span', { class: 'spin' }) : h('span', { style: 'width:11px' }), label)),
         h('span', { style: 'margin-left:auto' }, h('span', { 'data-ask-time': t.id }, secs(t)), ' · 다른 화면으로 가도 계속 찾습니다'))
       : h('div', { class: 'conds' }, `${t.results.length}건 · ${t.candidates ? `후보 ${t.candidates}개 중 추림 · ` : ''}${secs(t)} 걸림`));
+}
+
+// 질문 속 기간과 기간 칩이 겹치지 않을 때: 찾지 않고 이유와 고칠 방법을 보인다
+const qRange = (c) => `${shortDay(fmtDay(c.from))} – ${shortDay(fmtDay(c.to))}`;
+function blockedBubble(t) {
+  return h('div', { class: 'bubble ai warn' },
+    h('span', { class: 'warn-line' }, icon('i-alert'), h('b', null, '찾지 않았습니다')),
+    h('span', null, `질문의 기간(${qRange(t.conds)})과 기간 칩(${shortDay(t.scope.from) || '처음'} – ${shortDay(t.scope.to) || '오늘'})이 겹치지 않아요. 둘 다 맞아야 해서 이대로 찾으면 늘 0건입니다.`),
+    h('div', { class: 'warn-acts' },
+      h('button', { class: 'btn small', onclick: () => { askScope.from = askScope.to = ''; askTabs = askTabs.filter((x) => x !== t); const n = startAsk(t.q); if (route === 'meetings') filter = `ask:${n.id}`; draw(); } }, '기간 칩 빼고 질문 날짜로 찾기'),
+      h('button', { class: 'btn small ghost', onclick: () => { askDraft = t.q; askTabs = askTabs.filter((x) => x !== t); draw(); setTimeout(() => document.querySelector('.composer textarea')?.focus()); } }, '질문 고치기')));
 }
 
 function askView(t) {
@@ -714,7 +745,7 @@ function askPanel(cls) {
       h('header', null, icon('i-chat'), h('span', null, '질문으로 찾기'), h('button', { class: 'icon-btn', 'aria-label': '닫기', onclick: () => { askOpen = false; draw(); } }, icon('i-x'))),
       h('div', { class: 'asklog' }, askTabs.length ? askTabs.map((t) => [
         h('div', { class: 'bubble me' }, t.q, h('small', null, `범위 ${scopeText(t.scope)}`)),
-        h('div', { class: 'bubble ai' }, t.status === 'running'
+        t.status === 'blocked' ? blockedBubble(t) : h('div', { class: 'bubble ai' }, t.status === 'running'
           ? [h('span', { style: 'display:flex;gap:8px;align-items:center' }, h('span', { class: 'spin' }), stageText(t), h('span', { class: 'num', 'data-ask-time': t.id }, secs(t)))]
           : [h('span', null, t.results.length ? `${t.results.length}건을 찾아 탭으로 모았습니다.` : '맞는 회의를 찾지 못했습니다.'),
             t.conds && h('div', { class: 'conds' }, t.conds.from && h('span', { class: 'cond' }, `${fmtDay(t.conds.from)} ~ ${fmtDay(t.conds.to)}`), t.conds.terms.slice(0, 3).map((x) => h('span', { class: 'cond' }, x))),
