@@ -72,15 +72,28 @@ function wavHeader(dataBytes, rate) {
   return h;
 }
 
-// 파일 이름에 녹음 시각이 있으면 그걸 쓴다 ("2026-11-04 오후 4.49.27", "20261104_164927", "2026-11-04 16-49-27" 등)
-function timeFromName(name) {
-  const m = /(\d{4})[-._]?(\d{2})[-._]?(\d{2})[\s_T-]*(오전|오후|AM|PM)?\s*(\d{1,2})[.:\-_]?(\d{2})[.:\-_]?(\d{2})/i.exec(name);
-  if (!m) return null;
-  let hour = Number(m[5]);
-  if (/오후|PM/i.test(m[4] ?? '') && hour < 12) hour += 12;
-  if (/오전|AM/i.test(m[4] ?? '') && hour === 12) hour = 0;
-  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), hour, Number(m[6]), Number(m[7]));
-  return Number.isNaN(d.getTime()) || hour > 23 ? null : d;
+// 파일 이름에 녹음 시각이 있으면 그걸 쓴다 ("2026-11-04 오후 4.49.27", "20261104_164927", "2026-11-04 16-49-27",
+// 통화 녹음의 "261106_174715"(연도 두 자리) 등). 숫자 덩어리 가운데에서는 읽지 않고(전화번호를 날짜로 읽지 않게),
+// 있을 수 없는 날짜(2000년 전·내일 뒤, 13월, 2월 30일 등)는 건너뛰고 다음 후보를 본다
+const NAME_TIMES = [
+  /(?<!\d)(\d{4})[-._]?(\d{2})[-._]?(\d{2})[\s_T-]*(오전|오후|AM|PM)?\s*(\d{1,2})[.:\-_]?(\d{2})[.:\-_]?(\d{2})(?!\d)/gi,
+  /(?<!\d)(\d{2})(\d{2})(\d{2})[\s_T-]+()(\d{2})(\d{2})(\d{2})(?!\d)/g,
+];
+function timeFromName(name, now = new Date()) {
+  const found = NAME_TIMES.flatMap((re) => [...name.matchAll(re)]).sort((a, b) => a.index - b.index);
+  for (const m of found) {
+    const year = m[1].length === 2 ? 2000 + Number(m[1]) : Number(m[1]);
+    const [month, day, min, sec] = [m[2], m[3], m[6], m[7]].map(Number);
+    let hour = Number(m[5]);
+    if (/오후|PM/i.test(m[4] ?? '') && hour < 12) hour += 12;
+    if (/오전|AM/i.test(m[4] ?? '') && hour === 12) hour = 0;
+    if (hour > 23 || min > 59 || sec > 59) continue;
+    const d = new Date(year, month - 1, day, hour, min, sec);
+    if (d.getMonth() !== month - 1 || d.getDate() !== day) continue; // 13월·2월 30일처럼 넘친 날짜
+    if (year < 2000 || d.getTime() > now.getTime() + 86400e3) continue;
+    return d;
+  }
+  return null;
 }
 
 function folderName(d) {
