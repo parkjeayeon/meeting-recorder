@@ -3967,7 +3967,7 @@ async function loadUsage(force = false) {
   drawUsage();
 }
 
-const USAGE_NAME = { session: '현재 세션', week: '이번 주' };
+const USAGE_NAME = { session: '현재 세션', week: '이번 주', limit: '한도에 걸림 (5분 뒤 다시 확인)' };
 function resetLabel(w) {
   if (!w.resetsAt) return w.resetsText ? `${w.resetsText} 초기화` : '';
   const d = new Date(w.resetsAt);
@@ -4039,6 +4039,7 @@ function renderDictSettings(s) {
   $('meetingSystem').checked = s.meetingSystemAudio;
   $('dictEnabled').checked = s.enabled;
   $('dictLanguage').value = s.language;
+  $('meetLanguage').value = s.meetingLanguage ?? s.language;
   $('dictCleanup').checked = s.cleanup;
   $('countWords').textContent = vocabWords().length || '';
   renderEngine(s.engine);
@@ -4052,6 +4053,7 @@ async function saveDict(patch) {
 
 $('dictEnabled').onchange = (e) => saveDict({ enabled: e.target.checked });
 $('dictLanguage').onchange = (e) => saveDict({ language: e.target.value });
+$('meetLanguage').onchange = (e) => saveDict({ meetingLanguage: e.target.value });
 $('dictCleanup').onchange = (e) => saveDict({ cleanup: e.target.checked });
 $('minutesAuto').onchange = (e) => saveDict({ minutes: e.target.checked });
 $('diarizeOn').onchange = (e) => saveDict({ diarize: e.target.checked });

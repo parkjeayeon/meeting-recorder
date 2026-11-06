@@ -122,4 +122,27 @@ async function usage({ force = false } = {}) {
   return Object.fromEntries(ids.map((id, i) => [id, values[i]]));
 }
 
-module.exports = { usage, fromClaudeText };
+// ── 자동 계정 고르기 (src/cleanup.js providerOrder, 결정 53) ──
+const { HIGH_PERCENT: HIGH } = require('../lib/core/index.mjs'); // 이 % 이상 쓰면 '거의 다 씀'
+const maxUsed = (v) => (v?.ok && v.windows?.length ? Math.max(...v.windows.map((w) => Number(w.usedPercent) || 0)) : null);
+// 저장된 값을 바로 돌려주고, 오래됐으면 뒤에서 다시 읽는다 (받아쓰기 다듬기를 사용량 읽기로 기다리게 하지 않게)
+function peek(id) {
+  const hit = cache.get(id);
+  if ((!hit || Date.now() - hit.at >= TTL_MS) && !pending.has(id)) readOne(id, true).catch(() => {});
+  return hit?.value ?? null;
+}
+// 고르기에 쓸 사용량(가장 많이 쓴 창의 %, 모르면 null). Codex 값은 Claude Code를 거의 다 썼을 때만 읽는다 (1초 안쪽)
+async function usedForRouting(loggedIn) {
+  if (!loggedIn.includes('claude-code') || !loggedIn.includes('codex')) return { claudeUsed: null, codexUsed: null };
+  const claudeUsed = maxUsed(peek('claude-code'));
+  if (claudeUsed === null || claudeUsed < HIGH) return { claudeUsed, codexUsed: null };
+  return { claudeUsed, codexUsed: maxUsed(await readOne('codex', false)) };
+}
+// 호출이 한도 오류로 끝났을 때: 5분 동안 '다 씀'으로 둔다 (설정 › 다듬기에도 그렇게 보인다)
+function markExhausted(id) {
+  if (!READERS[id]) return;
+  const at = Date.now();
+  cache.set(id, { at, value: { ok: true, windows: [{ kind: 'limit', model: null, usedPercent: 100, resetsAt: null, resetsText: null }], credits: null, via: 'error', fetchedAt: new Date(at).toISOString() } });
+}
+
+module.exports = { usage, fromClaudeText, usedForRouting, markExhausted };

@@ -7,3 +7,4 @@ export * as schema from './schema.mjs';
 export { findStrayFolders, type StrayFolder, type StrayReason } from './stray.mjs';
 export { cleanGuess, inlineGuesses, toReviewItems, noteVariants, stampFor, stampFromNote, locateHeard, searchKeys, type ReviewItem } from './review.mjs';
 export { UsageWindow, UsageWindows, parseResets, parseClaudeUsage, verifyWindows, codexUsage } from './usage.mjs';
+export { orderProviders, isLimitText, isLimitError, withFallback, HIGH_PERCENT } from './route.mjs';

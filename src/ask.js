@@ -117,11 +117,9 @@ function snippets(m, refs) {
   return out;
 }
 
-// ── LLM ── 이 기능은 Claude Code를 먼저 쓴다 (측정: 정확도 비슷, 입력 약 1/4·시간 약 60%), 없으면 다듬기 계정
-async function pickProvider() {
-  const st = await providerStatus({ hasApiKey: dictation.getSettings().hasApiKey });
-  return st['claude-code']?.loggedIn ? 'claude-code' : dictation.getSettings().provider;
-}
+// ── LLM ── 이 기능은 다듬기 설정과 상관없이 '자동' 규칙으로 고른다: Claude Code 먼저(측정: 정확도 비슷, 입력 약 1/4·시간 약 60%),
+// Claude Code를 거의 다 썼고(90% 이상) Codex에 여유가 있으면 Codex, 한도 오류가 나면 다음 계정으로 다시 (결정 51·53)
+const pickProvider = async () => 'auto';
 const LLM_TIMEOUT = 180000; // 후보 40개 추리기는 Codex로 30초를 넘기기도 한다 (측정 평균 24초)
 const TIMEOUTS = { 'claude-code': LLM_TIMEOUT, codex: LLM_TIMEOUT, api: LLM_TIMEOUT };
 const ask = (choice, system, input, maxTokens, signal) => complete({ system, input, choice, apiKey: dictation.apiKey(), effort: 'low', timeouts: TIMEOUTS, maxTokens, cache: false, signal });

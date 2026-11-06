@@ -28,7 +28,7 @@ let RECORDINGS_DIR = DEFAULT_RECORDINGS_DIR; // 설정 › 받아쓰기 › 녹�
 let DICTATION_LOG = path.join(RECORDINGS_DIR, 'dictations.jsonl');
 
 // ── 사전·설정 백업: 녹음 폴더의 settings.json에 같이 적어 두어, 녹음 폴더만 옮겨도 이어 쓸 수 있게 한다 (토큰·키는 넣지 않는다)
-const PORTABLE_KEYS = ['vocabulary', 'language', 'enabled', 'cleanup', 'provider', 'minutes', 'diarize', 'meetingSystemAudio'];
+const PORTABLE_KEYS = ['vocabulary', 'language', 'meetingLanguage', 'enabled', 'cleanup', 'provider', 'minutes', 'diarize', 'meetingSystemAudio'];
 const portableFile = () => path.join(RECORDINGS_DIR, 'settings.json');
 const vocabList = (v) => (v ?? '').split(/[,\n]/).map((w) => w.trim()).filter(Boolean);
 

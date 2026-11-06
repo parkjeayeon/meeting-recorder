@@ -203,7 +203,7 @@
           <label class="switch"><input type="checkbox" id="dictEnabled" /><i></i></label>
         </div>
         <div class="field">
-          <div class="field-text"><b>언어</b><span>받아쓰기와 회의 녹취에 같이 씁니다.</span></div>
+          <div class="field-text"><b>언어</b><span>fn 받아쓰기에 씁니다. 왼쪽 아래에서도 바로 바꿀 수 있습니다. 회의 녹취 언어는 설정 › 회의에서 따로 정합니다.</span></div>
           <select id="dictLanguage">
             <option value="ko">한국어</option>
             <option value="auto">자동 감지</option>
@@ -253,6 +253,15 @@
       <section class="set-sec" data-sec="meeting" hidden>
         <h3>회의</h3>
         <p class="sec-lead">회의는 위쪽 <b>회의 녹음</b> 버튼이나 독·메뉴바로 시작하고 멈춥니다. fn은 받아쓰기 전용입니다.</p>
+        <div class="field">
+          <div class="field-text"><b>회의 언어</b><span>회의 녹취에 씁니다. 자동 감지는 약 10분 조각마다 앞부분으로 언어 하나를 정해, 여러 언어가 섞인 회의에서는 주로 쓰는 언어로 두는 편이 정확합니다.</span></div>
+          <select id="meetLanguage">
+            <option value="ko">한국어</option>
+            <option value="auto">자동 감지</option>
+            <option value="en">English</option>
+            <option value="ja">日本語</option>
+          </select>
+        </div>
         <div class="field">
           <div class="field-text"><b>끝나면 회의록 만들기</b><span>Whisper large-v3로 녹취한 뒤 요약·결정 사항·할 일을 정리합니다. 2시간 회의는 약 20분 걸립니다.</span></div>
           <label class="switch"><input type="checkbox" id="minutesAuto" /><i></i></label>

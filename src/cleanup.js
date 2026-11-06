@@ -6,6 +6,7 @@ const fs = require('fs');
 const os = require('os');
 const { execFile } = require('child_process');
 const Anthropic = require('@anthropic-ai/sdk').default;
+const { orderProviders, isLimitText, withFallback: tryInOrder } = require('../lib/core/index.mjs');
 
 const API_MODEL = 'claude-opus-5-5';
 const CHUNK_CHARS = 600; // 이보다 길면 나눠서 다듬는다
@@ -83,12 +84,27 @@ async function providerStatus({ hasApiKey }, { fresh = false } = {}) {
   return { ...loginCache.value, api: { installed: true, loggedIn: hasApiKey } };
 }
 
-// 자동: Claude Code(가장 빠름, 약 2.5초) → Codex(약 3.5~5초) → API 키
-async function resolveProvider(choice, ctx) {
+// 자동: Claude Code(가장 빠름, 약 2.5초) → Codex(약 3.5~5초) → API 키. 로그인된 것만, 쓸 순서대로.
+// 둘 다 로그인돼 있고 Claude Code 사용량이 90% 이상이면(창 하나라도) Codex 사용량을 보고 90% 미만이면 Codex를 앞에 둔다 (결정 53).
+// 사용량은 src/usage.js가 토큰 없이 읽어 5분 저장한다 — 받아쓰기를 기다리게 하지 않도록 Claude Code는 저장된 값만 보고 오래됐으면 뒤에서 다시 읽는다
+async function providerOrder(choice, ctx) {
   const status = await providerStatus(ctx);
-  const order = choice === 'auto' ? ['claude-code', 'codex', 'api'] : [choice];
-  return order.find((id) => status[id]?.loggedIn) ?? null;
+  if (choice !== 'auto') return status[choice]?.loggedIn ? [choice] : [];
+  const loggedIn = Object.keys(status).filter((id) => status[id]?.loggedIn);
+  const { claudeUsed, codexUsed } = await require('./usage').usedForRouting(loggedIn); // 순환 require를 피해 여기서
+  return orderProviders(loggedIn, claudeUsed, codexUsed);
 }
+async function resolveProvider(choice, ctx) {
+  return (await providerOrder(choice, ctx))[0] ?? null;
+}
+
+// 사용 한도에 걸린 답 (Claude Code는 한도에 걸리면 답 대신 이 문구를 내고 정상 종료하기도 한다 — 그대로 붙여 넣지 않게 오류로 바꾼다)
+function checkLimitText(text) {
+  if (isLimitText(text)) throw Object.assign(new Error(text.split('\n')[0]), { limit: true });
+  return text;
+}
+// 자동일 때: 한도에 걸린 계정은 5분 동안 '다 씀'으로 두고 다음 계정으로 같은 요청을 다시 보낸다
+const withFallback = (order, fn) => tryInOrder(order, fn, (id) => require('./usage').markExhausted(id));
 
 // ── 공급자별 호출 (입력은 stdin으로 넘겨 긴 녹취도 명령줄 길이 제한에 걸리지 않게 한다) ──
 function wrap(text) {
@@ -108,7 +124,7 @@ async function viaClaudeCode({ system, input, effort, timeout, cache = true, sig
     '--no-session-persistence',
     '--output-format', 'text',
   ], { timeout, input, signal, env: cache ? null : { DISABLE_PROMPT_CACHING: '1' } });
-  return out.stdout.trim();
+  return checkLimitText(out.stdout.trim());
 }
 
 async function viaCodex({ system, input, effort, timeout, signal }) {
@@ -121,7 +137,7 @@ async function viaCodex({ system, input, effort, timeout, signal }) {
       '-o', outFile,
       '-', // 프롬프트를 stdin에서 읽는다
     ], { timeout, signal, input: `${system}\n\n${input}` });
-    return fs.readFileSync(outFile, 'utf8').trim();
+    return checkLimitText(fs.readFileSync(outFile, 'utf8').trim());
   } finally {
     fs.rmSync(outFile, { force: true });
   }
@@ -148,9 +164,9 @@ const CALLERS = { 'claude-code': viaClaudeCode, codex: viaCodex, api: viaApi };
 // 로그인된 계정으로 한 번 호출한다. 받아쓰기 다듬기와 회의록 작성이 함께 쓴다.
 // signal: 멈추기 (AbortController) — CLI 자식 프로세스를 끝내고 API 요청을 끊는다
 async function complete({ system, input, choice, apiKey, effort = 'low', timeouts = TIMEOUT_MS, maxTokens = 4096, cache = true, signal }) {
-  const provider = await resolveProvider(choice, { hasApiKey: Boolean(apiKey) });
-  if (!provider) throw Object.assign(new Error('로그인된 Claude Code·Codex 계정이나 API 키가 없습니다'), { noProvider: true });
-  const text = await CALLERS[provider]({ system, input, effort, timeout: timeouts[provider], apiKey, maxTokens, cache, signal });
+  const order = await providerOrder(choice, { hasApiKey: Boolean(apiKey) });
+  if (!order.length) throw Object.assign(new Error('로그인된 Claude Code·Codex 계정이나 API 키가 없습니다'), { noProvider: true });
+  const { value: text, provider } = await withFallback(order, (id) => CALLERS[id]({ system, input, effort, timeout: timeouts[id], apiKey, maxTokens, cache, signal }));
   return { text, provider };
 }
 
@@ -186,10 +202,15 @@ async function mapLimit(items, limit, fn) {
 }
 
 async function cleanup(raw, { provider: choice, apiKey }) {
-  const provider = await resolveProvider(choice, { hasApiKey: Boolean(apiKey) });
-  if (!provider) return { text: raw, provider: null, error: '다듬기에 쓸 로그인된 계정이나 API 키가 없습니다' };
-  const call = (chunk) =>
-    CALLERS[provider]({ system: SYSTEM, input: wrap(chunk), effort: 'low', timeout: TIMEOUT_MS[provider], apiKey, maxTokens: 4096 });
+  const order = await providerOrder(choice, { hasApiKey: Boolean(apiKey) });
+  if (!order.length) return { text: raw, provider: null, error: '다듬기에 쓸 로그인된 계정이나 API 키가 없습니다' };
+  let provider = order[0];
+  // 한도에 걸리면 다음 계정으로 (그 뒤 조각들도 다음 계정으로)
+  const call = async (chunk) => {
+    const res = await withFallback(order.slice(order.indexOf(provider)), (id) => CALLERS[id]({ system: SYSTEM, input: wrap(chunk), effort: 'low', timeout: TIMEOUT_MS[id], apiKey, maxTokens: 4096 }));
+    provider = res.provider;
+    return res.value;
+  };
   const chunks = splitChunks(raw);
   const errors = [];
   // 조각 하나가 실패해도 그 조각만 원문으로 남기고 나머지는 다듬는다
@@ -219,4 +240,4 @@ function parseJson(text) {
   }
 }
 
-module.exports = { cleanup, complete, parseJson, providerStatus, PROVIDERS };
+module.exports = { cleanup, complete, parseJson, providerStatus, providerOrder, PROVIDERS };

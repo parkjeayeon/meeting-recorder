@@ -293,7 +293,7 @@ async function redoLoops(pieceFile, segs, settings, port) {
     const file = `${pieceFile}.redo.wav`;
     writeWav(file, buf, buf.subarray(44 + from, 44 + to));
     try {
-      const again = await dictation.transcribeSegments(file, settings, port, { noContext: true });
+      const again = await dictation.transcribeSegments(file, meetingAsr(settings), port, { noContext: true });
       const offset = from / 2 / rate;
       segs = [
         ...segs.filter((s) => s.start < loop.start - 0.01),
@@ -533,7 +533,7 @@ async function transcribeMeeting(dir, meta, settings, speakers, timing, report) 
           if (pct > shown) report('transcribe', { progress: pct / 100, diarizing: Boolean(diarizeJob) });
           shown = Math.max(shown, pct);
         });
-        const first = await dictation.transcribeSegments(piece.file, settings, port);
+        const first = await dictation.transcribeSegments(piece.file, meetingAsr(settings), port);
         server?.onProgress(null); // 반복 구간 다시 받아쓰기의 진행률은 조각 진행률과 섞지 않는다
         const { segs, redone } = await redoLoops(piece.file, first, settings, port);
         for (const r of redone) redo.push({ ...r, start: r.start + piece.offset, end: r.end + piece.offset, track });
@@ -580,6 +580,9 @@ function renameSpeaker(dir, from, to) {
 }
 
 // 화자 이름 바꿔 끼우기(nameSpeakers)는 명령줄 도구와 같이 쓰도록 코어(src/core/names.mts)에 있다
+
+// 회의 녹취는 회의 언어로 (설정 › 회의, 받아쓰기 언어와 따로)
+const meetingAsr = (settings) => ({ ...settings, language: settings.meetingLanguage || settings.language });
 
 // ── 확인 필요: 회의록이 확신하지 못한 부분을 하나씩 고치거나(추정 적용·직접 입력·채팅) 그대로 둔다 ──
 const REVIEW_SYSTEM = `You turn the "확인 필요" notes of Korean meeting minutes into a review list.
@@ -1093,7 +1096,7 @@ function retranscribeRange(dir, itemId, start, end) {
     try {
       const cut = sliceTo16k(path.join(dir, `${track}.wav`), Math.max(0, s - REDO_PAD_SEC), e + REDO_PAD_SEC, tmp);
       server = await dictation.startDedicatedServer(path.join(app.getPath('userData'), 'models', MEETING_MODEL)).catch(() => null);
-      const segs = (await dictation.transcribeSegments(tmp, settings, server?.port ?? null, { noContext: true }))
+      const segs = (await dictation.transcribeSegments(tmp, meetingAsr(settings), server?.port ?? null, { noContext: true }))
         .map((x) => ({ start: x.start + cut.start, end: x.end + cut.start, text: x.text }))
         .filter((x) => (x.start + x.end) / 2 >= s && (x.start + x.end) / 2 < e); // 앞뒤 여유분에 걸친 말은 옆 줄과 겹치므로 뺀다
       const lines = labelRedoLines(dir, segs, track, tracks);

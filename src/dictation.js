@@ -47,6 +47,8 @@ function getSettings() {
   return {
     ...DEFAULT_SETTINGS,
     ...rest,
+    // 회의 녹취 언어는 받아쓰기 언어와 따로 (2026-11-07). 따로 정한 적이 없으면 예전처럼 받아쓰기 언어를 따른다
+    meetingLanguage: rest.meetingLanguage ?? rest.language ?? DEFAULT_SETTINGS.language,
     hasApiKey: Boolean(apiKeyEnc) || Boolean(process.env.ANTHROPIC_API_KEY),
     hasHfToken: Boolean(hfTokenEnc) || fs.existsSync(path.join(require('os').homedir(), '.cache', 'huggingface', 'token')),
   };
