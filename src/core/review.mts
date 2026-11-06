@@ -75,7 +75,7 @@ export function stampFor(item: Pick<ReviewItem, 'at' | 'heard' | 'heardNote' | '
 }
 
 // 고칠 말도 따옴표 말도 없는 항목("매출 30억 외에 내년 목표 매출은 말이 끊겨 확인할 수 없음"): 메모의 낱말이 가장 많이
-// 겹치는 녹취 줄의 시각. 숫자가 든 낱말은 3점, 나머지는 1점. 가장 높은 줄이 3점 이상이고 다음 줄보다 분명히 높을 때만 —
+// 겹치는 녹취 줄의 시각. 숫자가 든 낱말은 3점, 나머지는 1점. 가장 높은 줄이 3점 이상이고 90초 밖의 다른 곳보다 2점 넘게 높을 때만 —
 // 애매하면 null (엉뚱한 구간을 다시 받아쓰지 않게, 그때는 화면에서 구간을 직접 고른다)
 const NOTE_STOP = new Set(['확인', '확인할', '없음', '내용', '말이', '끊겨', '끊김', '불분명', '필요', '회의', '부분', '유실', '유실됨', '중간', '일부', '관련', '이후', '이전', '대한', '설명', '언급', '있음', '있는', '하는', '정확한', '정확히', '알아듣기', '어려움', '들리지', '않음', '반복', '반복됨']);
 export function stampFromNote(note: string | null | undefined, transcript: string): string | null {
@@ -92,8 +92,12 @@ export function stampFromNote(note: string | null | undefined, transcript: strin
     if (score) scored.push({ at: m[1]!, score });
   }
   scored.sort((a, b) => b.score - a.score);
-  const [best, next] = scored;
-  return best && best.score >= 3 && (!next || best.score >= next.score + 2) ? best.at : null;
+  const best = scored[0];
+  if (!best || best.score < 3) return null;
+  // 90초 안의 줄은 같은 곳으로 본다 (다시 받아쓰기는 그 앞뒤 1분을 받는다). 다른 곳에 비슷한 줄이 있을 때만 애매하다고 본다
+  const sec = (t: string) => t.split(':').reduce((n, x) => n * 60 + Number(x), 0);
+  const elsewhere = scored.find((x) => Math.abs(sec(x.at) - sec(best.at)) > 90);
+  return !elsewhere || best.score >= elsewhere.score + 2 ? best.at : null;
 }
 
 // LLM이 채팅에서 제안한 "고칠 말"을 녹취에서 찾는다. 그대로 있으면 그것, 띄어쓰기만 다르면 녹취에 실제로 있는 글자로 바꿔 준다

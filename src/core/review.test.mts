@@ -114,4 +114,10 @@ describe('stampFromNote', () => {
     expect(stampFromNote('목표 얘기', t)).toBeNull(); // 1점짜리 줄끼리라 분명하지 않음
     expect(stampFromNote(null, t)).toBeNull();
   });
+  it('가까운 줄끼리는 같은 곳, 멀리 비슷한 줄이 있으면 애매', () => {
+    const near = '[12:10] [화자 2] 매출은 30억 정도고\n[12:36] [화자 1] 내년 목표 매출은\n[50:00] [화자 1] 매출\n';
+    expect(stampFromNote('매출 30억 외에 내년 목표 매출은 말이 끊겨 확인할 수 없음.', near)).toBe('12:10');
+    const far = '[12:10] [화자 2] 매출은 30억\n[50:00] [화자 1] 매출은 30억이라니까\n';
+    expect(stampFromNote('매출 30억 외에 내년 목표 매출은 말이 끊겨 확인할 수 없음.', far)).toBeNull();
+  });
 });
