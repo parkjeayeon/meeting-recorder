@@ -77,6 +77,7 @@ const impl = {
   verifyToken: async () => ({ ok: true, message: '예시 계정 · 화자 구분 모델 사용 가능' }),
   readMinutes: async () => ({ minutes: read('minutes.md'), transcript: read('transcript.txt'), scriptClean: read('script-clean.txt'), review: JSON.parse(read('review.json') ?? 'null'), glossary: JSON.parse(read('glossary.json') ?? 'null'), speech: stubSpeech(), flow: JSON.parse(read('flow.json') ?? 'null'), actions: JSON.parse(read('actions.json') ?? 'null') }),
   redoRange: async (_dir, id, start, end) => {
+    calls.redoRange = [...(calls.redoRange ?? []), { id, start, end }];
     const review = JSON.parse(read('review.json'));
     const lines = [{ start: start + 2, end: start + 9, text: '그 부분은 로그를 심어서 확인할 예정입니다.', label: '화자 2' }, { start: start + 11, end: start + 18, text: '네, 알겠습니다.', label: '화자 1' }];
     review.items.find((it) => it.id === id).redo = { start, end, lines, gain: 3.2 };

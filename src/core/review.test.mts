@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanGuess, inlineGuesses, locateHeard, noteVariants, searchKeys, stampFor, toReviewItems } from './review.mjs';
+import { cleanGuess, inlineGuesses, locateHeard, noteVariants, searchKeys, stampFor, stampFromNote, toReviewItems } from './review.mjs';
 
 const transcript = '[00:05] [화자 1] 통신 한정성이 제일 중요해요\n[12:30] [화자 2] 랩캐시도 쪽은 제가 볼게요\n';
 
@@ -100,5 +100,18 @@ describe('searchKeys', () => {
   });
   it('녹취에 없는 말과 화자 표시는 빼고, 고칠 말이 먼저', () => {
     expect(searchKeys({ heard: '하윤님이', heardNote: null, note: "'화자 1'과 '없는이름'" }, t)).toEqual(['하윤님이']);
+  });
+});
+
+describe('stampFromNote', () => {
+  const t = '[00:05] [화자 1] 오늘 매출 얘기부터\n[12:10] [화자 2] 매출은 30억 정도고 내년은\n[12:30] [화자 1] 목표 얘기는 나중에\n';
+  it('메모 낱말이 가장 많이 겹치는 줄 (숫자는 무겁게)', () => {
+    expect(stampFromNote('매출 30억 외에 내년 목표 매출은 말이 끊겨 확인할 수 없음.', t)).toBe('12:10');
+    expect(stampFor({ at: null, heard: null, heardNote: null, note: '매출 30억 외에 내년 목표 매출은 말이 끊겨 확인할 수 없음.' }, t)).toBe('12:10');
+  });
+  it('겹치는 말이 적거나 애매하면 null', () => {
+    expect(stampFromNote('중간 일부 내용이 유실됨', t)).toBeNull();
+    expect(stampFromNote('목표 얘기', t)).toBeNull(); // 1점짜리 줄끼리라 분명하지 않음
+    expect(stampFromNote(null, t)).toBeNull();
   });
 });

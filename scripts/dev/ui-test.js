@@ -23,6 +23,7 @@ fs.writeFileSync(path.join(meeting, 'minutes.md'), '# 예시 회의\n\n## 요약
 fs.writeFileSync(path.join(meeting, 'review.json'), JSON.stringify({ items: [
   { id: 'r1', kind: 'word', at: '00:15', heard: '랩캐시도', guess: 'Memcached', note: '오인식', status: 'open' },
   { id: 'r2', kind: 'word', at: '00:06', heard: '화요일', applied: '수요일', count: 1, note: '요일', status: 'applied', undo: { 'transcript.txt': { changed: [], inserted: [] } } },
+  { id: 'r4', kind: 'lost', at: null, heard: null, heardNote: null, note: '중간에 말이 끊겨 확인할 수 없음.', status: 'open' },
   { id: 'r3', kind: 'name', at: null, heard: null, heardNote: '도윤님(선배님)', note: "'도윤님(선배님)'이 누구인지 확인이 필요함", status: 'open' },
 ] }));
 process.env.STUB_MEETING_DIR = meeting;
@@ -319,6 +320,21 @@ app.whenReady().then(async () => {
   const doneRow = await js(`[...document.querySelectorAll('.ritem-done')].map(x=>x.textContent).find(t=>t.includes('확인됨')) ?? null`);
   results.push(['처리함에 확인됨과 내용', Boolean(doneRow?.includes('외부 개발자') && doneRow.includes('다시 열기')), JSON.stringify(doneRow)]);
   await js(`[...document.querySelectorAll('button')].find(b=>b.textContent.startsWith('남은 것'))?.click()`);
+
+  // 유실 항목에 시각·단서가 없으면: 구간 다시 받아쓰기 → 구간을 직접 고르는 줄 → 시작만 넣으면 1분
+  await js(`location.hash='#meeting/${id}'`);
+  await wait(900);
+  await tabClick('확인 필요');
+  await wait(400);
+  const lostCard = `[...document.querySelectorAll('.ritem.open')].find(c=>c.textContent.includes('중간에 말이 끊겨'))`;
+  await js(`[...${lostCard}.querySelectorAll('button')].find(b=>b.textContent.includes('구간 다시 받아쓰기'))?.click()`);
+  await wait(300);
+  const picker = await js(`Boolean(${lostCard}?.querySelector('.redo-pick input[aria-label="시작 시각"]'))`);
+  await js(`(() => { const c = ${lostCard}; c.querySelector('.redo-pick input[aria-label="시작 시각"]').value = '00:02'; [...c.querySelectorAll('.redo-pick button')].find(b=>b.textContent==='다시 받아쓰기').click(); })()`);
+  await wait(700);
+  const redoCall = await js('window.stubCalls().redoRange?.at(-1) ?? null');
+  results.push(['유실 구간 직접 고르기', picker && redoCall?.id === 'r4' && redoCall.start === 2 && redoCall.end === 62, `고르는 줄 ${picker} · 보낸 것 ${JSON.stringify(redoCall)}`]);
+  await js(`document.querySelector('.chat-head .icon-btn')?.click()`);
 
   // 찾는 도중 멈추기: 질문 탭의 '멈추기' → 칩에 '멈춤', 알림 없음
   await ask('느린 배포 질문');

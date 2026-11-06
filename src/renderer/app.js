@@ -1733,6 +1733,7 @@ function pageMeeting(id) {
   const reviewSel = new Set(); // 확인 필요에서 고른 항목
   let addDraft = ''; // 확인 필요 › 직접 추가 입력칸 (다시 그려도 남게)
   const guessDraft = new Map(); // 항목별로 고쳐 쓴 '고칠 말'
+  const redoPick = new Set(); // 구간을 몰라 직접 고르는 중인 항목 (유실·의미 불명)
   let reviewFilter = 'open';
   let chat = null; // { ids, messages: [{ role, text, proposals }], busy }
   if (openReviewNext === id) {
@@ -2783,6 +2784,36 @@ function pageMeeting(id) {
     return { start: Math.max(0, at - 10), end: at + 50 };
   }
 
+  // 구간 직접 고르기: 시작·끝(mm:ss)을 넣거나 '지금 재생 위치'로. 끝을 비우면 시작부터 1분, 최대 10분
+  function redoPicker(r, it) {
+    const start = h('input', { type: 'text', inputmode: 'numeric', placeholder: '시작 12:30', 'aria-label': '시작 시각', spellcheck: false });
+    const end = h('input', { type: 'text', inputmode: 'numeric', placeholder: '끝 (비우면 1분)', 'aria-label': '끝 시각', spellcheck: false });
+    const here = (input) => h('button', { class: 'btn small ghost', title: '재생 중인 위치를 넣습니다', onclick: () => {
+      input.value = clock(Math.floor(audio.currentTime || 0));
+    } }, '지금 재생 위치');
+    const ok = (v) => /^\d{1,2}(:\d{2}){1,2}$/.test(v.trim());
+    const go = h('button', { class: 'btn small primary', onclick: () => {
+      if (!ok(start.value)) return start.focus();
+      if (end.value.trim() && !ok(end.value)) return end.focus();
+      const a = parseStamp(start.value.trim());
+      const b = end.value.trim() ? parseStamp(end.value.trim()) : a + 60;
+      if (b <= a) return toast('끝이 시작보다 뒤여야 합니다', '', { bad: true });
+      if (b - a > 600) return toast('한 번에 10분까지 다시 받아쓸 수 있습니다', '', { bad: true });
+      redoPick.delete(it.id);
+      openChat([it.id]);
+      runRedo(r, it.id, { start: a, end: b });
+    } }, '다시 받아쓰기');
+    for (const input of [start, end]) {
+      input.onkeydown = (e) => {
+        if (e.key === 'Enter' && !e.isComposing) go.click();
+      };
+    }
+    setTimeout(() => start.focus());
+    return h('div', { class: 'redo-pick' },
+      h('span', { class: 'hint', style: 'margin:0' }, '메모에 시각이 없어 구간을 모릅니다. 녹음을 들어 보고 그 구간을 넣어 주세요.'),
+      h('div', { class: 'redo-pick-row' }, start, here(start), h('span', { class: 'hint', style: 'margin:0' }, '~'), end, here(end), go));
+  }
+
   async function runRedo(r, itemId, range) {
     if (!chat || chat.redoing) return;
     chat.redoing = itemId;
@@ -2928,11 +2959,17 @@ function pageMeeting(id) {
         }
         card.append(h('div', { class: 'ritem-acts' },
           h('button', { class: 'btn small ghost', onclick: () => openChat([it.id]) }, icon('i-chat'), '채팅'),
-          (it.kind === 'lost' || it.kind === 'meaning') && r.firstFile && itemRange(it) && h('button', { class: 'btn small ghost', title: '이 구간만 녹음에서 다시 받아씁니다', onclick: () => {
+          // 구간을 알면 바로, 모르면(메모에 시각도 단서도 없음) 구간을 직접 고르는 줄을 연다
+          (it.kind === 'lost' || it.kind === 'meaning') && r.firstFile && h('button', { class: 'btn small ghost', title: itemRange(it) ? '이 구간만 녹음에서 다시 받아씁니다' : '구간을 몰라 직접 고릅니다', 'aria-expanded': itemRange(it) ? null : String(redoPick.has(it.id)), onclick: () => {
+            if (!itemRange(it)) {
+              redoPick.has(it.id) ? redoPick.delete(it.id) : redoPick.add(it.id);
+              return draw();
+            }
             openChat([it.id]);
             runRedo(r, it.id, itemRange(it));
           } }, icon('i-redo'), '구간 다시 받아쓰기'),
           h('button', { class: 'btn small ghost', onclick: () => keepItems(r, [it.id]) }, it.kind === 'lost' ? '유실 그대로 두기' : '그대로 두기')));
+        if (redoPick.has(it.id) && !itemRange(it)) card.append(redoPicker(r, it));
       } else {
         // 확인 마치기 전까지는 처리한 항목도 다시 손볼 수 있다: 고친 말 바꾸기·되돌리기, 그대로 둔 것 다시 열기
         const locked = Boolean(doc.review?.finalizedAt);
