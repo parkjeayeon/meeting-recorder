@@ -8,3 +8,6 @@ native/permissions
 .impeccable/review/
 .impeccable/questions/
 lib/
+
+# 검색 평가 실행 결과 (실제 회의 내용이 들어갈 수 있어 올리지 않는다)
+eval-runs/
