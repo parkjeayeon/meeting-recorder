@@ -78,7 +78,7 @@ npx electron scripts/dev/rerun-meeting.js /tmp/m
 강제 종료 시험: 개발 모드에서 서버를 띄운 뒤 `process.exit`로 끝내고 `--app` 결과가 0개인지 본다.
 
 ## 실험 페이지 — `npm run lab:meetings`
-화면 안을 실제 앱에 넣기 전에 가짜 데이터로 나란히 비교하는 페이지 (`scripts/dev/lab/meetings.html`, 앱에는 안 들어감). 위쪽 막대로 안(A 장부 · B 손볼 것+장부 · C 손볼 것 먼저)과 데이터(회의 0·5·40·160·420개, 40개·모두 확정, 여러 해)를 바꾼다. `SHOT=폴더 npx electron scripts/dev/lab/open.js`면 창 없이 세 안 × 라이트·다크를 캡처한다. 회의 목록 B안은 여기서 정해 옮겼다 ([결정 50](decisions.md)).
+화면 안을 실제 앱에 넣기 전에 가짜 데이터로 나란히 비교하는 페이지 (`scripts/dev/lab/meetings.html`, 앱에는 안 들어감). 위쪽 막대로 목록 안(A 장부 · B 손볼 것+장부 · C 손볼 것 먼저), 데이터(회의 0·5·40·160·420개, 모두 확정, 여러 해), B에서 질문으로 찾기 화면(1 검색창 · 2 서랍 · 3 팔레트 · 4 오른쪽 아래 둥근 버튼)을 바꾼다. 질문 엔진은 시간만 흉내 낸 가짜(조건 풀기 → 찾기 → 추리기, 약 6초)이고, 왼쪽 메뉴로 다른 화면(자리만)에 가도 작업이 이어진다. 주소에 `?v=mix&ask=fab&seed=1`을 주면 끝난 질문·진행 중 질문을 미리 넣는다. `SHOT=폴더 npx electron scripts/dev/lab/open.js`면 창 없이 세 안 × 라이트·다크를 캡처한다. 회의 목록 B안은 여기서 정해 옮겼다 ([결정 50](decisions.md)).
 
 ## 검색 평가 — `node scripts/dev/eval/search-eval.mjs`
 "질문으로 회의 거르기"를 방식별로 잰다. LLM은 Codex를 앱과 같은 read-only 샌드박스로 부르고 `--json`으로 토큰 사용량을 받는다.

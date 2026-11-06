@@ -33,7 +33,7 @@ npm test             # 코어·명령줄 도구 단위 테스트 (Vitest, TypeSc
 npm run test:crash   # 확인 필요 적용·되돌리기가 도중에 끊겼을 때 (강제 종료 포함, 약 30초)
 npm run test:diskfull # 디스크 가득 참에서 파일 쓰기 (RAM 디스크)
 npm run mr -- list   # 개발 중 명령줄 도구 실행
-npm run lab:meetings # 실험 페이지: 회의 목록 안 비교 (가짜 회의 0·5·40·160·420개, 여러 해)
+npm run lab:meetings # 실험 페이지: 회의 목록 안·질문으로 찾기 화면 비교 (가짜 회의 0·5·40·160·420개, 여러 해)
 node scripts/dev/eval/search-eval.mjs  # 질문으로 회의 거르기 방식별 정확도·토큰·시간 측정 (Codex, 결과는 eval-runs/)
 npm run install-app  # .app 빌드 → 서명 → /Applications 설치
 ```
