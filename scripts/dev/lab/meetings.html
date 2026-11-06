@@ -426,7 +426,7 @@ let clean = false;
 let sparse = false;
 let q = '';
 let filter = 'all';
-const FILTERS = [['all', '전체', () => true], ['open', '확인할 회의', (m) => needsHand(m)], ['done', '확인 완료', (m) => m.finalized], ['fail', '실패·짧은 녹음', (m) => m.status === 'fail' || m.status === 'short']];
+const FILTERS = [['all', '전체', () => true], ['done', '확인 완료', (m) => m.finalized], ['open', '확인할 회의', (m) => needsHand(m)], ['fail', '실패·짧은 녹음', (m) => m.status === 'fail' || m.status === 'short']];
 const visible = () => all.filter((FILTERS.find((f) => f[0] === filter) ?? FILTERS[0])[2]).filter((m) => !q || `${m.title ?? ''} ${m.summary ?? ''}`.includes(q));
 
 // ── 질문으로 찾기 (더미 엔진) ──

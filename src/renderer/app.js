@@ -1082,8 +1082,8 @@ function pageMeetings() {
   let filter = 'all';
   const FILTERS = [
     ['all', '전체', () => true],
-    ['hand', '확인할 회의', needsHand],
     ['final', '확인 완료', (r) => ['done', 'plain'].includes(meetState(r))],
+    ['hand', '확인할 회의', needsHand],
     ['rest', '녹음만 · 실패', (r) => NO_MINUTES.includes(meetState(r))],
   ];
   const chips = h('div', { class: 'chips' });
