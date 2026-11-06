@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld('recorderApi', {
   providers: (opts) => ipcRenderer.invoke('dict:providers', opts),
   history: () => ipcRenderer.invoke('history:list'),
   recordingsAccess: () => ipcRenderer.invoke('recordings:access'),
+  strayFolders: () => ipcRenderer.invoke('recordings:stray'),
   copy: (text) => ipcRenderer.invoke('clipboard:write', text),
   repaste: (text) => ipcRenderer.invoke('dict:repaste', text),
   makeMinutes: (dir, speakers) => ipcRenderer.invoke('minutes:make', dir, speakers),

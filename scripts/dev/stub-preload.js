@@ -90,6 +90,11 @@ const impl = {
     await new Promise((r) => setTimeout(r, +(process.env.STUB_JOB_MS || 2500)));
     return JSON.parse(read('actions.json') ?? '{"actions":[],"advice":[]}');
   },
+  // 목록에 안 나오는 폴더 예시 (날짜를 잘못 읽은 가져오기 둘, 끊긴 녹음 하나). STUB_STRAY=none이면 없음
+  strayFolders: async () => (process.env.STUB_STRAY === 'none' ? [] : strays.filter((f) => !calls.trashed?.includes(f.dir))),
+  trashMeeting: async (d) => {
+    calls.trashed = [...(calls.trashed ?? []), d];
+  },
   copy: async (text) => {
     calls.copied = text;
   },
@@ -102,6 +107,11 @@ const impl = {
   ],
 };
 const calls = {};
+const strays = [
+  { id: '112-06-26_02-26-26_meeting', dir: '/tmp/stub/112-06-26_02-26-26_meeting', reason: 'bad-name', bytes: 21e6, audio: true, modifiedAt: '2026-11-06T09:00:00Z' },
+  { id: '112-06-26_02-26-26_meeting-2', dir: '/tmp/stub/112-06-26_02-26-26_meeting-2', reason: 'bad-name', bytes: 21e6, audio: true, modifiedAt: '2026-11-06T09:01:00Z' },
+  { id: '2026-11-04_09-00-00_meeting', dir: '/tmp/stub/2026-11-04_09-00-00_meeting', reason: 'no-meta', bytes: 512e3, audio: true, modifiedAt: '2026-11-04T01:00:00Z' },
+];
 const keys = [...fs.readFileSync(path.join(__dirname, '../../src/preload.js'), 'utf8').matchAll(/^\s{2}(\w+):/gm)].map((m) => m[1]);
 const api = {};
 for (const k of keys) api[k] = impl[k] ?? (k.startsWith('on') ? noop : async () => null);

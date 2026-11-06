@@ -728,6 +728,8 @@ ipcMain.handle('minutes:todo', (_e, dir, index, done) => {
 ipcMain.handle('meeting:trash', async (_e, dir) => {
   const d = recordingDir(dir);
   if (activeMinutes.has(d)) throw new Error('회의록을 만드는 중에는 지울 수 없습니다');
+  if (recording?.dir === d) throw new Error('녹음 중인 폴더는 지울 수 없습니다');
+  if (!fs.statSync(d).isDirectory()) throw new Error('회의 폴더가 아닙니다'); // 녹음 폴더 안의 설정·기록 파일은 지우지 않는다
   await shell.trashItem(d);
 });
 ipcMain.handle('dict:delete', (_e, id) => {
@@ -827,6 +829,8 @@ function listFolders(limit) {
 }
 
 ipcMain.handle('history:list', () => listHistory());
+// 녹음 폴더에 있지만 목록에 나오지 않는 폴더 (날짜를 못 읽은 이름·끊긴 녹음·깨진 meta.json). 화면에 표시해 지울 수 있게
+ipcMain.handle('recordings:stray', () => core.findStrayFolders(RECORDINGS_DIR, { skip: recording ? [recording.dir] : [] }));
 // 녹음 폴더를 읽을 수 있는지. macOS가 문서 폴더 접근을 막으면(다시 설치해 서명이 바뀐 앱 등) 목록이 조용히 비므로 화면에 알린다
 ipcMain.handle('recordings:access', () => {
   try {

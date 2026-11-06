@@ -127,6 +127,19 @@ app.whenReady().then(async () => {
   const copiedMinutes = await js('window.stubCalls().copied ?? null');
   results.push(['회의록 복사', typeof copiedMinutes === 'string' && copiedMinutes.startsWith('# 예시 회의'), `복사한 글 앞부분 ${JSON.stringify(String(copiedMinutes).slice(0, 12))}`]);
 
+  // 목록에 안 나오는 폴더: 이유와 함께 보이고, 휴지통 → 확인 → 그 폴더만 옮긴 뒤 목록에서 빠진다
+  await js(`location.hash='#meetings'`);
+  await wait(600);
+  const strayRows = await js(`[...document.querySelectorAll('.stray-row')].map(r=>r.textContent)`);
+  results.push(['목록에 안 나오는 폴더 표시', strayRows.length === 3 && strayRows[0].includes('날짜를 읽지 못함') && strayRows[2].includes('meta.json'), `${strayRows.length}줄 · ${JSON.stringify(strayRows[0] ?? '')}`]);
+  await js(`document.querySelectorAll('.stray-row .icon-btn[aria-label="휴지통으로"]')[0]?.click()`);
+  await wait(300);
+  await js(`document.getElementById('confirmYes')?.click()`);
+  await wait(600);
+  const trashed = await js('window.stubCalls().trashed ?? []');
+  const left = await js(`document.querySelectorAll('.stray-row').length`);
+  results.push(['폴더 휴지통으로', trashed.length === 1 && trashed[0].endsWith('112-06-26_02-26-26_meeting') && left === 2, `옮김 ${JSON.stringify(trashed)} · 남은 줄 ${left}`]);
+
   let failed = 0;
   for (const [name, ok, detail] of results) {
     if (!ok) failed++;

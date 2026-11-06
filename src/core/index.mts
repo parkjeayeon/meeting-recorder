@@ -4,3 +4,4 @@ export { parseScript, speakerStats, parseStamp, clock, scriptMarkdown, linesMark
 export { MeetingError, findRoot, settingsFile, defaultRecordingsDir, durationOf, readSummary, reviewSummary, readActionsNamed, resolveMeeting, listMeetings, readMinutes, readActions, readScript, readSpeakers } from './meetings.mjs';
 export { writeFileAtomic, writeJsonAtomic, copyFileAtomic } from './write.mjs';
 export * as schema from './schema.mjs';
+export { findStrayFolders, type StrayFolder, type StrayReason } from './stray.mjs';

@@ -326,6 +326,7 @@ api.onFnStatus((s) => setIssue('fn', s.ok ? null : { title: 'fn 키를 감지하
 
 // ── 기록 데이터 ─────────────────────────────────────────────────────────
 let history = [];
+let strays = []; // 녹음 폴더에 있지만 목록에 안 나오는 폴더 (recordings:stray)
 let freshId = null;
 const dictations = () => history.filter((r) => r.mode === 'memo' && r.transcript?.raw);
 const meetings = () => history.filter((r) => r.mode === 'meeting');
@@ -353,8 +354,9 @@ function folderEmpty() {
 }
 
 async function loadHistory() {
-  const [list, access] = await Promise.all([api.history(), api.recordingsAccess()]);
+  const [list, access, stray] = await Promise.all([api.history(), api.recordingsAccess(), api.strayFolders()]);
   history = list;
+  strays = stray ?? [];
   setIssue('folder', folderIssue(access));
   $('countDict').textContent = dictations().length || '';
   $('countMeet').textContent = meetings().length || '';
@@ -681,6 +683,39 @@ async function trashMeetings(list) {
   loadHistory();
 }
 
+// 목록에 안 나오는 폴더: 열 수 없으니 이유를 보여 주고 지울 수 있게 (휴지통으로, 되살릴 수 있음)
+const STRAY_REASON = {
+  'bad-name': '폴더 이름에서 날짜를 읽지 못함',
+  'no-meta': '녹음이 끊겨 회의 정보(meta.json)가 없음',
+  'bad-meta': '회의 정보(meta.json)가 깨짐',
+};
+const sizeLabel = (n) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)}GB` : n >= 1e6 ? `${Math.round(n / 1e6)}MB` : `${Math.max(1, Math.round(n / 1e3))}KB`);
+
+function strayBox() {
+  if (!strays.length) return null;
+  return h('div', { class: 'stray' },
+    h('div', { class: 'stray-head' },
+      h('b', null, `목록에 보이지 않는 폴더 ${strays.length}개`),
+      h('span', null, '녹음 폴더에 있지만 열 수 없는 폴더입니다. 필요 없으면 휴지통으로 옮기세요.'),
+      strays.length > 1 && h('button', { class: 'btn small', onclick: () => trashStrays(strays) }, icon('i-trash'), '모두 휴지통으로')),
+    strays.map((f) => h('div', { class: 'stray-row' },
+      h('span', { class: 'stray-name' }, f.id),
+      h('span', { class: 'status' }, `${STRAY_REASON[f.reason] ?? f.reason} · ${f.audio ? '녹음 파일 있음' : '녹음 파일 없음'}`),
+      num(sizeLabel(f.bytes)),
+      h('button', { class: 'icon-btn', title: 'Finder에서 보기', 'aria-label': 'Finder에서 보기', onclick: () => api.reveal(f.dir) }, icon('i-folder')),
+      h('button', { class: 'icon-btn', title: '휴지통으로', 'aria-label': '휴지통으로', onclick: () => trashStrays([f]) }, icon('i-trash')))));
+}
+
+async function trashStrays(list) {
+  const bytes = list.reduce((n, f) => n + f.bytes, 0);
+  const title = list.length > 1 ? `폴더 ${list.length}개를 휴지통으로 옮길까요?` : `'${list[0].id}' 폴더를 휴지통으로 옮길까요?`;
+  if (!(await confirmBox(title, `폴더째(총 ${sizeLabel(bytes)}) 휴지통으로 옮깁니다. Finder 휴지통에서 되살릴 수 있습니다.`, '휴지통으로'))) return;
+  let failed = 0;
+  for (const f of list) await api.trashMeeting(f.dir).catch(() => failed++);
+  toast(failed ? `${list.length - failed}개를 옮기고 ${failed}개는 옮기지 못했습니다` : `${list.length}개를 휴지통으로 옮겼습니다`, '', { bad: Boolean(failed) });
+  loadHistory();
+}
+
 function meetingRow(r) {
   const s = r.minutes?.status;
   return h('a', { class: `mrow${s === 'error' ? ' err' : ''}`, href: `#meeting/${encodeURIComponent(r.id)}` },
@@ -818,6 +853,7 @@ function pageMeetings() {
   ];
   const chips = h('div', { class: 'chips' });
   const bulk = h('div', { class: 'bulk-row' });
+  const stray = h('div');
   const list = h('div');
   const count = num('');
   const update = () => {
@@ -831,6 +867,7 @@ function pageMeetings() {
     const fn = FILTERS.find((f) => f[0] === filter)[2];
     const items = all.filter(fn).filter((m) => !q || `${m.minutes?.title ?? ''} ${m.summary ?? ''}`.toLowerCase().includes(q));
     const failedOnes = items.filter((m) => !BUSY.includes(m.minutes?.status) && m.minutes?.status !== 'done');
+    stray.replaceChildren(...(filter === 'all' || filter === 'rest' ? [strayBox()].filter(Boolean) : []));
     bulk.replaceChildren(...(filter === 'rest' && failedOnes.length > 1 ? [
       h('span', null, `회의록이 없는 녹음 ${failedOnes.length}개`),
       h('button', { class: 'btn small', onclick: () => trashMeetings(failedOnes) }, icon('i-trash'), '모두 휴지통으로'),
@@ -865,7 +902,7 @@ function pageMeetings() {
         q = v.trim().toLowerCase();
         update();
       })),
-    chips, bulk, list);
+    chips, bulk, stray, list);
   // 녹음 파일을 끌어다 놓으면 가져온다 (여러 개면 이름 순서대로 이어 붙임)
   el.ondragover = (e) => {
     if (![...e.dataTransfer.types].includes('Files')) return;
