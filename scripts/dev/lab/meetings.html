@@ -99,6 +99,7 @@
   .cchip.set .x:hover { opacity: 1; background: rgba(255, 255, 255, .16); }
   .cchip.set .x svg { width: 10px; height: 10px; stroke-width: 2; }
   .cchip[aria-expanded='true'] { border-color: var(--ink-3); color: var(--ink); }
+  .cchip.set[aria-expanded='true'] { color: var(--panel); box-shadow: 0 0 0 3px var(--accent-wash-2); } /* 값이 있는 칩을 열어도 글자가 배경에 묻히지 않게 */
   .cpop { position: absolute; z-index: 50; bottom: calc(100% + 8px); left: 0; width: 288px; display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: var(--shadow-pop); animation: pop .16s cubic-bezier(.16, 1, .3, 1); }
   .cpop.down { bottom: auto; top: calc(100% + 8px); }
   .cpop h4 { margin: 0; font-size: 12.5px; font-weight: 650; color: var(--ink); }
@@ -435,7 +436,10 @@ let askUI = 'bar';
 let askTabs = [];
 let askOpen = false;
 // 찾을 범위: 개수와 기간은 따로. 비워 두면 조건에 없고, 넣으면 AND로 묶인다 (최근 N개 안에서 그리고 기간 안에서)
-let askScope = { count: null, from: '', to: '' };
+// 처음 열면 기간은 최근 7일 (오늘 포함). ×로 지우면 기간 조건 없음
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const defaultScope = () => ({ count: null, from: ymd(new Date(2026, 10, 6 - 6)), to: ymd(new Date(2026, 10, 6)) });
+let askScope = defaultScope();
 let askDraft = '';
 let askJustOpened = false; // 둥근 버튼으로 막 열었을 때만 열리는 움직임 (다시 그릴 때마다 되풀이하지 않게)
 let askSeq = 0;
@@ -515,7 +519,7 @@ const DATE_PRESETS = () => {
   const y = TODAY.getFullYear();
   const m = TODAY.getMonth();
   const d = (yy, mm, dd) => fmtDay(new Date(yy, mm, dd));
-  return [['이번 달', d(y, m, 1), d(y, m + 1, 0)], ['지난달', d(y, m - 1, 1), d(y, m, 0)], ['최근 3개월', d(y, m - 2, 1), fmtDay(TODAY)], ['올해', d(y, 0, 1), fmtDay(TODAY)], ['작년', d(y - 1, 0, 1), d(y - 1, 11, 31)]];
+  return [['최근 7일', fmtDay(new Date(y, m, TODAY.getDate() - 6)), fmtDay(TODAY)], ['이번 달', d(y, m, 1), d(y, m + 1, 0)], ['지난달', d(y, m - 1, 1), d(y, m, 0)], ['최근 3개월', d(y, m - 2, 1), fmtDay(TODAY)], ['올해', d(y, 0, 1), fmtDay(TODAY)], ['작년', d(y - 1, 0, 1), d(y - 1, 11, 31)]];
 };
 const shortDay = (s) => { if (!s) return ''; const [y, m, d] = s.split('-').map(Number); return y === TODAY.getFullYear() ? `${m}월 ${d}일` : `${y}. ${m}. ${d}.`; };
 let closeCondPop = null;
@@ -992,7 +996,7 @@ askUI = params.get('ask') ?? askUI;
 all = makeMeetings(size, { clean, sparse });
 draw();
 // 미리 보기용: 끝난 질문 하나와 진행 중인 질문 하나
-if (params.get('seed') === '1') { startAsk('성능 시험 관련 회의'); askTabs[0].t0 -= 30000; setTimeout(() => { askScope = { count: 50, from: '', to: '' }; startAsk('작년 2월에 한 회의'); askScope = { count: null, from: '', to: '' }; }, 5200); }
+if (params.get('seed') === '1') { askScope = { count: null, from: '', to: '' }; startAsk('성능 시험 관련 회의'); askScope = defaultScope(); askTabs[0].t0 -= 30000; setTimeout(() => { askScope = { count: 50, from: '', to: '' }; startAsk('작년 2월에 한 회의'); askScope = defaultScope(); }, 5200); }
 </script>
 </body>
 </html>
