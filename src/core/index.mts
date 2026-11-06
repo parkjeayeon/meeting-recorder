@@ -5,5 +5,5 @@ export { MeetingError, findRoot, settingsFile, defaultRecordingsDir, durationOf,
 export { writeFileAtomic, writeJsonAtomic, copyFileAtomic } from './write.mjs';
 export * as schema from './schema.mjs';
 export { findStrayFolders, type StrayFolder, type StrayReason } from './stray.mjs';
-export { cleanGuess, inlineGuesses, toReviewItems, noteVariants, stampFor, type ReviewItem } from './review.mjs';
+export { cleanGuess, inlineGuesses, toReviewItems, noteVariants, stampFor, locateHeard, type ReviewItem } from './review.mjs';
 export { UsageWindow, UsageWindows, parseResets, parseClaudeUsage, verifyWindows, codexUsage } from './usage.mjs';

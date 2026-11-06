@@ -44,8 +44,12 @@ const impl = {
     return [first, ...manyMeetings(Number(process.env.STUB_MANY) || 0)];
   },
   // 확인 필요 채팅: 늘 같은 제안을 돌려주고, 적용하면 review.json의 상태를 바꾼다
-  chatReview: async () => ({ text: '"랩캐시도"는 **Memcached**로 보입니다.', proposals: [{ id: 'r1', heard: '랩캐시도', guess: 'Memcached' }] }),
+  // '띄어쓰기'가 든 말에는 녹취에서 그대로 찾지 못한 제안(unmatched)을 돌려준다 — 예전에는 조용히 버려 적용 버튼이 없었다
+  chatReview: async (_d, ids, messages) => (/띄어쓰기/.test(messages.at(-1)?.text ?? '')
+    ? { text: '"랩 캐시 도"는 **Memcached**로 보입니다.', proposals: [], unmatched: [{ id: ids[0], heard: '랩 캐시 도', guess: 'Memcached' }] }
+    : { text: '"랩캐시도"는 **Memcached**로 보입니다.', proposals: [{ id: 'r1', heard: '랩캐시도', guess: 'Memcached' }] }),
   applyReview: async (_dir, fixes) => {
+    calls.applyReview = [...(calls.applyReview ?? []), fixes];
     const review = JSON.parse(read('review.json'));
     for (const f of fixes) Object.assign(review.items.find((it) => it.id === f.id), f.keep ? { status: 'kept' } : { status: 'applied', applied: f.guess, count: 1 });
     fs.writeFileSync(path.join(dir, 'review.json'), JSON.stringify(review));
@@ -117,6 +121,11 @@ const impl = {
     return stubAsk(question, scope);
   },
   askList: async () => [...askJobs.values()].map((j) => ({ ...j })),
+  askStop: async (id) => {
+    const j = askJobs.get(id);
+    if (j?.status === 'running') Object.assign(j, { status: 'stopped', stage: 'stopped', ms: Date.now() - j.t0 });
+    calls.askStop = [...(calls.askStop ?? []), id];
+  },
   askRemove: async (id) => {
     askJobs.delete(id);
     calls.askRemove = [...(calls.askRemove ?? []), id];
@@ -159,7 +168,10 @@ function stubAsk(question, scope) {
   const y = new Date().getFullYear();
   const job = { id: `a${askJobs.size + 1}`, q: question, scope, status: 'running', stage: 'parse', t0: Date.now(), ms: null, conds: null, results: [], candidates: 0, seen: false, error: null };
   askJobs.set(job.id, job);
-  const step = (fn, ms) => setTimeout(() => { if (askJobs.has(job.id)) { fn(); askCb({ ...job }); } }, ms);
+  // '소식없음'이 든 질문은 끝난 소식을 보내지 않는다 (화면이 스스로 본체와 맞추는지), '느린'은 단계마다 10배
+  const quiet = /소식없음/.test(question);
+  const slow = /느린/.test(question) ? 10 : 1;
+  const step = (fn, ms) => setTimeout(() => { if (askJobs.has(job.id) && job.status === 'running') { fn(); if (!(quiet && job.status !== 'running')) askCb({ ...job }); } }, ms * slow);
   const lastYear = /작년/.test(question);
   step(() => {
     job.conds = { from: lastYear ? `${y - 1}-01-01` : null, to: lastYear ? `${y - 1}-12-31` : null, status: null, focus: 'any', topic: '배포', terms: ['배포', '릴리스'] };

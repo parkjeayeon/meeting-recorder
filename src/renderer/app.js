@@ -1259,6 +1259,14 @@ async function removeAsk(t) {
   drawAsk();
   refreshAskPage();
 }
+// 찾는 도중 멈추기: 본체가 돌던 LLM 호출을 끊고 '멈춤'으로 남긴다 (탭과 질문은 남아 다시 찾을 수 있다)
+async function stopAsk(t) {
+  if (t.status !== 'running') return;
+  Object.assign(t, { status: 'stopped', stage: 'stopped', ms: Date.now() - t.t0 });
+  drawAsk();
+  refreshAskPage();
+  await api.askStop(t.id);
+}
 // 회의 화면의 그 질문 탭으로
 function goAsk(t) {
   askToast = null;
@@ -1288,7 +1296,7 @@ api.onAsk((job) => {
   if (finished && job.status === 'blocked') {
     askOpen = true;
     askJustOpened = true;
-  } else if (finished && !viewing) {
+  } else if (finished && !viewing && job.status !== 'stopped') {
     askToast = job;
     clearTimeout(askToastTimer);
     askToastTimer = setTimeout(() => {
@@ -1302,8 +1310,28 @@ api.onAsk((job) => {
   }
 });
 // 진행 중 시간은 1초마다 글자만 바꾼다 (화면 전체를 다시 그리지 않게)
-setInterval(() => {
-  for (const t of askList().filter((x) => x.status === 'running')) for (const el of document.querySelectorAll(`[data-ask-time="${t.id}"]`)) el.textContent = askSecs(t);
+// 찾는 동안은 5초마다 본체의 상태와 맞춘다 (소식을 하나 놓쳐도 '찾는 중'에 멈춰 있지 않게)
+let askTick = 0;
+setInterval(async () => {
+  const running = askList().filter((x) => x.status === 'running');
+  for (const t of running) for (const el of document.querySelectorAll(`[data-ask-time="${t.id}"]`)) el.textContent = askSecs(t);
+  if (!running.length || ++askTick % 5) return;
+  const fresh = new Map((await api.askList()).map((j) => [j.id, j]));
+  let moved = false;
+  for (const t of running) {
+    const j = fresh.get(t.id);
+    if (!j) {
+      askJobs.delete(t.id);
+      moved = true;
+    } else if (j.status !== t.status || j.stage !== t.stage) {
+      askJobs.set(j.id, j);
+      moved = true;
+    }
+  }
+  if (moved) {
+    drawAsk();
+    refreshAskPage();
+  }
 }, 1000);
 
 // 찾을 범위: 조건 칩. 바꿔도 이 칩 줄만 다시 그린다 (채팅 창이 깜빡이지 않게)
@@ -1429,7 +1457,14 @@ function blockedBubble(t) {
 function askBubbles(t) {
   const me = h('div', { class: 'bubble me' }, t.q, h('small', null, `범위 ${scopeText(t.scope)}`));
   if (t.status === 'blocked') return [me, blockedBubble(t)];
-  if (t.status === 'running') return [me, h('div', { class: 'bubble ai' }, h('span', { class: 'busy-line' }, h('span', { class: 'spin' }), ASK_STAGES.find(([k]) => k === t.stage)?.[1] ?? '', num(askSecs(t))))];
+  if (t.status === 'running') return [me, h('div', { class: 'bubble ai' }, h('span', { class: 'busy-line' }, h('span', { class: 'spin' }), ASK_STAGES.find(([k]) => k === t.stage)?.[1] ?? '', h('span', { class: 'num', 'data-ask-time': t.id }, askSecs(t)),
+    h('button', { class: 'btn small ghost ask-stop', onclick: () => stopAsk(t) }, '멈추기')))];
+  if (t.status === 'stopped') return [me, h('div', { class: 'bubble ai' }, h('span', null, `${askSecs(t)} 만에 멈췄습니다.`),
+    h('button', { class: 'btn small', style: 'align-self:flex-start', onclick: async () => {
+      await removeAsk(t);
+      const n = await startAsk(t.q, t.scope);
+      if (n && route.name === 'meetings') goAsk(n);
+    } }, icon('i-redo'), '다시 찾기'))];
   if (t.status === 'error') return [me, h('div', { class: 'bubble ai warn' }, h('span', { class: 'warn-line' }, icon('i-alert'), h('b', null, '찾지 못했습니다')), h('span', null, t.error ?? ''),
     h('div', { class: 'warn-acts' }, h('button', { class: 'btn small', onclick: async () => {
       await removeAsk(t);
@@ -1504,9 +1539,9 @@ function drawAsk() {
 // 회의 목록 갈래 줄 끝의 질문 탭들
 function askChips(filter, setFilter) {
   return askList().filter((t) => t.status !== 'blocked').map((t) => h('button', { class: `chip ask${t.status === 'error' ? ' bad' : ''}`, 'aria-pressed': String(filter === `ask:${t.id}`), title: t.q, onclick: () => setFilter(`ask:${t.id}`) },
-    t.status === 'running' ? h('span', { class: 'spin' }) : icon(t.status === 'error' ? 'i-alert' : 'i-search'),
+    t.status === 'running' ? h('span', { class: 'spin' }) : icon(t.status === 'error' ? 'i-alert' : t.status === 'stopped' ? 'i-x' : 'i-search'),
     askLabel(t),
-    t.status === 'running' ? h('span', { class: 'num', 'data-ask-time': t.id }, askSecs(t)) : t.status === 'done' && num(t.results.length),
+    t.status === 'running' ? h('span', { class: 'num', 'data-ask-time': t.id }, askSecs(t)) : t.status === 'done' ? num(t.results.length) : t.status === 'stopped' && h('span', { class: 'num' }, '멈춤'),
     h('span', { class: 'x', role: 'button', 'aria-label': '탭 닫기', onclick: (e) => {
       e.stopPropagation();
       removeAsk(t);
@@ -1524,6 +1559,7 @@ function askHead(t) {
   const at = steps.findIndex(([k]) => k === t.stage);
   return h('div', { class: 'askhead' },
     h('div', { class: 'qline' }, icon('i-search'), h('b', null, t.q),
+      t.status === 'running' && h('button', { class: 'btn small', onclick: () => stopAsk(t) }, '멈추기'),
       t.status !== 'running' && h('button', { class: 'btn small', onclick: () => {
         askDraft = t.q;
         toggleAsk(true);
@@ -1538,6 +1574,7 @@ function askHead(t) {
       ? h('div', { class: 'steps' }, steps.map(([, label], i) => h('span', { class: i < at ? 'ok' : i === at ? 'now' : '' }, i < at ? icon('i-check') : i === at ? h('span', { class: 'spin' }) : h('span', { style: 'width:11px' }), label)),
         h('span', { class: 'later' }, h('span', { 'data-ask-time': t.id }, askSecs(t)), '· 다른 화면으로 가도 계속 찾습니다'))
       : t.status === 'error' ? h('div', { class: 'err' }, `찾지 못했습니다 · ${t.error ?? ''}`)
+        : t.status === 'stopped' ? h('div', { class: 'conds' }, `${askSecs(t)} 만에 멈췄습니다 · 다시 찾기로 처음부터 찾습니다`)
         : h('div', { class: 'conds' }, `${t.results.length}건 · ${t.candidates ? `후보 ${t.candidates}개 중 추림 · ` : ''}${askSecs(t)} 걸림`));
 }
 
@@ -3005,6 +3042,26 @@ function pageMeeting(id) {
           }),
           fixes.length > 1 && h('button', { class: 'btn small primary', disabled: fixes.some((p) => chat.applying.has(p.id)), onclick: () => apply(fixes.map((p) => ({ id: p.id, heard: p.heard, guess: p.guess }))) }, `${fixes.length}개 모두 적용`)));
       }
+      // 녹취에서 고칠 말을 찾지 못한 제안: 버리지 않고 이유와 함께. 녹취에 있는 글자로 고쳐 넣으면 적용할 수 있다
+      const unmatched = (m.unmatched ?? []).filter((p) => items.find((x) => x.id === p.id)?.status === 'open');
+      if (unmatched.length) {
+        bubble.append(h('div', { class: 'proposals' }, unmatched.map((p) => {
+          const target = h('input', { type: 'text', value: p.heard ?? '', placeholder: '녹취에 있는 글자', 'aria-label': '고칠 대상', spellcheck: false });
+          const go = h('button', { class: 'btn small', onclick: async () => {
+            const heard = target.value.trim();
+            if (!heard) return target.focus();
+            go.classList.add('busy');
+            await applyFixes(r, [{ id: p.id, heard, guess: p.guess }]);
+            draw();
+          } }, '적용');
+          target.onkeydown = (e) => {
+            if (e.key === 'Enter' && !e.isComposing) go.click();
+          };
+          return h('div', { class: 'proposal unmatched' },
+            h('div', { class: 'proposal-row' }, target, icon('i-right'), h('b', null, p.guess), go),
+            h('span', { class: 'hint', style: 'margin:0' }, p.heard ? `녹취에서 '${p.heard}'를 그대로 찾지 못했습니다. 녹취에 적힌 글자로 고치면 적용할 수 있습니다.` : '고칠 대상을 받지 못했습니다. 녹취에 적힌 글자를 넣으면 적용할 수 있습니다.'));
+        })));
+      }
       if (m.redo && !m.redo.empty) {
         const it = items.find((x) => x.id === m.redo.id);
         const applied = Boolean(it?.redo?.appliedAt);
@@ -3033,7 +3090,7 @@ function pageMeeting(id) {
       draw();
       try {
         const res = await api.chatReview(r.dir, chat.ids, chat.messages.map(({ role, text: t, redo }) => ({ role, text: redo?.text ? `${t}\n${redo.text}` : t })));
-        chat?.messages.push({ role: 'assistant', text: res.text, proposals: res.proposals });
+        chat?.messages.push({ role: 'assistant', text: res.text, proposals: res.proposals, unmatched: res.unmatched });
       } catch (err) {
         chat?.messages.push({ role: 'assistant', text: `답을 받지 못했습니다: ${err.message}` });
       }

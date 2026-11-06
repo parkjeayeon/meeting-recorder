@@ -874,6 +874,7 @@ function askMeetings() {
 }
 ipcMain.handle('ask:start', (_e, question, scope) => askMod.start(question, scope));
 ipcMain.handle('ask:list', () => askMod.list());
+ipcMain.handle('ask:stop', (_e, id) => askMod.stop(id));
 ipcMain.handle('ask:remove', (_e, id) => askMod.remove(id));
 ipcMain.handle('ask:seen', (_e, id) => askMod.seen(id));
 
@@ -1113,7 +1114,6 @@ ipcMain.handle('recordings:reset', async () => {
   dictation.saveSettings({ recordingsDir: null });
   mergePortableSettings();
   writePortableSettings();
-  askMod.init({ getMeetings: askMeetings, onChange: (job) => send('ask:update', job) });
   return { dir: DEFAULT_RECORDINGS_DIR, isDefault: true };
 });
 
@@ -1288,6 +1288,7 @@ async function init() {
   }
   mergePortableSettings();
   writePortableSettings();
+  askMod.init({ getMeetings: askMeetings, onChange: (job) => send('ask:update', job) }); // 질문으로 찾기: 회의 목록과 진행 소식을 화면에
   // 권한 대화상자를 기다리느라 fn 감지·독·로그인 항목 설정이 멈추지 않게 await하지 않는다
   if (process.platform === 'darwin') systemPreferences.askForMediaAccess('microphone');
   fs.mkdirSync(RECORDINGS_DIR, { recursive: true });

@@ -74,3 +74,20 @@ export function stampFor(item: Pick<ReviewItem, 'at' | 'heard' | 'heardNote' | '
   }
   return null;
 }
+
+// LLM이 채팅에서 제안한 "고칠 말"을 녹취에서 찾는다. 그대로 있으면 그것, 띄어쓰기만 다르면 녹취에 실제로 있는 글자로 바꿔 준다
+// ("박 편님" ↔ "박편님"). 시각·화자 표시([00:05] [화자 1])는 건너뛴다. 못 찾으면 null — 이때 적용 버튼 대신 이유를 보인다
+export function locateHeard(heard: string | null | undefined, transcript: string): string | null {
+  const want = String(heard ?? '').trim();
+  if (!want) return null;
+  if (transcript.includes(want)) return want;
+  const chars = [...want.replace(/\s+/g, '')];
+  if (chars.length < 2 || chars.length > 80) return null;
+  const re = new RegExp(chars.map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s*'));
+  for (const line of transcript.split('\n')) {
+    const body = line.replace(/^\[[\d:]+\]\s*(?:\[[^\]]+\]\s*)?/, '');
+    const m = re.exec(body);
+    if (m) return m[0];
+  }
+  return null;
+}

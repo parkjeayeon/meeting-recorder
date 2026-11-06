@@ -277,6 +277,42 @@ app.whenReady().then(async () => {
   const removed = await js(`({ calls: window.stubCalls().askRemove ?? [], left: document.querySelectorAll('.chip.ask').length })`);
   results.push(['질문 탭 닫기', removed.calls.length >= 2 && removed.left === 2, JSON.stringify(removed)]);
 
+  // 확인 필요 채팅: 녹취에서 그대로 찾지 못한 제안도 버리지 않고 보여 주고, 고칠 대상을 녹취 글자로 고쳐 적용할 수 있다
+  await js(`location.hash='#meeting/${id}'`);
+  await wait(900);
+  await tabClick('확인 필요');
+  await wait(400);
+  await js(`[...document.querySelectorAll('.ritem.open button')].find(b=>b.textContent.includes('채팅'))?.click()`);
+  await wait(400);
+  await js(`(() => { const t = document.querySelector('.chat textarea'); t.value = '띄어쓰기가 달라요'; t.dispatchEvent(new Event('input')); t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`);
+  await wait(600);
+  const um = await js(`({ row: Boolean(document.querySelector('.proposal.unmatched')), target: document.querySelector('.proposal.unmatched input')?.value ?? null, hint: document.querySelector('.proposal.unmatched .hint')?.textContent ?? null })`);
+  await js(`(() => { const i = document.querySelector('.proposal.unmatched input'); i.value = '랩캐시도'; [...document.querySelectorAll('.proposal.unmatched button')].find(b=>b.textContent==='적용').click(); })()`);
+  await wait(700);
+  const sentFix = await js('window.stubCalls().applyReview?.at(-1) ?? null');
+  results.push(['채팅 제안: 녹취에서 못 찾아도 적용 버튼', um.row && um.target === '랩 캐시 도' && Boolean(um.hint?.includes('그대로 찾지 못했습니다')) && sentFix?.[0]?.heard === '랩캐시도' && sentFix[0].guess === 'Memcached', `${JSON.stringify(um)} · 보낸 것 ${JSON.stringify(sentFix)}`]);
+  await js(`document.querySelector('.chat-head .icon-btn')?.click()`);
+
+  // 찾는 도중 멈추기: 질문 탭의 '멈추기' → 칩에 '멈춤', 알림 없음
+  await ask('느린 배포 질문');
+  await js(`document.querySelector('.askpanel header .icon-btn')?.click()`);
+  await js(`location.hash='#meetings'`);
+  await wait(500);
+  await js(`[...document.querySelectorAll('.chip.ask')].find(c=>c.title==='느린 배포 질문')?.click()`);
+  await wait(300);
+  await js(`[...document.querySelectorAll('.askhead .btn')].find(b=>b.textContent==='멈추기')?.click()`);
+  await wait(400);
+  const stopped = await js(`({ calls: window.stubCalls().askStop ?? [], chip: [...document.querySelectorAll('.chip.ask')].find(c=>c.title==='느린 배포 질문')?.textContent ?? null, head: document.querySelector('.askhead .conds:last-child')?.textContent ?? null })`);
+  await wait(3500);
+  const toastAfterStop = await js(`Boolean(document.querySelector('.fab-toast'))`);
+  results.push(['찾는 도중 멈추기', stopped.calls.length === 1 && Boolean(stopped.chip?.includes('멈춤')) && Boolean(stopped.head?.includes('멈췄습니다')) && !toastAfterStop, `${JSON.stringify(stopped)} · 알림 ${toastAfterStop}`]);
+  // 끝난 소식을 놓쳐도 화면이 본체 상태로 맞춘다 (5초마다)
+  await ask('소식없음 배포 질문');
+  await js(`document.querySelector('.askpanel header .icon-btn')?.click()`);
+  await wait(7000);
+  const synced = await js(`[...document.querySelectorAll('.chip.ask')].find(c=>c.title==='소식없음 배포 질문')?.textContent ?? null`);
+  results.push(['놓친 소식은 스스로 맞춤', Boolean(synced && !/초$/.test(synced) && synced.includes('2')), JSON.stringify(synced)]);
+
   let failed = 0;
   for (const [name, ok, detail] of results) {
     if (!ok) failed++;

@@ -45,9 +45,9 @@ function workDir() {
   return dir;
 }
 
-function run(bin, args, { timeout, input, env } = {}) {
+function run(bin, args, { timeout, input, env, signal } = {}) {
   return new Promise((resolve, reject) => {
-    const child = execFile(bin, args, { cwd: workDir(), timeout, maxBuffer: 4 * 1024 * 1024, ...(env ? { env: { ...process.env, ...env } } : {}) }, (err, stdout, stderr) => {
+    const child = execFile(bin, args, { cwd: workDir(), timeout, signal, maxBuffer: 4 * 1024 * 1024, ...(env ? { env: { ...process.env, ...env } } : {}) }, (err, stdout, stderr) => {
       if (err) reject(Object.assign(err, { stderr }));
       else resolve({ stdout, stderr });
     });
@@ -96,7 +96,7 @@ function wrap(text) {
 }
 
 // cache: false면 캐시를 만들지 않는다 — 다시 읽을 일 없는 호출은 캐시를 만드는 값(보통 입력보다 비쌈)만 든다 (결정 51)
-async function viaClaudeCode({ system, input, effort, timeout, cache = true }) {
+async function viaClaudeCode({ system, input, effort, timeout, cache = true, signal }) {
   const out = await run(findBin('claude-code'), [
     '-p',
     '--model', 'opus',
@@ -107,11 +107,11 @@ async function viaClaudeCode({ system, input, effort, timeout, cache = true }) {
     '--setting-sources', '',
     '--no-session-persistence',
     '--output-format', 'text',
-  ], { timeout, input, env: cache ? null : { DISABLE_PROMPT_CACHING: '1' } });
+  ], { timeout, input, signal, env: cache ? null : { DISABLE_PROMPT_CACHING: '1' } });
   return out.stdout.trim();
 }
 
-async function viaCodex({ system, input, effort, timeout }) {
+async function viaCodex({ system, input, effort, timeout, signal }) {
   const outFile = path.join(os.tmpdir(), `mr-codex-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`);
   try {
     await run(findBin('codex'), [
@@ -120,14 +120,14 @@ async function viaCodex({ system, input, effort, timeout }) {
       '-c', `model_reasoning_effort=${effort}`,
       '-o', outFile,
       '-', // 프롬프트를 stdin에서 읽는다
-    ], { timeout, input: `${system}\n\n${input}` });
+    ], { timeout, signal, input: `${system}\n\n${input}` });
     return fs.readFileSync(outFile, 'utf8').trim();
   } finally {
     fs.rmSync(outFile, { force: true });
   }
 }
 
-async function viaApi({ system, input, effort, timeout, apiKey, maxTokens }) {
+async function viaApi({ system, input, effort, timeout, apiKey, maxTokens, signal }) {
   const client = new Anthropic({ apiKey, timeout, maxRetries: 0 });
   const stream = client.beta.messages.stream({
     model: API_MODEL,
@@ -137,7 +137,7 @@ async function viaApi({ system, input, effort, timeout, apiKey, maxTokens }) {
     fallbacks: 'default',
     system,
     messages: [{ role: 'user', content: input }],
-  });
+  }, { signal });
   const response = await stream.finalMessage();
   if (response.stop_reason === 'refusal') return '';
   return response.content.filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
@@ -146,10 +146,11 @@ async function viaApi({ system, input, effort, timeout, apiKey, maxTokens }) {
 const CALLERS = { 'claude-code': viaClaudeCode, codex: viaCodex, api: viaApi };
 
 // 로그인된 계정으로 한 번 호출한다. 받아쓰기 다듬기와 회의록 작성이 함께 쓴다.
-async function complete({ system, input, choice, apiKey, effort = 'low', timeouts = TIMEOUT_MS, maxTokens = 4096, cache = true }) {
+// signal: 멈추기 (AbortController) — CLI 자식 프로세스를 끝내고 API 요청을 끊는다
+async function complete({ system, input, choice, apiKey, effort = 'low', timeouts = TIMEOUT_MS, maxTokens = 4096, cache = true, signal }) {
   const provider = await resolveProvider(choice, { hasApiKey: Boolean(apiKey) });
   if (!provider) throw Object.assign(new Error('로그인된 Claude Code·Codex 계정이나 API 키가 없습니다'), { noProvider: true });
-  const text = await CALLERS[provider]({ system, input, effort, timeout: timeouts[provider], apiKey, maxTokens, cache });
+  const text = await CALLERS[provider]({ system, input, effort, timeout: timeouts[provider], apiKey, maxTokens, cache, signal });
   return { text, provider };
 }
 

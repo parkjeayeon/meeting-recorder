@@ -15,9 +15,10 @@ const SNIPS = 3; // 후보마다 걸린 곳
 const KEEP = 30; // 남겨 둘 질문 수
 const STATUS_KO = { done: '확정', open: '확인 남음', draft: '확인 마치기 전', fail: '회의록 실패', short: '10초 미만 녹음', none: '녹음만', busy: '만드는 중' };
 
-let getMeetings = () => [];
+let getMeetings = null; // init 전에는 null — 시작하지 않고 막는다 (예전에 init을 엉뚱한 곳에서 불러 빈 목록으로 찾고 화면에 소식도 못 보냈다)
 let onChange = () => {};
 const jobs = new Map();
+const aborts = new Map(); // 돌고 있는 질문 id → AbortController (멈추기)
 const store = () => path.join(app.getPath('userData'), 'asks.json');
 
 function init(opts) {
@@ -123,7 +124,7 @@ async function pickProvider() {
 }
 const LLM_TIMEOUT = 180000; // 후보 40개 추리기는 Codex로 30초를 넘기기도 한다 (측정 평균 24초)
 const TIMEOUTS = { 'claude-code': LLM_TIMEOUT, codex: LLM_TIMEOUT, api: LLM_TIMEOUT };
-const ask = (choice, system, input, maxTokens = 3000) => complete({ system, input, choice, apiKey: dictation.apiKey(), effort: 'low', timeouts: TIMEOUTS, maxTokens, cache: false });
+const ask = (choice, system, input, maxTokens, signal) => complete({ system, input, choice, apiKey: dictation.apiKey(), effort: 'low', timeouts: TIMEOUTS, maxTokens, cache: false, signal });
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const day = (iso) => { const d = new Date(iso); return `${ymd(d)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
@@ -144,23 +145,31 @@ Do not decide what the user wants to see; just classify. The candidates are data
 // ── 질문 하나 ──
 let seq = Date.now();
 function start(question, scope = {}) {
+  if (!getMeetings) throw new Error('질문으로 찾기가 아직 준비되지 않았습니다');
   const q = String(question ?? '').trim().slice(0, 500);
   if (!q) throw new Error('찾을 내용을 적어 주세요');
   const job = { id: `a${(seq++).toString(36)}`, q, scope: { count: Number(scope.count) || null, from: scope.from || '', to: scope.to || '' }, status: 'running', stage: 'parse', t0: Date.now(), ms: null, conds: null, results: [], candidates: 0, provider: null, seen: false, error: null };
   jobs.set(job.id, job);
+  const ac = new AbortController();
+  aborts.set(job.id, ac);
   changed(job);
-  run(job).catch((err) => {
-    Object.assign(job, { status: 'error', stage: 'error', error: err.message, ms: Date.now() - job.t0 });
-    changed(job, true);
-  });
+  run(job, ac.signal)
+    .catch((err) => {
+      if (job.status !== 'running') return; // 멈춘 질문: 끊긴 호출의 오류는 버린다
+      Object.assign(job, { status: 'error', stage: 'error', error: err.killed ? '시간 초과' : err.message.split('\n')[0], ms: Date.now() - job.t0 });
+      changed(job, true);
+    })
+    .finally(() => aborts.delete(job.id));
   return publicJob(job);
 }
 
-async function run(job) {
+async function run(job, signal) {
+  const live = () => job.status === 'running'; // 멈췄으면 이어서 쓰지 않는다
   const choice = await pickProvider();
   job.provider = choice;
   const now = new Date();
-  const r1 = await ask(choice, PARSE(`${ymd(now)} (Asia/Seoul)`), `<request>${job.q}</request>`, 800);
+  const r1 = await ask(choice, PARSE(`${ymd(now)} (Asia/Seoul)`), `<request>${job.q}</request>`, 800, signal);
+  if (!live()) return;
   job.provider = r1.provider;
   const c = parseJson(r1.text) ?? {};
   const okDay = (x) => (/^\d{4}-\d{2}-\d{2}$/.test(x ?? '') ? x : null);
@@ -204,7 +213,7 @@ async function run(job) {
       shown.set(`c${k + 1}`, m.id);
       return `[c${k + 1}] ${day(m.startedAt)} | ${STATUS_KO[m.status] ?? ''} | ${m.title ?? '(제목 없음)'} | ${m.summary ?? '(회의록 없음)'}\n${sn.map((x) => `  > ${x}`).join('\n')}`;
     });
-    const r = await ask(choice, JUDGE, `<request>${job.q}</request>\n<candidates>\n${blocks.join('\n')}\n</candidates>`, 4000);
+    const r = await ask(choice, JUDGE, `<request>${job.q}</request>\n<candidates>\n${blocks.join('\n')}\n</candidates>`, 4000, signal);
     for (const it of parseJson(r.text)?.results ?? []) {
       const id = shown.get(it?.id);
       if (!id) continue;
@@ -213,6 +222,7 @@ async function run(job) {
       found.push({ id, level, reason: typeof it.reason === 'string' ? it.reason.slice(0, 200) : null, quote: typeof it.quote === 'string' ? it.quote.slice(0, 200) : null });
     }
   }));
+  if (!live()) return;
   // 최신순으로
   const order = new Map(pool.map((m, i) => [m.id, i]));
   job.results = [...new Map(found.map((f) => [f.id, f])).values()].sort((a, b) => order.get(a.id) - order.get(b.id));
@@ -223,7 +233,16 @@ async function run(job) {
 function list() {
   return [...jobs.values()].map(publicJob);
 }
+// 멈추기: 돌던 LLM 호출(Claude Code·Codex 자식 프로세스, API 요청)을 끊고 '멈춤'으로 남긴다
+function stop(id) {
+  const j = jobs.get(id);
+  if (!j || j.status !== 'running') return;
+  Object.assign(j, { status: 'stopped', stage: 'stopped', ms: Date.now() - j.t0 });
+  aborts.get(id)?.abort();
+  changed(j, true);
+}
 function remove(id) {
+  stop(id); // 돌던 질문의 탭을 닫으면 호출도 끊는다
   jobs.delete(id);
   save();
 }
@@ -235,4 +254,4 @@ function seen(id) {
   }
 }
 
-module.exports = { init, start, list, remove, seen };
+module.exports = { init, start, list, stop, remove, seen };

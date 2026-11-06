@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanGuess, inlineGuesses, noteVariants, stampFor, toReviewItems } from './review.mjs';
+import { cleanGuess, inlineGuesses, locateHeard, noteVariants, stampFor, toReviewItems } from './review.mjs';
 
 const transcript = '[00:05] [화자 1] 통신 한정성이 제일 중요해요\n[12:30] [화자 2] 랩캐시도 쪽은 제가 볼게요\n';
 
@@ -73,5 +73,21 @@ describe('stampFor', () => {
   it('적힌 시각은 그대로, 녹취에 없으면 비움', () => {
     expect(stampFor({ at: '01:00', heard: '하윤님', heardNote: null, note: '' }, t)).toBe('01:00');
     expect(stampFor({ at: null, heard: null, heardNote: '없는말', note: '내용이 끊김' }, t)).toBeNull();
+  });
+});
+
+describe('locateHeard', () => {
+  const t = '[00:05] [화자 1] 하윤 님이 말씀하신 대로\n[00:09] [화자 2] 랩캐시도 쪽\n';
+  it('그대로 있으면 그것, 띄어쓰기만 다르면 녹취의 글자', () => {
+    expect(locateHeard('랩캐시도', t)).toBe('랩캐시도');
+    expect(locateHeard('하윤님이', t)).toBe('하윤 님이');
+    expect(locateHeard('랩 캐시도', t)).toBe('랩캐시도');
+  });
+  it('시각·화자 표시는 건너뛰고, 없거나 한 글자면 null', () => {
+    expect(locateHeard('화자 1', t)).toBe('화자 1'); // 줄에 그대로 있는 글자는 그대로 (적용 쪽에서 막는 일이 아님)
+    expect(locateHeard('05 화자', t)).toBeNull();
+    expect(locateHeard('없는말', t)).toBeNull();
+    expect(locateHeard('랩', t)).toBe('랩');
+    expect(locateHeard('', t)).toBeNull();
   });
 });

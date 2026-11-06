@@ -44,12 +44,22 @@ const CONDS = {
   '확인 안 끝난 회의': { from: null, to: null, status: ['open', 'draft'], focus: 'any', topic: null, terms: [] },
   '면접 회의': { from: null, to: null, status: null, focus: 'any', topic: '채용', terms: ['면접', '지원자'] },
   '실패': null,
+  '느린 질문': { from: null, to: null, status: null, focus: 'any', topic: '배포', terms: ['배포'] },
 };
 const MAIN = { 배포: ['내보내'], 장애: ['장애 회고'], 채용: ['면접'] };
 const MENTION = { 배포: ['밀렸'], 장애: ['장애 때문'] };
-async function fakeComplete({ system, input, cache }) {
+const aborted = [];
+async function fakeComplete({ system, input, cache, signal }) {
   calls.push({ kind: /turn a user's request/.test(system) ? 'parse' : 'judge', cache, input });
-  await new Promise((r) => setTimeout(r, 30));
+  // 멈추기: 진짜 CLI처럼 signal이 오면 바로 끝난다 ('느린 질문'은 3초 걸린다)
+  await new Promise((resolve, reject) => {
+    const t = setTimeout(resolve, input.includes('느린 질문') ? 3000 : 30);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(t);
+      aborted.push(input.slice(0, 30));
+      reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' }));
+    });
+  });
   if (/turn a user's request/.test(system)) {
     const q = /<request>([\s\S]*?)<\/request>/.exec(input)[1];
     if (CONDS[q] === null) throw new Error('시간 초과');
@@ -78,6 +88,20 @@ setTimeout(() => {
 
 app.whenReady().then(async () => {
   const ask = require('../../src/ask');
+  const results = [];
+  const check = (name, ok, detail) => results.push([name, ok, detail]);
+  // init 전에는 시작하지 않는다 (예전에 init을 앱 시작이 아닌 곳에서 불러, 빈 회의 목록으로 찾고 화면에 소식도 못 보냈다)
+  let early = null;
+  try {
+    ask.start('배포 회의', {});
+  } catch (err) {
+    early = err.message;
+  }
+  check('준비 전에는 시작하지 않음', Boolean(early?.includes('준비')), String(early));
+  // 앱 시작(main.js의 init())에서 준비하는지
+  const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.js'), 'utf8');
+  const initBody = mainSrc.slice(mainSrc.indexOf('async function init() {'), mainSrc.indexOf('\n}\n', mainSrc.indexOf('async function init() {')));
+  check('앱 시작에서 준비', /askMod\.init\(\{ getMeetings: askMeetings, onChange:/.test(initBody) && (mainSrc.match(/askMod\.init\(/g) ?? []).length === 1, `init() 안 ${/askMod\.init\(/.test(initBody)} · 전체 ${(mainSrc.match(/askMod\.init\(/g) ?? []).length}곳`);
   const events = [];
   ask.init({ getMeetings: meetings, onChange: (j) => events.push(j) });
   const until = (id) => new Promise((resolve) => {
@@ -90,8 +114,6 @@ app.whenReady().then(async () => {
   });
   const run = async (q, scope = {}) => until(ask.start(q, scope).id);
   const ids = (j) => j.results.map((r) => `${r.id}:${r.level ?? '-'}`).join(' ');
-  const results = [];
-  const check = (name, ok, detail) => results.push([name, ok, detail]);
 
   // 주제: 주로 다룸·잠깐 언급, 두 글자 말(배포)도 찾고 최신순
   let j = await run('배포 회의');
@@ -124,6 +146,19 @@ app.whenReady().then(async () => {
   // 동시에 여러 질문
   const [a, b] = await Promise.all([run('면접 회의'), run('배포 회의')]);
   check('여러 질문 동시에', ids(a) === 'm3:main' && ids(b) === 'm1:main m2:mention', `${ids(a)} | ${ids(b)}`);
+  // 멈추기: 돌던 호출을 끊고 '멈춤'으로 남는다. 끊긴 호출의 오류가 '실패'로 덮어쓰지 않는다
+  const slow = ask.start('느린 질문', {});
+  await new Promise((r) => setTimeout(r, 100));
+  const t0 = Date.now();
+  ask.stop(slow.id);
+  await new Promise((r) => setTimeout(r, 200));
+  const st = ask.list().find((x) => x.id === slow.id);
+  check('찾는 도중 멈추기', st.status === 'stopped' && aborted.some((x) => x.includes('느린 질문')) && Date.now() - t0 < 1000 && st.ms < 1000, `${st.status} · 끊긴 호출 ${aborted.length} · ${st.ms}ms`);
+  const slow2 = ask.start('느린 질문', {});
+  await new Promise((r) => setTimeout(r, 50));
+  ask.remove(slow2.id);
+  await new Promise((r) => setTimeout(r, 100));
+  check('돌던 탭을 닫으면 호출도 끊음', aborted.length === 2 && !ask.list().some((x) => x.id === slow2.id), `끊긴 호출 ${aborted.length}`);
   // 색인: 바뀐 회의만 다시 넣고, 지운 회의는 빠진다
   const { DatabaseSync } = require('node:sqlite');
   const db = new DatabaseSync(path.join(app.getPath('userData'), 'search-index.sqlite'));
