@@ -19,7 +19,7 @@ app.whenReady().then(async () => {
   const w = new BrowserWindow({ width: 1320, height: 880, show: false });
   for (const theme of ['light', 'dark']) {
     nativeTheme.themeSource = theme;
-    for (const v of ['ledger', 'calendar', 'triage']) {
+    for (const v of ['ledger', 'mix', 'triage']) {
       await w.loadFile(page, { search: `v=${v}&n=160` });
       await new Promise((r) => setTimeout(r, 700));
       fs.writeFileSync(path.join(shot, `${v}-${theme}.png`), (await w.capturePage()).toPNG());

@@ -32,7 +32,7 @@
   .lrow:hover { background: var(--panel-2); }
   .lrow.daystart { border-top: 1px solid var(--line); border-radius: 0 0 9px 9px; }
   .ledger-month .lrow.daystart:first-of-type { border-top: 0; }
-  .lday { display: flex; align-items: baseline; gap: 4px; font-size: 13px; font-weight: 650; color: var(--ink); }
+  .lday { display: flex; align-items: baseline; gap: 4px; white-space: nowrap; font-size: 13px; font-weight: 650; color: var(--ink); }
   .lday small { font-size: 11.5px; font-weight: 500; color: var(--ink-3); }
   .lday.weekend small { color: var(--accent); }
   .ltime { font-size: 12px; color: var(--ink-3); }
@@ -57,47 +57,15 @@
   .index button .num { font-size: 11px; color: var(--ink-3); }
   .index .year { margin: 10px 0 4px 8px; font-size: 11.5px; color: var(--ink-3); font-weight: 600; }
 
-  /* ── B. 달력: 주마다 한 줄, 요일 칸, 오른쪽 미리보기 ── */
-  .cal-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 296px; gap: 20px; align-items: start; }
-  .cal { border: 1px solid var(--line); border-radius: 14px; overflow: clip; }
-  .cal-head, .week { display: grid; grid-template-columns: 52px repeat(5, minmax(0, 1fr)) repeat(2, minmax(0, 0.45fr)); }
-  .cal-head { position: sticky; top: 0; z-index: 2; background: var(--panel-2); border-bottom: 1px solid var(--line); }
-  .cal-head div { padding: 8px 10px; font-size: 11.5px; font-weight: 600; color: var(--ink-3); }
-  .week + .week { border-top: 1px solid var(--line); }
-  .week.newmonth { border-top: 1px solid var(--line-2); }
-  .wgut { padding: 8px 6px 8px 10px; font-size: 12px; font-weight: 700; color: var(--ink); line-height: 1.2; }
-  .wgut small { display: block; font-weight: 500; color: var(--ink-3); font-size: 11px; }
-  .cell { min-height: 92px; padding: 6px 6px 8px; border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-  .cell.weekend { background: var(--panel-2); }
-  .cell.other { background: repeating-linear-gradient(135deg, transparent 0 6px, var(--panel-2) 6px 7px); }
-  .cell .d { white-space: nowrap; font: 500 11.5px var(--mono); color: var(--ink-3); padding: 0 4px 2px; }
-  .cell .d.first { color: var(--ink); font-weight: 700; }
-  .cell.today .d { color: var(--accent); font-weight: 700; }
-  .chipm {
-    display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; padding: 3px 6px; border: 0; border-radius: 6px;
-    background: none; color: var(--ink); font-size: 12px; text-align: left; line-height: 1.35;
-  }
-  .chipm:hover { background: var(--panel-3); }
-  .chipm[aria-pressed='true'] { background: var(--ink); color: var(--panel); }
-  .chipm[aria-pressed='true'] time { color: inherit; opacity: .7; }
-  .chipm time { font-size: 10.5px; color: var(--ink-3); flex: none; }
-  .chipm span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .chipm i { width: 6px; height: 6px; border-radius: 50%; flex: none; }
-  .chipm i.open { background: var(--accent); }
-  .chipm i.fail { background: var(--accent); box-shadow: 0 0 0 2px var(--accent-wash-2); }
-  .chipm i.done { background: var(--line-2); }
-  .chipm i.busy { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
-  .chipm.muted span { color: var(--ink-3); }
-  .more { font-size: 11.5px; color: var(--ink-3); padding: 0 6px; border: 0; background: none; text-align: left; }
-  .preview { position: sticky; top: 8px; border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
-  .preview .meta { font-size: 12px; color: var(--ink-3); display: flex; gap: 6px; align-items: center; }
-  .preview h2 { margin: 0; font-size: 18px; font-weight: 720; letter-spacing: -0.02em; line-height: 1.3; }
-  .preview p { margin: 0; font-size: 13.5px; color: var(--ink-2); line-height: 1.6; }
-  .preview .tags { display: flex; gap: 6px; flex-wrap: wrap; }
-  .preview .empty-p { color: var(--ink-3); font-size: 13px; padding: 24px 0; text-align: center; }
-  .preview ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--ink-2); }
-  .preview ul li { display: flex; gap: 8px; }
-  .preview ul li::before { content: ''; flex: none; width: 12px; height: 12px; margin-top: 3px; border: 1.5px solid var(--line-2); border-radius: 4px; }
+  /* ── B. 섞기: 손볼 회의 + 최근 2주 (C) 위에, 그 아래는 장부 (A). 오른쪽 바로가기가 전체를 잇는다 ── */
+  .mix-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 132px; gap: 28px; }
+  .mix-sec { scroll-margin-top: 8px; }
+  .mix-sec + .mix-sec { margin-top: 36px; }
+  .archive-h { display: flex; align-items: baseline; gap: 8px; margin: 0 0 4px; padding-top: 4px; }
+  .archive-h h2 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -0.015em; }
+  .archive-h span { font-size: 12px; color: var(--ink-3); }
+  .index .sep { height: 1px; margin: 8px 8px; background: var(--line); }
+  .index button.hot .num { color: var(--accent); font-weight: 600; }
 
   /* ── C. 손볼 것 먼저: 할 일 칸 + 최근 + 접힌 달 ── */
   .triage { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; margin-bottom: 36px; }
@@ -182,7 +150,7 @@
     <header class="topbar">
       <div class="lab-bar">
         <div class="seg" id="variant" role="group" aria-label="보기">
-          <button data-v="ledger">A · 장부</button><button data-v="calendar">B · 달력</button><button data-v="triage">C · 손볼 것 먼저</button>
+          <button data-v="ledger">A · 장부</button><button data-v="mix">B · 손볼 것 + 장부</button><button data-v="triage">C · 손볼 것 먼저</button>
         </div>
         <div class="seg" id="size" role="group" aria-label="회의 수">
           <button data-n="40">40개</button><button data-n="160">160개</button><button data-n="420">420개</button>
@@ -277,7 +245,6 @@ let variant = 'ledger';
 let size = 160;
 let q = '';
 let filter = 'all';
-let picked = null;
 const FILTERS = [['all', '전체', () => true], ['open', '확인 남음', (m) => m.open > 0], ['fail', '실패·짧은 녹음', (m) => m.status === 'fail' || m.status === 'short']];
 const visible = () => all.filter(FILTERS.find((f) => f[0] === filter)[2]).filter((m) => !q || `${m.title ?? ''} ${m.summary ?? ''}`.includes(q));
 
@@ -301,87 +268,98 @@ const hours = (list) => { const s = list.reduce((n, m) => n + m.dur, 0); return 
 
 // ── A. 장부 ──
 function ledger(list) {
-  const months = byMonth(list);
-  const body = h('div');
   const index = h('nav', { class: 'index', 'aria-label': '달' }, h('h3', null, '바로 가기'));
+  const body = h('div', null, monthSections(list, index));
+  scrollSpy(body, index);
+  return h('div', { class: 'ledger-wrap' }, body, index);
+}
+
+// ── B. 섞기: C의 위쪽 + A의 장부 ──
+// 장부의 달 묶음을 만든다 (A·B가 같이 쓴다). index에 달 버튼을 더한다
+function monthSections(list, index) {
+  const out = [];
   let year = null;
-  for (const [k, ms] of months) {
+  for (const [k, ms] of byMonth(list)) {
     const d = ms[0].at;
     if (d.getFullYear() !== year) { year = d.getFullYear(); index.append(h('div', { class: 'year' }, `${year}년`)); }
-    const sec = h('section', { class: 'ledger-month', id: `mon-${k}` }, h('div', { class: 'ledger-mhead' }, h('h2', null, `${d.getFullYear()}년 ${d.getMonth() + 1}월`), h('span', null, `${ms.length}건 · ${hours(ms)}`)));
-    let prev = null;
-    for (const m of ms) {
-      const first = !prev || !sameDay(prev.at, m.at);
-      const wk = m.at.getDay();
-      sec.append(h('a', { class: `lrow${first ? ' daystart' : ''}`, href: '#' },
-        first ? h('span', { class: `lday${wk === 0 || wk === 6 ? ' weekend' : ''}` }, String(m.at.getDate()), h('small', null, sameDay(m.at, TODAY) ? '오늘' : WD[wk])) : h('span'),
-        h('time', { class: 'ltime' }, hm(m.at)),
-        h('span', { class: `ltitle${m.title ? '' : ' muted'}` }, h('b', null, titleOf(m)), m.summary && h('span', null, m.summary)),
-        stateOf(m),
-        h('span', { class: 'ldur num' }, clock(m.dur)),
-        speakers(m.speakers)));
-      prev = m;
-    }
-    body.append(sec);
-    index.append(h('button', { 'data-k': k, onclick: () => $(`mon-${k}`).scrollIntoView({ block: 'start' }) }, `${d.getMonth() + 1}월`, h('span', { class: 'num' }, String(ms.length))));
+    const sec = h('section', { class: 'ledger-month', id: `mon-${k}`, 'data-spy': '' }, h('div', { class: 'ledger-mhead' }, h('h2', null, `${d.getFullYear()}년 ${d.getMonth() + 1}월`), h('span', null, `${ms.length}건 · ${hours(ms)}`)));
+    sec.append(...ledgerRows(ms));
+    out.push(sec);
+    index.append(h('button', { 'data-target': `mon-${k}`, onclick: () => $(`mon-${k}`).scrollIntoView({ block: 'start' }) }, `${d.getMonth() + 1}월`, h('span', { class: 'num' }, String(ms.length))));
   }
-  // 지금 보고 있는 달을 색인에 표시
+  return out;
+}
+
+// 장부 줄: 날짜는 그날 첫 줄에만. recent면 '오늘·어제·11월 4일'로 (달 제목이 없는 구획)
+function ledgerRows(ms, { recent = false } = {}) {
+  let prev = null;
+  return ms.map((m) => {
+    const first = !prev || !sameDay(prev.at, m.at);
+    prev = m;
+    const wk = m.at.getDay();
+    const diff = Math.round((TODAY - new Date(m.at.getFullYear(), m.at.getMonth(), m.at.getDate())) / 864e5);
+    const label = recent && diff <= 1 ? [diff ? '어제' : '오늘', h('small', null, WD[wk])] : [String(recent ? `${m.at.getMonth() + 1}/${m.at.getDate()}` : m.at.getDate()), h('small', null, !recent && diff === 0 ? '오늘' : WD[wk])];
+    return h('a', { class: `lrow${first ? ' daystart' : ''}`, href: '#' },
+      first ? h('span', { class: `lday${wk === 0 || wk === 6 ? ' weekend' : ''}` }, label) : h('span'),
+      h('time', { class: 'ltime' }, hm(m.at)),
+      h('span', { class: `ltitle${m.title ? '' : ' muted'}` }, h('b', null, titleOf(m)), m.summary && h('span', null, m.summary)),
+      stateOf(m),
+      h('span', { class: 'ldur num' }, clock(m.dur)),
+      speakers(m.speakers));
+  });
+}
+
+// 스크롤 위치에 맞춰 바로가기의 지금 칸을 표시
+function scrollSpy(root, index) {
   requestAnimationFrame(() => {
     const view = $('view');
     const mark = () => {
-      const secs = [...body.querySelectorAll('.ledger-month')];
+      const secs = [...root.querySelectorAll('[data-spy]')];
       const top = view.getBoundingClientRect().top + 60;
       const cur = secs.filter((s) => s.getBoundingClientRect().top <= top).pop() ?? secs[0];
-      for (const b of index.querySelectorAll('button')) b.setAttribute('aria-current', String(cur && `mon-${b.dataset.k}` === cur.id));
+      for (const b of index.querySelectorAll('button')) b.setAttribute('aria-current', String(Boolean(cur) && b.dataset.target === cur.id));
     };
     view.onscroll = mark;
     mark();
   });
-  return h('div', { class: 'ledger-wrap' }, body, index);
 }
 
-// ── B. 달력 ──
-function calendar(list) {
-  const byDay = new Map();
-  for (const m of list) { const k = m.at.toDateString(); if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(m); }
-  for (const v of byDay.values()) v.sort((a, b) => a.at - b.at);
-  const oldest = list.length ? list[list.length - 1].at : TODAY;
-  const monday = (d) => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
-  const cal = h('div', { class: 'cal' }, h('div', { class: 'cal-head' }, h('div'), ['월', '화', '수', '목', '금', '토', '일'].map((w) => h('div', null, w))));
-  let lastMonth = null;
-  for (let w = monday(TODAY); w >= monday(oldest); w = new Date(w.getFullYear(), w.getMonth(), w.getDate() - 7)) {
-    const days = Array.from({ length: 7 }, (_, i) => new Date(w.getFullYear(), w.getMonth(), w.getDate() + i));
-    const monthOfRow = days[6].getMonth();
-    const newMonth = monthOfRow !== lastMonth;
-    const row = h('div', { class: `week${newMonth && lastMonth !== null ? ' newmonth' : ''}` },
-      h('div', { class: 'wgut' }, newMonth ? [`${monthOfRow + 1}월`, h('small', null, String(days[6].getFullYear()))] : ''));
-    lastMonth = monthOfRow;
-    days.forEach((d, i) => {
-      const ms = byDay.get(d.toDateString()) ?? [];
-      const future = d > TODAY;
-      const cell = h('div', { class: `cell${i >= 5 ? ' weekend' : ''}${future ? ' other' : ''}${sameDay(d, TODAY) ? ' today' : ''}` },
-        h('div', { class: `d${d.getDate() === 1 ? ' first' : ''}` }, d.getDate() === 1 ? `${d.getMonth() + 1}/1` : String(d.getDate())));
-      ms.slice(0, 4).forEach((m) => {
-        const kind = m.status === 'fail' ? 'fail' : m.status === 'busy' ? 'busy' : m.open ? 'open' : 'done';
-        cell.append(h('button', { class: `chipm${m.title ? '' : ' muted'}`, 'aria-pressed': String(picked === m.id), title: `${hm(m.at)} ${titleOf(m)}`, onclick: () => { picked = m.id; draw(); } },
-          h('i', { class: kind }), h('span', null, m.title ?? titleOf(m))));
-      });
-      if (ms.length > 4) cell.append(h('button', { class: 'more' }, `+${ms.length - 4}개 더`));
-      row.append(cell);
-    });
-    cal.append(row);
+function mix(list) {
+  const hand = list.filter(needsHand);
+  const cut = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate() - 13);
+  const recent = list.filter((m) => m.at >= cut);
+  const older = list.filter((m) => m.at < cut);
+  const index = h('nav', { class: 'index', 'aria-label': '바로 가기' }, h('h3', null, '바로 가기'));
+  const jump = (id, label, n, hot = false) => index.append(h('button', { class: hot ? 'hot' : null, 'data-target': id, onclick: () => $(id).scrollIntoView({ block: 'start' }) }, label, h('span', { class: 'num' }, String(n))));
+  const body = h('div');
+  if (hand.length) {
+    jump('sec-hand', '손볼 회의', hand.length, true);
+    body.append(h('section', { class: 'mix-sec', id: 'sec-hand', 'data-spy': '' },
+      h('div', { class: 'sec-h' }, h('h2', null, '손볼 회의'), h('span', null, `${hand.length}건 · 확인이 남았거나 실패한 회의`)),
+      h('div', { class: 'triage', style: 'margin-bottom:0' }, hand.slice(0, 6).map(handCard)),
+      hand.length > 6 && h('p', { class: 'count-line', style: 'margin:10px 0 0' }, `외 ${hand.length - 6}건은 위 '확인 남음'으로 거를 수 있습니다`)));
   }
-  const m = list.find((x) => x.id === picked);
-  const preview = h('aside', { class: 'preview' }, m ? [
-    h('div', { class: 'meta' }, `${dayName(m.at)} (${WD[m.at.getDay()]}) ${hm(m.at)}`, '·', h('span', { class: 'num' }, clock(m.dur)), h('span', { style: 'flex:1' }), speakers(m.speakers)),
-    h('h2', null, titleOf(m)),
-    m.summary && h('p', null, m.summary),
-    h('div', { class: 'tags' }, stateOf(m), h('span', { class: 'tag' }, `화자 ${m.speakers}명`)),
-    m.todos > 0 && h('ul', null, Array.from({ length: m.todos }, (_, i) => h('li', null, ['QA 마치기 — 민준', '배포 체크리스트 공유 — 서연', '비용 보고서 초안 — 지호'][i]))),
-    h('div', { style: 'display:flex;gap:6px' }, h('button', { class: 'btn primary' }, '회의록 열기'), m.open ? h('button', { class: 'btn' }, `확인 ${m.open}개`) : null),
-  ] : h('div', { class: 'empty-p' }, '달력에서 회의를 누르면', h('br'), '여기에 요약이 보입니다'));
-  return h('div', { class: 'cal-wrap' }, cal, preview);
+  if (recent.length) {
+    jump('sec-recent', '최근 2주', recent.length);
+    body.append(h('section', { class: 'mix-sec', id: 'sec-recent', 'data-spy': '' }, h('div', { class: 'sec-h', style: 'margin-bottom:2px;padding-bottom:8px;border-bottom:1px solid var(--line)' }, h('h2', null, '최근 2주'), h('span', null, `${recent.length}건 · ${hours(recent)}`)), h('div', { class: 'ledger-month' }, ledgerRows(recent, { recent: true }))));
+  }
+  if (older.length) {
+    index.append(h('div', { class: 'sep' }));
+    body.append(h('div', { class: 'mix-sec' }, h('div', { class: 'archive-h' }, h('h2', null, '이전 회의'), h('span', null, `${older.length}건`)), monthSections(older, index)));
+  }
+  scrollSpy(body, index);
+  return h('div', { class: 'mix-wrap' }, body, index);
 }
+
+// C·B가 같이 쓰는 줄과 카드
+const recentRow = (m) => h('a', { class: 'crow', href: '#' },
+  h('span', { class: 'when' }, h('b', null, dayName(m.at)), h('time', { class: 'num' }, hm(m.at))),
+  h('span', { class: `ltitle${m.title ? '' : ' muted'}` }, h('b', null, titleOf(m)), m.summary && h('span', null, m.summary)),
+  stateOf(m), h('span', { class: 'ldur num' }, clock(m.dur)));
+const handCard = (m) => h('a', { class: 'tcard', href: '#' },
+  h('div', { class: 'top' }, `${dayName(m.at)} ${hm(m.at)}`, stateOf(m)),
+  h('b', null, titleOf(m)),
+  h('div', { class: 'act' }, m.status === 'fail' ? h('button', { class: 'btn small' }, icon('i-redo'), '다시 만들기') : m.status === 'busy' ? h('span', { class: 'lab-note' }, '약 4분 남음') : h('button', { class: 'btn small' }, '확인하기')));
 
 // ── C. 손볼 것 먼저 ──
 function triage(list) {
@@ -389,17 +367,11 @@ function triage(list) {
   const cut = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate() - 13);
   const recent = list.filter((m) => m.at >= cut);
   const older = list.filter((m) => m.at < cut);
-  const row = (m) => h('a', { class: 'crow', href: '#' },
-    h('span', { class: 'when' }, h('b', null, dayName(m.at)), h('time', { class: 'num' }, hm(m.at))),
-    h('span', { class: `ltitle${m.title ? '' : ' muted'}` }, h('b', null, titleOf(m)), m.summary && h('span', null, m.summary)),
-    stateOf(m), h('span', { class: 'ldur num' }, clock(m.dur)));
+  const row = recentRow;
   const out = [];
   if (hand.length) {
     out.push(h('div', { class: 'sec-h' }, h('h2', null, '손볼 회의'), h('span', null, `${hand.length}건 · 확인이 남았거나 실패한 회의`)));
-    out.push(h('div', { class: 'triage' }, hand.slice(0, 6).map((m) => h('a', { class: 'tcard', href: '#' },
-      h('div', { class: 'top' }, `${dayName(m.at)} ${hm(m.at)}`, stateOf(m)),
-      h('b', null, titleOf(m)),
-      h('div', { class: 'act' }, m.status === 'fail' ? h('button', { class: 'btn small' }, icon('i-redo'), '다시 만들기') : m.status === 'busy' ? h('span', { class: 'lab-note' }, '약 4분 남음') : h('button', { class: 'btn small' }, '확인하기'))))));
+    out.push(h('div', { class: 'triage' }, hand.slice(0, 6).map(handCard)));
     if (hand.length > 6) out.push(h('p', { class: 'count-line', style: 'margin-top:-26px' }, `외 ${hand.length - 6}건은 아래 목록에서 '확인 남음'으로 거를 수 있습니다`));
   }
   out.push(h('section', { class: 'recent' }, h('div', { class: 'sec-h' }, h('h2', null, '최근 2주'), h('span', null, `${recent.length}건`)), recent.map(row)));
@@ -418,7 +390,7 @@ function draw(keepFocus = false) {
   const view = $('view');
   const list = visible();
   const active = document.activeElement?.type === 'search';
-  const VIEWS = { ledger, calendar, triage };
+  const VIEWS = { ledger, mix, triage };
   const page = h('div', { class: 'page wide' }, head(), list.length ? VIEWS[variant](list) : h('div', { class: 'lab-empty' }, '맞는 회의가 없습니다'));
   const top = view.scrollTop;
   view.replaceChildren(page);
@@ -429,12 +401,11 @@ function draw(keepFocus = false) {
   for (const b of document.querySelectorAll('#size button')) b.setAttribute('aria-pressed', String(Number(b.dataset.n) === size));
 }
 for (const b of document.querySelectorAll('#variant button')) b.onclick = () => { variant = b.dataset.v; $('view').scrollTop = 0; draw(); };
-for (const b of document.querySelectorAll('#size button')) b.onclick = () => { size = Number(b.dataset.n); all = makeMeetings(size); picked = all.find((m) => m.title)?.id; $('view').scrollTop = 0; draw(); };
+for (const b of document.querySelectorAll('#size button')) b.onclick = () => { size = Number(b.dataset.n); all = makeMeetings(size); $('view').scrollTop = 0; draw(); };
 const params = new URLSearchParams(location.search);
 variant = params.get('v') ?? variant;
 size = Number(params.get('n') ?? size);
 all = makeMeetings(size);
-picked = all.find((m) => m.title && m.open)?.id ?? all[0]?.id;
 draw();
 </script>
 </body>
