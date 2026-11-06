@@ -348,7 +348,7 @@ function ledgerRows(ms, { recent = false } = {}) {
     prev = m;
     const wk = m.at.getDay();
     const diff = Math.round((TODAY - new Date(m.at.getFullYear(), m.at.getMonth(), m.at.getDate())) / 864e5);
-    const label = recent && diff <= 1 ? [diff ? '어제' : '오늘', h('small', null, WD[wk])] : [String(recent ? `${m.at.getMonth() + 1}/${m.at.getDate()}` : m.at.getDate()), h('small', null, !recent && diff === 0 ? '오늘' : WD[wk])];
+    const label = recent && diff <= 1 ? [diff ? '어제' : '오늘', h('small', null, WD[wk])] : [String(recent ? `${m.at.getMonth() + 1}/${m.at.getDate()}` : m.at.getDate()), h('small', null, diff === 0 ? '오늘' : diff === 1 ? '어제' : WD[wk])];
     return h('a', { class: `lrow${first ? ' daystart' : ''}`, href: '#' },
       first ? h('span', { class: `lday${wk === 0 || wk === 6 ? ' weekend' : ''}` }, label) : h('span'),
       h('time', { class: 'ltime' }, hm(m.at)),
@@ -427,29 +427,23 @@ function scrollSpy(root, nav) {
   });
 }
 
+// 기간(최근 2주)으로 자르지 않는다: 회의가 몰린 주엔 넘치고 뜸한 때엔 빈다.
+// 손볼 회의는 최근 것부터 6개(더 보기로 펼침), 그 아래는 이번 달부터 바로 장부
+let handOpen = false;
 function mix(list) {
   const hand = list.filter(needsHand);
-  const cut = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate() - 13);
-  const recent = list.filter((m) => m.at >= cut);
-  const older = list.filter((m) => m.at < cut);
   const index = h('nav', { class: 'index', 'aria-label': '바로 가기' }, h('h3', null, '바로 가기'));
-  const jump = (id, label, n, hot = false) => index.append(h('button', { class: hot ? 'hot' : null, 'data-target': id }, label, h('span', { class: 'num' }, String(n))));
   const body = h('div');
   if (hand.length) {
-    jump('sec-hand', '손볼 회의', hand.length, true);
-    body.append(h('section', { class: 'mix-sec', id: 'sec-hand', 'data-spy': '' },
-      h('div', { class: 'sec-h' }, h('h2', null, '손볼 회의'), h('span', null, `${hand.length}건 · 확인이 남았거나 실패한 회의`)),
-      h('div', { class: 'triage', style: 'margin-bottom:0' }, hand.slice(0, 6).map(handCard)),
-      hand.length > 6 && h('p', { class: 'count-line', style: 'margin:10px 0 0' }, `외 ${hand.length - 6}건은 위 '확인 남음'으로 거를 수 있습니다`)));
+    index.append(h('button', { class: 'hot', 'data-target': 'sec-hand' }, '손볼 회의', h('span', { class: 'num' }, String(hand.length))), h('div', { class: 'sep' }));
+    const kinds = [['확인 남음', hand.filter((m) => m.open).length], ['실패', hand.filter((m) => m.status === 'fail').length], ['만드는 중', hand.filter((m) => m.status === 'busy').length]].filter(([, n]) => n);
+    const shown = handOpen ? hand : hand.slice(0, 6);
+    body.append(h('section', { class: 'mix-sec', id: 'sec-hand', 'data-spy': '', style: 'margin-bottom:28px' },
+      h('div', { class: 'sec-h' }, h('h2', null, '손볼 회의'), h('span', null, kinds.map(([k, n]) => `${k} ${n}`).join(' · '))),
+      h('div', { class: 'triage', style: 'margin-bottom:0' }, shown.map(handCard)),
+      hand.length > 6 && h('button', { class: 'link', style: 'margin-top:10px;font-size:12.5px', onclick: () => { handOpen = !handOpen; draw(true); } }, handOpen ? '접기' : `${hand.length - 6}건 더 보기`)));
   }
-  if (recent.length) {
-    jump('sec-recent', '최근 2주', recent.length);
-    body.append(h('section', { class: 'mix-sec', id: 'sec-recent', 'data-spy': '' }, h('div', { class: 'sec-h', style: 'margin-bottom:2px;padding-bottom:8px;border-bottom:1px solid var(--line)' }, h('h2', null, '최근 2주'), h('span', null, `${recent.length}건 · ${hours(recent)}`)), h('div', { class: 'ledger-month' }, ledgerRows(recent, { recent: true }))));
-  }
-  if (older.length) {
-    index.append(h('div', { class: 'sep' }));
-    body.append(h('div', { class: 'mix-sec' }, h('div', { class: 'archive-h' }, h('h2', null, '이전 회의'), h('span', null, `${older.length}건`)), monthSections(older, index)));
-  }
+  body.append(...monthSections(list, index));
   scrollSpy(body, index);
   return h('div', { class: 'mix-wrap' }, body, index);
 }
