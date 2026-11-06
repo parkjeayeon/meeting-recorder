@@ -2231,7 +2231,7 @@ function pageMeeting(id) {
       input.style.height = 'auto';
       input.style.height = `${Math.min(input.scrollHeight, 140)}px`;
     };
-    const btn = h('button', { class: 'btn small primary' }, icon('i-plus'), h('span', null, '확인 필요에 추가'));
+    const btn = h('button', { class: 'btn small' }, icon('i-plus'), h('span', null, '확인 필요에 추가'));
     const send = async () => {
       const text = input.value.trim();
       if (!text || jobs.has(key)) return;
