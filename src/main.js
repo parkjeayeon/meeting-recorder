@@ -1163,6 +1163,10 @@ function createOverlay() {
     resizable: false,
     movable: false,
     focusable: false, // 클릭해도 지금 쓰던 앱의 포커스를 빼앗지 않는다
+    // macOS: 앱을 깨우지 않는 패널(NSPanel). 일반 창이면 막대를 마우스로 누를 때 앱 전체가 활성화되며 메인 창까지 올라온다
+    // (fn으로는 안 올라오고 마우스로 누를 때만 그랬다). Wispr Flow의 막대("Flow Status Indicator")도 type: 'panel'
+    ...(process.platform === 'darwin' ? { type: 'panel' } : {}),
+    acceptFirstMouse: true, // 다른 앱을 쓰던 중 첫 클릭도 버튼으로 받는다
     hasShadow: false,
     skipTaskbar: true,
     alwaysOnTop: true,
