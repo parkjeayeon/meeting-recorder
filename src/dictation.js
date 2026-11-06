@@ -80,6 +80,8 @@ function tokenSources() {
 function saveSettings(patch) {
   const stored = readStored();
   const { apiKey, hfToken: hf, ...rest } = patch;
+  // 받아쓰기 언어를 바꿀 때 회의 언어를 따로 정한 적이 없으면, 회의 언어는 바꾸기 전 값으로 고정한다 (왼쪽 아래에서 받아쓰기만 바꿔도 회의 녹취는 그대로)
+  if ('language' in rest && stored.meetingLanguage === undefined && rest.language !== (stored.language ?? DEFAULT_SETTINGS.language)) stored.meetingLanguage = stored.language ?? DEFAULT_SETTINGS.language;
   Object.assign(stored, rest);
   if (hf !== undefined) {
     if (hf) stored.hfTokenEnc = safeStorage.encryptString(hf).toString('base64');

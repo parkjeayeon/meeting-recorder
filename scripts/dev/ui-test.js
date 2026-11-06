@@ -336,6 +336,20 @@ app.whenReady().then(async () => {
   results.push(['유실 구간 직접 고르기', picker && redoCall?.id === 'r4' && redoCall.start === 2 && redoCall.end === 62, `고르는 줄 ${picker} · 보낸 것 ${JSON.stringify(redoCall)}`]);
   await js(`document.querySelector('.chat-head .icon-btn')?.click()`);
 
+  // 왼쪽 아래 받아쓰기 언어: 어느 화면에서든 보이고, 바꾸면 받아쓰기 언어만 (회의 언어는 그대로), 설정 화면 값도 같이
+  const langOn = {};
+  for (const r of ['home', 'meetings', 'dictionary']) {
+    await js(`location.hash='#${r}'`);
+    await wait(200);
+    langOn[r] = await js(`Boolean(document.getElementById('sideLanguage')?.offsetParent)`);
+  }
+  await js(`(() => { const s = document.getElementById('sideLanguage'); s.value = 'en'; s.dispatchEvent(new Event('change')); })()`);
+  await wait(400);
+  const langSaved = await js(`({ sent: window.stubCalls().dictSave?.at(-1) ?? null, settings: document.getElementById('dictLanguage').value, meeting: document.getElementById('meetLanguage').value, toast: [...document.querySelectorAll('#toasts .toast')].map(t=>t.textContent).find(t=>t.includes('받아쓰기 언어')) ?? null })`);
+  results.push(['왼쪽 아래 받아쓰기 언어', Object.values(langOn).every(Boolean) && JSON.stringify(langSaved.sent) === '{"language":"en"}' && langSaved.settings === 'en' && langSaved.meeting === 'ko' && Boolean(langSaved.toast?.includes('English')), `${JSON.stringify(langOn)} · ${JSON.stringify(langSaved)}`]);
+  await js(`(() => { const s = document.getElementById('sideLanguage'); s.value = 'ko'; s.dispatchEvent(new Event('change')); })()`);
+  await wait(300);
+
   // 찾는 도중 멈추기: 질문 탭의 '멈추기' → 칩에 '멈춤', 알림 없음
   await ask('느린 배포 질문');
   await js(`document.querySelector('.askpanel header .icon-btn')?.click()`);

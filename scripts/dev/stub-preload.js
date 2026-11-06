@@ -69,7 +69,12 @@ const impl = {
     return { id: 'x', count: paths.length };
   },
   recordingsAccess: async () => (denied ? { ok: false, dir: '/Users/me/Documents/MeetingRecorder', code: 'EPERM' } : { ok: true }),
-  dictSettings: async () => ({ enabled: true, language: 'ko', cleanup: true, provider: 'auto', vocabulary: 'PJY, Whisper', minutes: true, diarize: true, diarizeReady: true, hasHfToken: true, meetingSystemAudio: false, engine: { state: 'ready' } }),
+  dictSettings: async () => ({ ...dictStore }),
+  dictSaveSettings: async (patch) => {
+    calls.dictSave = [...(calls.dictSave ?? []), patch];
+    Object.assign(dictStore, patch);
+    return { ...dictStore };
+  },
   providers: async () => ({ 'claude-code': { installed: true, loggedIn: true, account: 'me@example.com' }, codex: { installed: true, loggedIn: true, account: 'me@example.com' }, api: { installed: true, loggedIn: false } }),
   permStatus: async () => ({ microphone: 'granted', inputMonitoring: process.env.OB_STEP === 'permissions' ? 'denied' : 'granted', accessibility: 'granted', systemAudio: 'granted' }),
   fnKeyWarning: async () => null,
@@ -162,6 +167,7 @@ const impl = {
   ],
 };
 const calls = {};
+const dictStore = { enabled: true, language: 'ko', meetingLanguage: 'ko', cleanup: true, provider: 'auto', vocabulary: 'PJY, Whisper', minutes: true, diarize: true, diarizeReady: true, hasHfToken: true, meetingSystemAudio: false, engine: { state: 'ready' } };
 // 질문으로 찾기 흉내 (LLM 없이): 단계를 짧게 지나 끝난다. "작년"이 든 질문에 올해 기간 칩을 주면 기간이 겹치지 않아 멈춘다.
 // "실패"가 든 질문은 오류로 끝난다. 결과는 예시 회의에서 고른다 (첫 회의는 주로 다룸, 둘째는 잠깐 언급)
 const askJobs = new Map();

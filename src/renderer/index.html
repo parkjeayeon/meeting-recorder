@@ -39,6 +39,7 @@
     <symbol id="i-flag" viewBox="0 0 20 20"><path d="M5 17V3.5M5 4h9.5l-2 3.25 2 3.25H5"/></symbol>
     <symbol id="i-pencil" viewBox="0 0 20 20"><path d="M13.5 3.5l3 3L7 16H4v-3z"/><path d="M11.5 5.5l3 3"/></symbol>
     <symbol id="i-chat" viewBox="0 0 20 20"><path d="M4 4.5h12a1 1 0 0 1 1 1V13a1 1 0 0 1-1 1H9l-4 3v-3H4a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1z"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M3 10h14M10 3c2 2.2 2.9 4.5 2.9 7S12 14.8 10 17c-2-2.2-2.9-4.5-2.9-7S8 5.2 10 3z"/></symbol>
     <symbol id="i-send" viewBox="0 0 20 20"><path d="M3.5 10 16.5 4 12 16.5l-2.5-5z"/><path d="m9.5 11.5 7-7.5"/></symbol>
   </svg>
 
@@ -55,6 +56,17 @@
         <a class="nav-item" href="#stats" data-route="stats"><svg><use href="#i-chart"/></svg><span>통계</span></a>
       </nav>
       <div class="side-foot">
+        <!-- 받아쓰기 언어: 늘 보이고 한 번에 바꾼다 (회의 녹취 언어는 설정 › 회의에서 따로) -->
+        <label class="side-lang" title="fn 받아쓰기 언어 · 회의 녹취 언어는 설정 › 회의에서 따로">
+          <svg><use href="#i-globe"/></svg>
+          <span>받아쓰기</span>
+          <select id="sideLanguage" aria-label="받아쓰기 언어">
+            <option value="ko">한국어</option>
+            <option value="en">English</option>
+            <option value="ja">日本語</option>
+            <option value="auto">자동 감지</option>
+          </select>
+        </label>
         <button class="engines" id="enginesBtn" title="엔진 상태 · 눌러서 설정">
           <span class="engine" id="engAsr"><i></i><span>음성 인식</span><em></em></span>
           <span class="engine" id="engCleanup"><i></i><span>다듬기</span><em></em></span>

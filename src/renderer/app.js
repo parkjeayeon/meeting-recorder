@@ -4039,6 +4039,7 @@ function renderDictSettings(s) {
   $('meetingSystem').checked = s.meetingSystemAudio;
   $('dictEnabled').checked = s.enabled;
   $('dictLanguage').value = s.language;
+  $('sideLanguage').value = s.language;
   $('meetLanguage').value = s.meetingLanguage ?? s.language;
   $('dictCleanup').checked = s.cleanup;
   $('countWords').textContent = vocabWords().length || '';
@@ -4053,6 +4054,11 @@ async function saveDict(patch) {
 
 $('dictEnabled').onchange = (e) => saveDict({ enabled: e.target.checked });
 $('dictLanguage').onchange = (e) => saveDict({ language: e.target.value });
+// 왼쪽 아래 받아쓰기 언어 (설정 › 받아쓰기의 언어와 같은 값)
+$('sideLanguage').onchange = async (e) => {
+  await saveDict({ language: e.target.value });
+  toast('받아쓰기 언어를 바꿨습니다', `${e.target.selectedOptions[0].textContent} · 다음 fn 받아쓰기부터`);
+};
 $('meetLanguage').onchange = (e) => saveDict({ meetingLanguage: e.target.value });
 $('dictCleanup').onchange = (e) => saveDict({ cleanup: e.target.checked });
 $('minutesAuto').onchange = (e) => saveDict({ minutes: e.target.checked });
