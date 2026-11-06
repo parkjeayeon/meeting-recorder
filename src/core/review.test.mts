@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanGuess, inlineGuesses, noteVariants, toReviewItems } from './review.mjs';
+import { cleanGuess, inlineGuesses, noteVariants, stampFor, toReviewItems } from './review.mjs';
 
 const transcript = '[00:05] [화자 1] 통신 한정성이 제일 중요해요\n[12:30] [화자 2] 랩캐시도 쪽은 제가 볼게요\n';
 
@@ -61,5 +61,17 @@ describe('noteVariants', () => {
     expect(noteVariants('"원석"과 “원성”, ‘원석’', t)).toEqual(['원석', '원성']);
     expect(noteVariants("'원선'으로도 들림", t)).toEqual([]); // 녹취에 없음
     expect(noteVariants(null, t)).toEqual([]);
+  });
+});
+
+describe('stampFor', () => {
+  const t = '[00:05] [화자 1] 안녕하세요\n[03:12] [화자 2] 하윤님이 말씀하신 대로\n[04:00] [화자 1] 하윤님 또\n';
+  it('메모에 시각이 없으면 녹취에서 처음 나온 줄의 시각', () => {
+    expect(stampFor({ at: null, heard: null, heardNote: null, note: "'하윤님'이 대표를 가리키는지 불분명함" }, t)).toBe('03:12');
+    expect(toReviewItems([{ kind: 'name', note: "'하윤님'이 대표인지 불분명" }], t, [])[0]!.at).toBe('03:12');
+  });
+  it('적힌 시각은 그대로, 녹취에 없으면 비움', () => {
+    expect(stampFor({ at: '01:00', heard: '하윤님', heardNote: null, note: '' }, t)).toBe('01:00');
+    expect(stampFor({ at: null, heard: null, heardNote: '없는말', note: '내용이 끊김' }, t)).toBeNull();
   });
 });

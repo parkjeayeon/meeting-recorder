@@ -43,7 +43,8 @@ export function toReviewItems(list: unknown, transcript: string, existing: Pick<
     if (heard && [...existing, ...items].some((x) => x.status === 'open' && x.heard === heard)) continue;
     if (!heard && !note) continue; // 녹취에서 못 찾았고 설명도 없으면 고를 게 없다
     const kind = typeof it.kind === 'string' && KINDS.has(it.kind) ? (it.kind as ReviewItem['kind']) : heard ? 'word' : 'meaning';
-    const at = typeof it.at === 'string' && /^\d{1,2}(:\d{2}){1,2}$/.test(it.at) ? it.at : null;
+    const given = typeof it.at === 'string' && /^\d{1,2}(:\d{2}){1,2}$/.test(it.at) ? it.at : null;
+    const at = stampFor({ at: given, heard, heardNote: said, note }, transcript);
     items.push({ id: `r${++n}`, kind, at, heard, heardNote: said, guess: cleanGuess(it.guess), note, status: 'open', ...extra });
   }
   return items;
@@ -58,4 +59,18 @@ export function noteVariants(note: string | null | undefined, transcript: string
     if (v && transcript.includes(v) && !out.includes(v)) out.push(v);
   }
   return out;
+}
+
+// 시각이 없는 항목의 시각: 고칠 말(없으면 메모에 따옴표로 적힌 말)이 녹취에 처음 나온 줄의 시각.
+// 회의록 메모에 시각이 안 적혀 있으면 LLM이 at을 비워 둔다 ("'하윤님'이 대표를 가리키는지 불분명함")
+export function stampFor(item: Pick<ReviewItem, 'at' | 'heard' | 'heardNote' | 'note'>, transcript: string): string | null {
+  if (item.at) return item.at;
+  const keys = [item.heard, item.heardNote, ...noteVariants(item.note, transcript)].filter((k): k is string => Boolean(k && k.trim()));
+  for (const key of keys) {
+    for (const line of transcript.split('\n')) {
+      const m = /^\[([\d:]+)\]\s*(?:\[[^\]]+\]\s*)?(.*)$/.exec(line);
+      if (m && m[2]!.includes(key)) return m[1]!;
+    }
+  }
+  return null;
 }

@@ -9,7 +9,7 @@ const dictation = require('./dictation');
 const { complete, parseJson } = require('./cleanup');
 const sandbox = require('./sandbox');
 const glossary = require('./glossary');
-const { nameSpeakers, writeFileAtomic, writeJsonAtomic, copyFileAtomic, cleanGuess, inlineGuesses, toReviewItems, noteVariants } = require('../lib/core/index.mjs'); // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
+const { nameSpeakers, writeFileAtomic, writeJsonAtomic, copyFileAtomic, cleanGuess, inlineGuesses, toReviewItems, noteVariants, stampFor } = require('../lib/core/index.mjs'); // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
 
 const LONG_TIMEOUT_MS = 10 * 60 * 1000; // 1시간짜리 회의도 여유 있게
 const SPEAKER = { mic: '나', system: '상대방' };
@@ -653,7 +653,8 @@ async function makeReview(dir) {
     const heard = it.heard && transcript.includes(it.heard) ? it.heard : null;
     // 본문에 괄호로 쓴 추정에서 나온 항목: 고치면 확인을 마칠 때 그 괄호를 지우도록 표시
     const inlined = inline.some((l) => it.heard && l.includes(it.heard) && (!it.guess || l.includes(it.guess)));
-    return { id: `r${i + 1}`, kind: it.kind ?? 'meaning', at: it.at ?? null, heard, heardNote: it.heard ?? null, guess: cleanGuess(it.guess), note: it.note ?? '', status: 'open', ...(inlined ? { source: 'inline' } : {}) };
+    const at = stampFor({ at: it.at ?? null, heard, heardNote: it.heard ?? null, note: it.note ?? '' }, transcript);
+    return { id: `r${i + 1}`, kind: it.kind ?? 'meaning', at, heard, heardNote: it.heard ?? null, guess: cleanGuess(it.guess), note: it.note ?? '', status: 'open', ...(inlined ? { source: 'inline' } : {}) };
   });
   return writeReview(dir, { items, provider: out.provider });
 }

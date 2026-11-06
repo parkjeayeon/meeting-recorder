@@ -590,7 +590,9 @@ ipcMain.handle('minutes:read', (_e, dir) => {
   const read = (f) => (fs.existsSync(path.join(d, f)) ? fs.readFileSync(path.join(d, f), 'utf8') : null);
   const names = readJson(path.join(d, 'meta.json'))?.speakerNames;
   const review = minutes.readReview(d);
+  const rawTranscript = read('transcript.txt') ?? '';
   for (const it of review?.items ?? []) {
+    it.at = core.stampFor(it, rawTranscript); // 예전에 만든 항목도 시각이 비어 있으면 녹취에서 찾아 보여 준다 (파일은 그대로)
     it.note = minutes.nameSpeakers(it.note, names, { prose: true });
     for (const c of it.chat ?? []) c.assistant = minutes.nameSpeakers(c.assistant, names, { prose: true });
   }
