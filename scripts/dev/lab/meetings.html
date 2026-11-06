@@ -89,19 +89,34 @@
   .chip.ask .x svg { width: 10px; height: 10px; stroke-width: 2; }
   .spin { width: 11px; height: 11px; border-radius: 50%; border: 1.6px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; flex: none; }
   @keyframes spin { to { transform: rotate(1turn); } }
-  .scope { display: flex; flex-direction: column; gap: 8px; }
-  .scope-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 28px; }
-  .scope-row > .scope-label:first-child { width: 42px; flex: none; }
-  .scope .clear { display: grid; place-items: center; width: 22px; height: 22px; border: 0; border-radius: 50%; background: none; color: var(--ink-3); }
-  .scope .clear:hover { background: var(--panel-3); color: var(--ink); }
-  .scope .clear svg { width: 11px; height: 11px; }
-  .num-in { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel); font-size: 12px; color: var(--ink-3); }
-  .num-in:focus-within { border-color: var(--ink-3); box-shadow: 0 0 0 3px var(--accent-wash); }
-  .num-in input { width: 44px; border: 0; outline: none; background: none; font: 500 12.5px var(--mono); color: var(--ink); text-align: right; }
-  .scope-sum { font-size: 12px; color: var(--ink-2); font-weight: 550; }
-  .scope .seg button { height: 26px; padding: 0 10px; font-size: 12px; }
-  .scope input[type=date] { width: 132px; height: 28px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel); font: 500 12px var(--mono); color: var(--ink); color-scheme: inherit; }
+  /* 찾을 범위: 조건 칩 (칩 하나 = 조건 하나, 칩끼리 AND). 누르면 작은 팝오버 */
+  .conds-bar { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .cchip { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border: 1px dashed var(--line-2); border-radius: 999px; background: none; color: var(--ink-3); font-size: 12px; font-weight: 550; white-space: nowrap; transition: border-color .15s ease-out, color .15s ease-out; }
+  .cchip:hover { border-color: var(--ink-3); color: var(--ink-2); }
+  .cchip svg { width: 12px; height: 12px; }
+  .cchip.set { border-style: solid; border-color: transparent; background: var(--ink); color: var(--panel); padding-right: 4px; }
+  .cchip.set .x { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; opacity: .7; }
+  .cchip.set .x:hover { opacity: 1; background: rgba(255, 255, 255, .16); }
+  .cchip.set .x svg { width: 10px; height: 10px; stroke-width: 2; }
+  .cchip[aria-expanded='true'] { border-color: var(--ink-3); color: var(--ink); }
+  .cpop { position: absolute; z-index: 50; bottom: calc(100% + 8px); left: 0; width: 288px; display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: var(--shadow-pop); animation: pop .16s cubic-bezier(.16, 1, .3, 1); }
+  .cpop.down { bottom: auto; top: calc(100% + 8px); }
+  .cpop h4 { margin: 0; font-size: 12.5px; font-weight: 650; color: var(--ink); }
+  .cpop p { margin: -6px 0 0; font-size: 11.5px; color: var(--ink-3); }
+  .cpop .opts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .cpop .opts button { height: 28px; padding: 0 11px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel); color: var(--ink-2); font: 500 12.5px var(--sans); }
+  .cpop .opts button.num { font-family: var(--mono); }
+  .cpop .opts button:hover { border-color: var(--ink-3); color: var(--ink); }
+  .cpop .opts button[aria-pressed='true'] { background: var(--ink); border-color: var(--ink); color: var(--panel); }
+  .cpop .field { display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 8px; font-size: 12.5px; color: var(--ink-3); }
+  .cpop .field:focus-within { border-color: var(--ink-3); box-shadow: 0 0 0 3px var(--accent-wash); }
+  .cpop .field input { flex: 1; min-width: 0; border: 0; outline: none; background: none; font: 500 13px var(--mono); color: var(--ink); color-scheme: inherit; }
+  .cpop .dates { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .cpop .dates .field { padding: 0 8px; }
+  .cpop .dates small { font-size: 11px; color: var(--ink-3); flex: none; }
   .scope-label { font-size: 12px; color: var(--ink-3); }
+  .pop-row { display: flex; align-items: center; gap: 10px; }
+  .pop-row > .scope-label { flex: none; }
   .examples { display: flex; flex-wrap: wrap; gap: 6px; }
   .examples button { height: 26px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel-2); color: var(--ink-2); font-size: 12px; }
   .examples button:hover { border-color: var(--line-2); color: var(--ink); }
@@ -121,10 +136,15 @@
   .bubble.me small { display: block; opacity: .65; font-size: 11.5px; margin-top: 2px; }
   .bubble.ai { display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--ink-2); }
   .bubble.ai .conds { display: flex; flex-wrap: wrap; gap: 4px; }
-  .askcompose { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-top: 1px solid var(--line); }
-  .askcompose .row { display: flex; gap: 8px; align-items: flex-end; }
-  .askcompose textarea { flex: 1; min-height: 38px; max-height: 120px; resize: none; padding: 9px 10px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--panel); font: inherit; font-size: 13.5px; color: var(--ink); outline: none; }
-  .askcompose textarea:focus { border-color: var(--ink-3); }
+  .askcompose { padding: 12px; border-top: 1px solid var(--line); }
+  .composer { display: flex; flex-direction: column; gap: 8px; padding: 10px 10px 8px 12px; border: 1px solid var(--line-2); border-radius: 14px; background: var(--panel); transition: border-color .15s ease-out, box-shadow .15s ease-out; }
+  .composer:focus-within { border-color: var(--ink-3); box-shadow: 0 0 0 3px var(--accent-wash); }
+  .composer textarea { min-height: 22px; max-height: 120px; resize: none; padding: 0; border: 0; background: none; font: inherit; font-size: 13.5px; line-height: 1.5; color: var(--ink); outline: none; }
+  .composer .bottom { display: flex; align-items: center; gap: 8px; }
+  .composer .bottom .conds-bar { flex: 1; }
+  .send { display: grid; place-items: center; width: 30px; height: 30px; flex: none; border: 0; border-radius: 50%; background: var(--ink); color: var(--panel); }
+  .send:disabled { background: var(--panel-3); color: var(--ink-3); }
+  .send svg { width: 15px; height: 15px; margin: 1px 1px 0 0; }
   /* 4. 오른쪽 아래 고정 둥근 버튼 + 버튼 위로 열리는 채팅 창 */
   .fab { position: fixed; z-index: 35; right: 24px; bottom: 24px; display: grid; place-items: center; width: 52px; height: 52px; border: 0; border-radius: 50%; background: var(--ink); color: var(--panel); box-shadow: var(--shadow-pop); transition: transform .2s cubic-bezier(.16, 1, .3, 1); }
   .fab:hover { transform: scale(1.06); }
@@ -488,42 +508,60 @@ setInterval(() => {
   for (const t of askTabs.filter((x) => x.status === 'running')) for (const el of document.querySelectorAll(`[data-ask-time="${t.id}"]`)) el.textContent = secs(t);
 }, 1000);
 
-// 범위 칸: 바꿔도 화면 전체를 다시 그리지 않고 이 칸만 고친다 (채팅 창이 깜빡이거나 입력이 끊기지 않게)
-function scopePicker() {
-  const count = h('input', { type: 'text', inputmode: 'numeric', placeholder: '개수', value: askScope.count ?? '', 'aria-label': '최근 몇 개', maxlength: 5 });
-  const presets = COUNT_PRESETS.map((n) => h('button', { type: 'button', 'aria-pressed': String(askScope.count === n), onmousedown: (e) => e.preventDefault(), onclick: () => setCount(askScope.count === n ? null : n) }, String(n)));
-  const clearCount = h('button', { type: 'button', class: 'clear', 'aria-label': '개수 지우기', hidden: !askScope.count, onclick: () => setCount(null) }, icon('i-x'));
-  const from = h('input', { type: 'date', value: askScope.from, 'aria-label': '시작일' });
-  const to = h('input', { type: 'date', value: askScope.to, 'aria-label': '끝일' });
-  const clearRange = h('button', { type: 'button', class: 'clear', 'aria-label': '기간 지우기', hidden: !askScope.from && !askScope.to, onclick: () => { askScope.from = askScope.to = ''; from.value = to.value = ''; sync(); } }, icon('i-x'));
-  const summary = h('span', { class: 'scope-sum' });
-  function sync() {
-    presets.forEach((b, k) => b.setAttribute('aria-pressed', String(askScope.count === COUNT_PRESETS[k])));
-    clearCount.hidden = !askScope.count;
-    clearRange.hidden = !askScope.from && !askScope.to;
-    from.max = to.value || '';
-    to.min = from.value || '';
-    summary.textContent = scopeText(askScope);
-  }
-  function setCount(n) {
-    askScope.count = n;
-    count.value = n ?? '';
-    sync();
-  }
-  // 숫자만: 다른 글자는 바로 지운다
-  count.oninput = () => {
-    const v = count.value.replace(/\D/g, '').replace(/^0+/, '');
-    if (v !== count.value) count.value = v;
-    askScope.count = v ? Number(v) : null;
-    sync();
+// 찾을 범위: 조건 칩. 칩 하나가 조건 하나, 넣은 것끼리 AND. 바꿔도 이 칩 줄만 다시 그린다 (채팅 창이 깜빡이지 않게)
+const DATE_PRESETS = () => {
+  const y = TODAY.getFullYear();
+  const m = TODAY.getMonth();
+  const d = (yy, mm, dd) => fmtDay(new Date(yy, mm, dd));
+  return [['이번 달', d(y, m, 1), d(y, m + 1, 0)], ['지난달', d(y, m - 1, 1), d(y, m, 0)], ['최근 3개월', d(y, m - 2, 1), fmtDay(TODAY)], ['올해', d(y, 0, 1), fmtDay(TODAY)], ['작년', d(y - 1, 0, 1), d(y - 1, 11, 31)]];
+};
+const shortDay = (s) => { if (!s) return ''; const [y, m, d] = s.split('-').map(Number); return y === TODAY.getFullYear() ? `${m}월 ${d}일` : `${y}. ${m}. ${d}.`; };
+let closeCondPop = null;
+document.addEventListener('mousedown', (e) => { if (closeCondPop && !e.target.closest('.conds-bar')) closeCondPop(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && closeCondPop) { e.stopPropagation(); closeCondPop(); } }, true);
+function condBar({ down = false } = {}) {
+  const bar = h('div', { class: 'conds-bar' });
+  let open = null; // 'count' | 'range'
+  const render = () => {
+    const sc = askScope;
+    const chip = (key, label, value, onClear) => h('button', { type: 'button', class: `cchip${value ? ' set' : ''}`, 'aria-expanded': String(open === key), onclick: () => { open = open === key ? null : key; render(); } },
+      value ? [value, h('span', { class: 'x', role: 'button', 'aria-label': `${label} 지우기`, onclick: (e) => { e.stopPropagation(); onClear(); open = null; render(); } }, icon('i-x'))] : [icon('i-plus'), label]);
+    const kids = [
+      chip('count', '최근 몇 개', sc.count ? `최근 ${sc.count}개` : null, () => (askScope.count = null)),
+      chip('range', '기간', sc.from || sc.to ? `${shortDay(sc.from) || '처음'} – ${shortDay(sc.to) || '오늘'}` : null, () => { askScope.from = askScope.to = ''; }),
+    ];
+    if (open === 'count') {
+      const input = h('input', { type: 'text', inputmode: 'numeric', placeholder: '직접 입력', value: sc.count ?? '', maxlength: 5, 'aria-label': '최근 몇 개' });
+      input.oninput = () => {
+        const v = input.value.replace(/\D/g, '').replace(/^0+/, '');
+        if (v !== input.value) input.value = v; // 숫자만
+        askScope.count = v ? Number(v) : null;
+        for (const b of bar.querySelectorAll('.cpop .opts button')) b.setAttribute('aria-pressed', String(Number(b.textContent) === askScope.count));
+        bar.querySelector('.cchip').replaceWith(chip('count', '최근 몇 개', askScope.count ? `최근 ${askScope.count}개` : null, () => (askScope.count = null)));
+      };
+      input.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); open = null; render(); } };
+      kids.push(h('div', { class: `cpop${down ? ' down' : ''}` },
+        h('h4', null, '최근 몇 개 회의에서 찾을까요'), h('p', null, '최신 회의부터 셉니다'),
+        h('div', { class: 'opts' }, COUNT_PRESETS.map((n) => h('button', { type: 'button', class: 'num', 'aria-pressed': String(sc.count === n), onclick: () => { askScope.count = n; open = null; render(); } }, String(n)))),
+        h('label', { class: 'field' }, input, '개')));
+      setTimeout(() => input.focus());
+    }
+    if (open === 'range') {
+      const from = h('input', { type: 'date', value: sc.from, max: sc.to || fmtDay(TODAY), 'aria-label': '시작일' });
+      const to = h('input', { type: 'date', value: sc.to, min: sc.from || '', max: fmtDay(TODAY), 'aria-label': '끝일' });
+      const sync = () => { askScope.from = from.value; askScope.to = to.value; to.min = from.value; from.max = to.value || fmtDay(TODAY); bar.querySelectorAll('.cchip')[1].replaceWith(chip('range', '기간', askScope.from || askScope.to ? `${shortDay(askScope.from) || '처음'} – ${shortDay(askScope.to) || '오늘'}` : null, () => { askScope.from = askScope.to = ''; })); };
+      from.onchange = sync;
+      to.onchange = sync;
+      kids.push(h('div', { class: `cpop${down ? ' down' : ''}` },
+        h('h4', null, '언제 한 회의에서 찾을까요'),
+        h('div', { class: 'opts' }, DATE_PRESETS().map(([label, f, t]) => h('button', { type: 'button', 'aria-pressed': String(sc.from === f && sc.to === t), onclick: () => { askScope.from = f; askScope.to = t; open = null; render(); } }, label))),
+        h('div', { class: 'dates' }, h('label', { class: 'field' }, h('small', null, '부터'), from), h('label', { class: 'field' }, h('small', null, '까지'), to))));
+    }
+    closeCondPop = open ? () => { open = null; render(); } : null;
+    bar.replaceChildren(...kids);
   };
-  from.onchange = () => { askScope.from = from.value; sync(); };
-  to.onchange = () => { askScope.to = to.value; sync(); };
-  sync();
-  return h('div', { class: 'scope' },
-    h('div', { class: 'scope-row' }, h('span', { class: 'scope-label' }, '최근'), h('div', { class: 'seg' }, presets), h('label', { class: 'num-in' }, count, h('span', null, '개')), clearCount),
-    h('div', { class: 'scope-row' }, h('span', { class: 'scope-label' }, '기간'), from, h('span', { class: 'scope-label' }, '~'), to, clearRange),
-    h('div', { class: 'scope-row' }, h('span', { class: 'scope-label' }, '찾을 곳'), summary));
+  render();
+  return bar;
 }
 const scopeText = (sc) => {
   const parts = [];
@@ -589,7 +627,7 @@ function askEntry() {
     if (askOpen) wrap.append(h('div', { class: 'askpop', onmousedown: (e) => e.target.tagName !== 'INPUT' && e.preventDefault() },
       h('b', null, '질문으로 찾기'),
       h('span', { class: 'scope-label' }, '입력하는 동안은 제목·요약에서 바로 거르고, Enter를 누르면 녹취까지 찾아 새 탭을 만듭니다. 30초쯤 걸리며 다른 화면으로 가도 계속 찾습니다.'),
-      scopePicker(), examples((x) => { const t = startAsk(x); askOpen = false; filter = `ask:${t.id}`; draw(); })));
+      h('div', { class: 'pop-row' }, h('span', { class: 'scope-label' }, '찾을 범위'), condBar({ down: true })), examples((x) => { const t = startAsk(x); askOpen = false; filter = `ask:${t.id}`; draw(); })));
     return wrap;
   }
   if (askUI === 'fab') return null; // 오른쪽 아래 둥근 버튼으로
@@ -621,7 +659,7 @@ function askOverlay() {
       parts.push(h('div', { class: 'askpal-back', onclick: (e) => { if (e.target === e.currentTarget) { askOpen = false; draw(); } } },
         h('div', { class: 'askpal' },
           h('div', { class: 'big' }, icon('i-search'), input),
-          h('div', { class: 'sec' }, scopePicker()),
+          h('div', { class: 'sec' }, h('div', { class: 'pop-row' }, h('span', { class: 'scope-label' }, '찾을 범위'), condBar({ down: true }))),
           h('div', { class: 'sec' }, h('span', { class: 'scope-label' }, askTabs.length ? '최근 질문' : '이렇게 물어보세요'), examples((x) => { askDraft = x; draw(); })),
           h('div', { class: 'foot' }, h('span', null, '녹취까지 찾아 새 탭을 만듭니다 · 30초쯤 · 다른 화면으로 가도 계속'), h('kbd', null, '⏎'), '찾기', h('kbd', null, 'esc'), '닫기'))));
     }
@@ -647,7 +685,7 @@ function askPanel(cls) {
             t.conds && h('div', { class: 'conds' }, t.conds.from && h('span', { class: 'cond' }, `${fmtDay(t.conds.from)} ~ ${fmtDay(t.conds.to)}`), t.conds.terms.slice(0, 3).map((x) => h('span', { class: 'cond' }, x))),
             t.results.length > 0 && h('button', { class: 'btn small', style: 'align-self:flex-start', onclick: () => { filter = `ask:${t.id}`; $('view').scrollTop = 0; draw(); } }, '탭 보기', icon('i-right'))]),
       ]) : h('div', { class: 'scope-label' }, '찾고 싶은 회의를 말로 적으세요. 기간·주제·상태를 함께 적어도 됩니다.', examples((x) => { askDraft = x; draw(); }))),
-      h('div', { class: 'askcompose' }, scopePicker(), h('div', { class: 'row' }, ta, h('button', { class: 'btn primary', onclick: send }, '찾기'))));
+      h('div', { class: 'askcompose' }, h('div', { class: 'composer' }, ta, h('div', { class: 'bottom' }, condBar(), h('button', { class: 'send', 'aria-label': '찾기', title: '찾기 (Enter)', onclick: send }, icon('i-send'))))));
   }
 }
 
