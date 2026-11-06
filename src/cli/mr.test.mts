@@ -30,6 +30,7 @@ describe('mr', () => {
     expect(run(['list'], { tty: true }).stdout).toContain('- 2026-11-02');
     expect(() => JSON.parse(run(['list', '--json'], { tty: true }).stdout)).not.toThrow();
     expect(run(['actions', 'latest', '--md']).stdout).toContain('- [ ] QA 마치기 — 화자 2 · 화요일까지 (01:30)');
+    expect(run(['script', 'latest', '--md']).stdout).toBe('- **00:02 민준** 다음 주 배포 일정 얘기해 볼까요?\n- **00:10 화자 2** 네, 화요일 오전이 좋겠어요.\n- **00:20 민준** 그럼 화요일로 하죠.\n');
   });
   it('명령마다 출력이 스키마에 맞는다', () => {
     for (const [cmd, s] of [['minutes', schema.MinutesOutput], ['actions', schema.ActionsOutput], ['script', schema.ScriptOutput], ['speakers', schema.SpeakersOutput]] as const) {

@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { MeetingError, clock, findRoot, listMeetings, readActions, readMinutes, readScript, readSpeakers, schema } from '../core/index.mjs';
+import { MeetingError, clock, findRoot, linesMarkdown, listMeetings, readActions, readMinutes, readScript, readSpeakers, schema } from '../core/index.mjs';
 import type { ActionsOutput, ListOutput, MinutesOutput, ScriptOutput, SpeakersOutput } from '../core/schema.mjs';
 
 const HELP = `mr — Meeting Recorder 회의 데이터 읽기 (읽기 전용)
@@ -137,7 +137,7 @@ function mdActions(r: ActionsOutput): string {
   return parts.join('\n\n');
 }
 
-const mdScript = (r: ScriptOutput) => r.lines.map((l) => `${l.stamp ? `[${l.stamp}] ` : ''}${l.speaker ? `[${l.speaker}] ` : ''}${l.text}`).join('\n');
+const mdScript = (r: ScriptOutput) => linesMarkdown(r.lines.map((l) => ({ stamp: l.stamp, who: l.speaker, said: l.text })));
 
 function mdSpeakers(r: SpeakersOutput): string {
   if (!r.speakers.length) return '화자 구분 결과가 없습니다';

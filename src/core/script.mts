@@ -45,3 +45,21 @@ export function speakerStats(lines: ScriptLine[], total: number): SpeakerStat[] 
   });
   return [...map.values()].sort((a, b) => b.sec - a.sec);
 }
+
+// 복사용 마크다운: 한 줄에 목록 한 칸 (`- **00:02 민준** 말`). 줄바꿈 하나는 마크다운에서 한 문단으로 붙어 버리기 때문.
+// 말 속의 마크다운 글자(* _ ` ~ [ ] < > & \)는 글자 그대로 보이게 막는다. 앞에 시각이 없는 줄은 줄머리 표시(# > - + 1.)도 막는다
+const escapeMd = (t: string) => t.replace(/[\\`*_~[\]<>&|]/g, '\\$&');
+const escapeLead = (t: string) => t.replace(/^(\s*)([#>+=-]|\d+(?=[.)]))/, (_m, sp: string, mark: string) => `${sp}${/\d/.test(mark) ? `${mark}\\` : `\\${mark}`}`);
+
+export function scriptMarkdown(text: string | null | undefined): string {
+  return linesMarkdown(parseScript(text));
+}
+
+export function linesMarkdown(lines: Pick<ScriptLine, 'stamp' | 'who' | 'said'>[]): string {
+  return lines.map((l) => {
+    const said = escapeMd(l.said.trim());
+    if (!l.stamp) return `- ${escapeLead(said)}`;
+    const head = `**${l.stamp}${l.who ? ` ${escapeMd(l.who)}` : ''}**`;
+    return said ? `- ${head} ${said}` : `- ${head}`;
+  }).join('\n');
+}

@@ -1,5 +1,6 @@
 import { Recorder } from './recorder.js';
 import { startOnboarding } from './onboarding.js';
+import { scriptMarkdown } from '../../lib/core/script.mjs';
 
 const api = window.recorderApi;
 const $ = (id) => document.getElementById(id);
@@ -1092,7 +1093,12 @@ function pageMeeting(id) {
       const text = tab === 'clean' ? doc.scriptClean : doc.transcript;
       const bar = h('div', { class: 'tab-bar' },
         h('span', null, tab === 'clean' ? '맞장구·하다 만 말·잡담을 쳐내고, 같은 사람이 이어서 한 말을 한 줄로 합친 스크립트입니다.' : '녹취 그대로의 스크립트입니다.'),
-        text && copyButton(text, '스크립트 복사'));
+        text && h('button', { class: 'btn', onclick: async (e) => {
+          const btn = e.currentTarget; // await 뒤에는 e.currentTarget이 null
+          await api.copy(scriptMarkdown(text));
+          toast(`${tab === 'clean' ? '정리본' : '원본'}을 복사했습니다`, '마크다운 형식');
+          btn.blur();
+        } }, icon('i-copy'), tab === 'clean' ? '정리본 복사' : '원본 복사'));
       body.append(bar);
       if (text) body.append(scriptView(r, parseScript(text), color, seek, matcher));
       else {
@@ -2342,9 +2348,10 @@ function pageMeeting(id) {
       setTimeout(() => document.addEventListener('mousedown', outside));
     };
     if (doc.minutes) wrap.append(h('button', { class: 'btn', onclick: async (e) => {
+      const btn = e.currentTarget; // await 뒤에는 e.currentTarget이 null
       await api.copy(doc.minutes);
       toast('회의록을 복사했습니다', '마크다운 형식');
-      e.currentTarget.blur();
+      btn.blur();
     } }, icon('i-copy'), '회의록 복사'));
     if (!busy && s && s !== 'short') {
       wrap.append(h('button', { class: 'btn', onclick: () => {

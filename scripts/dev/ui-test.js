@@ -112,6 +112,21 @@ app.whenReady().then(async () => {
   const toast = await js(`(() => { const t = document.querySelector('#toasts .toast.bad'); if (!t) return null; const b = t.querySelector('b'); return { bg: getComputedStyle(t).backgroundColor, fg: getComputedStyle(b).color, text: t.textContent }; })()`);
   results.push(['오류 알림 글자', Boolean(toast && toast.text && toast.fg !== toast.bg), toast ? `글자 ${toast.fg} · 배경 ${toast.bg}` : '오류 알림이 뜨지 않음']);
 
+  // 정리본 복사: 글자 있는 버튼으로 보이고, 마크다운 목록으로 복사된다 (화면이 lib/core 모듈을 불러온다)
+  await tabClick('정리본');
+  await wait(400);
+  const copyBtn = `[...document.querySelectorAll('.tab-bar button')].find(b=>b.textContent.trim()==='정리본 복사')`;
+  const shown = await js(`Boolean(${copyBtn})`);
+  await js(`${copyBtn}?.click()`);
+  await wait(300);
+  const copied = await js('window.stubCalls().copied ?? null');
+  const wantMd = '- **00:02 화자 1** 다음 주 배포 일정 얘기해 볼까요?\n- **00:06 화자 2** 네, 화요일 오전이 좋을 것 같아요.\n- **00:15 화자 2** 랩캐시도 쪽 확인만 하면 됩니다.';
+  results.push(['정리본 복사 (마크다운)', shown && copied === wantMd, shown ? `복사한 글 ${JSON.stringify(copied)}` : '정리본 복사 버튼을 찾지 못함']);
+  await js(`[...document.querySelectorAll('.meet-acts .btn')].find(b=>b.textContent.includes('회의록 복사'))?.click()`);
+  await wait(300);
+  const copiedMinutes = await js('window.stubCalls().copied ?? null');
+  results.push(['회의록 복사', typeof copiedMinutes === 'string' && copiedMinutes.startsWith('# 예시 회의'), `복사한 글 앞부분 ${JSON.stringify(String(copiedMinutes).slice(0, 12))}`]);
+
   let failed = 0;
   for (const [name, ok, detail] of results) {
     if (!ok) failed++;

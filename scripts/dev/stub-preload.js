@@ -90,6 +90,9 @@ const impl = {
     await new Promise((r) => setTimeout(r, +(process.env.STUB_JOB_MS || 2500)));
     return JSON.parse(read('actions.json') ?? '{"actions":[],"advice":[]}');
   },
+  copy: async (text) => {
+    calls.copied = text;
+  },
   onboardingGet: async () => ({ completed: !process.env.OB_STEP, step: process.env.OB_STEP || 'done' }),
   setupStatus: async () => [
     { id: 'engine', name: '음성 인식 엔진', desc: 'whisper.cpp (Homebrew로 설치)', installed: true, size: null, removable: false },
