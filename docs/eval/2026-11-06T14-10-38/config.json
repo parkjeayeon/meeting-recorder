@@ -1,0 +1,52 @@
+{
+  "runId": "2026-11-06T14-10-38",
+  "label": "7차: 두 등급(주로/잠깐), 캐시 끔, Claude Code",
+  "provider": "claude-code",
+  "scope": {
+    "count": null,
+    "from": null,
+    "to": null
+  },
+  "sizes": [
+    60,
+    300
+  ],
+  "methods": [
+    "M2"
+  ],
+  "queries": [
+    "q01",
+    "q02",
+    "q03",
+    "q04",
+    "q05",
+    "q06",
+    "q07",
+    "q08",
+    "q09",
+    "q10",
+    "q11",
+    "q12",
+    "q13",
+    "q14",
+    "q15",
+    "q16",
+    "q17",
+    "q18",
+    "q19",
+    "q20",
+    "q21",
+    "q22",
+    "r1",
+    "r2",
+    "r3",
+    "r4"
+  ],
+  "real": 5,
+  "candMax": 40,
+  "snippets": 3,
+  "codexOverheadInput": 563,
+  "codexLimitBefore": 22,
+  "today": "2026-11-06",
+  "node": "v26.7.0"
+}

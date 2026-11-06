@@ -1,0 +1,28 @@
+{
+  "runId": "2026-11-06T14-05-22",
+  "label": "점검: 두 등급",
+  "provider": "claude-code",
+  "scope": {
+    "count": null,
+    "from": null,
+    "to": null
+  },
+  "sizes": [
+    60
+  ],
+  "methods": [
+    "M2"
+  ],
+  "queries": [
+    "q06",
+    "q21",
+    "q22"
+  ],
+  "real": 5,
+  "candMax": 40,
+  "snippets": 3,
+  "codexOverheadInput": 563,
+  "codexLimitBefore": 20,
+  "today": "2026-11-06",
+  "node": "v26.7.0"
+}

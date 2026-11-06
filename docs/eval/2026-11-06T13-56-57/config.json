@@ -1,0 +1,30 @@
+{
+  "runId": "2026-11-06T13-56-57",
+  "label": "캐시 점검: Claude Code 동시 4",
+  "provider": "claude-code",
+  "scope": {
+    "count": null,
+    "from": null,
+    "to": null
+  },
+  "sizes": [
+    300
+  ],
+  "methods": [
+    "M1",
+    "M2"
+  ],
+  "queries": [
+    "q05",
+    "q06",
+    "q08",
+    "q09"
+  ],
+  "real": 5,
+  "candMax": 40,
+  "snippets": 3,
+  "codexOverheadInput": 563,
+  "codexLimitBefore": 20,
+  "today": "2026-11-06",
+  "node": "v26.7.0"
+}

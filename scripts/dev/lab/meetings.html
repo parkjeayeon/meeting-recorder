@@ -657,12 +657,12 @@ function askHead(t) {
       : h('div', { class: 'conds' }, `${t.results.length}건 · ${t.candidates ? `후보 ${t.candidates}개 중 추림 · ` : ''}${secs(t)} 걸림`));
 }
 
-// 채팅 첫머리: 다듬기 계정이 Codex면 질문 하나에 드는 비용을 알린다 (Codex는 부를 때마다 기본 입력이 크다, docs/measurements.md)
+// 채팅 첫머리: 다듬기 계정이 Codex면 이 기능은 Claude Code를 추천한다고만 알린다 (측정: docs/measurements.md)
 function providerNote() {
   if (labProvider !== 'codex' || providerNoteClosed) return null;
   return h('div', { class: 'bubble ai note' },
-    h('span', { class: 'warn-line' }, icon('i-alert'), h('b', null, '지금 다듬기 계정이 Codex예요')),
-    h('span', null, 'Codex는 부를 때마다 기본 입력이 약 1만 6천 토큰 붙어서, 질문 하나에 약 1만 7천~4만 4천 토큰을 씁니다(대부분 캐시). Claude Code는 같은 질문에 고정 몫이 약 500토큰이라 훨씬 적게 듭니다.'),
+    h('span', { class: 'warn-line' }, icon('i-alert'), h('b', null, '이 기능은 Claude Code를 추천해요')),
+    h('span', null, '지금 다듬기 계정은 Codex예요. 정확도는 비슷하지만 Claude Code가 더 빠르고 사용량을 덜 씁니다.'),
     h('div', { class: 'warn-acts' },
       h('button', { class: 'btn small', onclick: () => { labProvider = 'claude-code'; draw(); } }, '설정 › 다듬기 열기'),
       h('button', { class: 'btn small ghost', onclick: () => { providerNoteClosed = true; draw(); } }, '알겠어요')));

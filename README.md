@@ -12,7 +12,8 @@ macOS용 Electron 앱. 두 가지 일을 한다.
 - [docs/decisions.md](docs/decisions.md) — 왜 그렇게 만들었는지 (판단·트레이드오프)
 - [docs/known-issues.md](docs/known-issues.md) — 알려진 한계·확인 못 한 것·남은 일
 - [docs/research/wispr-flow.md](docs/research/wispr-flow.md) — Wispr Flow 앱 분석 기록
-- [docs/measurements.md](docs/measurements.md) — 실측값 (속도·크기·정리본 줄 수·소리 크기)
+- [docs/measurements.md](docs/measurements.md) — 실측값 (속도·크기·정리본 줄 수·소리 크기·질문으로 회의 거르기 측정)
+- [docs/eval/](docs/eval/) — 질문으로 회의 거르기 측정 기록 (실행마다 설정·요약·질문별 결과, 누적 `history.csv`, 실제 회의 내용은 걸러 냄)
 - [docs/testing.md](docs/testing.md) — 셀프테스트·화면 캡처·샌드박스·고아 프로세스 점검·회의록 다시 돌리기 (`scripts/dev/`)
 
 ## 시작하기
@@ -34,7 +35,8 @@ npm run test:crash   # 확인 필요 적용·되돌리기가 도중에 끊겼을
 npm run test:diskfull # 디스크 가득 참에서 파일 쓰기 (RAM 디스크)
 npm run mr -- list   # 개발 중 명령줄 도구 실행
 npm run lab:meetings # 실험 페이지: 회의 목록 안·질문으로 찾기 화면 비교 (가짜 회의 0·5·40·160·420개, 여러 해)
-node scripts/dev/eval/search-eval.mjs  # 질문으로 회의 거르기 방식별 정확도·토큰·시간 측정 (Codex, 결과는 eval-runs/)
+node scripts/dev/eval/search-eval.mjs --provider claude-code  # 질문으로 회의 거르기 방식별 정확도·토큰·시간 측정 (Codex 또는 Claude Code, 결과는 eval-runs/)
+node scripts/dev/eval/publish.mjs      # 측정 결과에서 실제 회의 내용을 걸러 docs/eval/로 (커밋용)
 npm run install-app  # .app 빌드 → 서명 → /Applications 설치
 ```
 `npm run dist`(`install-app`도)는 빌드 전에 타입 검사·단위 테스트·키보드 처리기 검사·화면 테스트·끊김 시험을 돌리고, 하나라도 실패하면 멈춘다 ([docs/testing.md](docs/testing.md)).
@@ -244,5 +246,5 @@ mr schema actions           # 출력 JSON Schema
 - `src/wav-writer.js`: 스트리밍 기록, 5초마다 헤더 갱신(크래시 대비)
 - `scripts/sign-app.sh`: 빌드한 앱 서명 (자체 서명 인증서가 있으면 그걸로, 없으면 ad-hoc)
 - `scripts/dev/`: 개발용 — 서명 인증서 만들기, 키보드 처리기 검사(`check-handlers.js`), 화면 테스트(`ui-test.js`), 화면 캡처, 샌드박스 확인, 고아 프로세스 점검, 회의 사본에 회의록 다시 돌리기, 실험 페이지(`lab/`), 검색 평가(`eval/`) ([docs/testing.md](docs/testing.md))
-- `eval-runs/`: 검색 평가 결과와 실제 회의 정답 (git 제외, 실제 회의 내용이 들어감)
+- `eval-runs/`: 검색 평가 원본 결과·LLM 호출 기록·실제 회의 정답·금지어 목록 (git 제외, 실제 회의 내용이 들어감) → 걸러서 `docs/eval/`
 - `docs/images/diagrams.py`: README 아키텍처 그림(SVG) 생성기

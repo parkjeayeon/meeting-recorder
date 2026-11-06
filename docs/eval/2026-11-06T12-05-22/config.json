@@ -1,0 +1,22 @@
+{
+  "runId": "2026-11-06T12-05-22",
+  "label": "점검: M1·M2",
+  "sizes": [
+    60
+  ],
+  "methods": [
+    "M1",
+    "M2"
+  ],
+  "queries": [
+    "q10",
+    "q14"
+  ],
+  "real": 5,
+  "candMax": 40,
+  "snippets": 3,
+  "codexOverheadInput": 16658,
+  "codexLimitBefore": 16,
+  "today": "2026-11-06",
+  "node": "v26.7.0"
+}

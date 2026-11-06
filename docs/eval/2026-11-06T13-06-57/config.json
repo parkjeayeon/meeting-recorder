@@ -1,0 +1,49 @@
+{
+  "runId": "2026-11-06T13-06-57",
+  "label": "3차: 범위 최근 100개",
+  "scope": {
+    "count": 100,
+    "from": null,
+    "to": null
+  },
+  "sizes": [
+    300
+  ],
+  "methods": [
+    "M1",
+    "M2"
+  ],
+  "queries": [
+    "q01",
+    "q02",
+    "q03",
+    "q04",
+    "q05",
+    "q06",
+    "q07",
+    "q08",
+    "q09",
+    "q10",
+    "q11",
+    "q12",
+    "q13",
+    "q14",
+    "q15",
+    "q16",
+    "q17",
+    "q18",
+    "q19",
+    "q20",
+    "r1",
+    "r2",
+    "r3",
+    "r4"
+  ],
+  "real": 5,
+  "candMax": 40,
+  "snippets": 3,
+  "codexOverheadInput": 16662,
+  "codexLimitBefore": 19,
+  "today": "2026-11-06",
+  "node": "v26.7.0"
+}

@@ -81,12 +81,13 @@ npx electron scripts/dev/rerun-meeting.js /tmp/m
 화면 안을 실제 앱에 넣기 전에 가짜 데이터로 나란히 비교하는 페이지 (`scripts/dev/lab/meetings.html`, 앱에는 안 들어감). 위쪽 막대로 목록 안(A 장부 · B 손볼 것+장부 · C 손볼 것 먼저), 데이터(회의 0·5·40·160·420개, 모두 확정, 여러 해), B에서 질문으로 찾기 화면(1 검색창 · 2 서랍 · 3 팔레트 · 4 오른쪽 아래 둥근 버튼)을 바꾼다. 질문 엔진은 시간만 흉내 낸 가짜(조건 풀기 → 찾기 → 추리기, 약 6초)이고, 왼쪽 메뉴로 다른 화면(자리만)에 가도 작업이 이어진다. 주소에 `?v=mix&ask=fab&seed=1`을 주면 끝난 질문·진행 중 질문을 미리 넣는다. `SHOT=폴더 npx electron scripts/dev/lab/open.js`면 창 없이 세 안 × 라이트·다크를 캡처한다. 회의 목록 B안은 여기서 정해 옮겼다 ([결정 50](decisions.md)).
 
 ## 검색 평가 — `node scripts/dev/eval/search-eval.mjs`
-"질문으로 회의 거르기"를 방식별로 잰다. LLM은 Codex를 앱과 같은 read-only 샌드박스로 부르고 `--json`으로 토큰 사용량을 받는다.
+"질문으로 회의 거르기"를 방식별로 잰다. LLM은 `--provider codex`(기본, 앱과 같은 read-only 샌드박스, `--json`으로 토큰 사용량) 또는 `--provider claude-code`(앱과 같은 플래그: 시스템 지시문 바꿔 끼움·도구 끔·MCP·설정·메모리 안 읽음, `--output-format json`). 질문마다 같은 앞부분(지시·회의 목록)과 바뀌는 부분(질문·후보)을 나눠 보내고, Claude Code의 조건 풀기·추리기는 캐시를 끈다(다시 읽을 일이 없어 만드는 값만 듦).
 - 회의: 지어낸 회의(`eval/synth.mjs`, 주제 12개·돌려 말하기·녹취에만 곁다리 언급, 정답을 메타데이터로 계산) + 실제 회의(녹음 폴더, 읽기만). 실제 회의 정답과 실제 회의 질문은 `eval-runs/real-labels.json` (git 제외). 애매한 주제는 그 질문에서 채점하지 않는다
-- 질문: `eval/queries.mjs` (날짜·주제·돌려 말하기·날짜+주제·상태) + 실제 회의 질문
-- 방식: M0 단어 검색 / M1 요약 전부 LLM / M2 조건 풀기 → SQLite FTS5 trigram 전문 검색(두 글자는 LIKE) → 후보만 LLM이 추림, M2v는 근거 문장까지 확인된 것만
-- 기록: 정밀도·재현율·F1·정확히 맞음·곁다리 언급 찾음·실제 회의 찾음·질문당 입력/캐시/출력 토큰·호출 수·시간·오류, Codex 주간 사용량(전후). 실행마다 `eval-runs/<시각>/`(config·results.jsonl·calls.jsonl·summary.md)과 `eval-runs/history.csv`에 한 줄씩 쌓는다
-- 인자: `--sizes 60,300 --methods M0,M1,M2 --queries q05,r1 --concurrency 4 --label 메모`. 실행 한 번(질문 24개 × 60·300개 × 세 방식)이 Codex 주간 사용량 약 2%
+- 질문: `eval/queries.mjs` (날짜·주제·돌려 말하기·날짜+주제·상태·정도("주로 다룬"·"잠깐이라도")) + 실제 회의 질문. 정답은 두 등급 — 주로 다룸(main) / 잠깐 언급(mention)
+- 방식: M0 단어 검색 / M1 요약 전부 LLM / M2 조건 풀기(날짜·상태·정도·찾을 말) → SQLite FTS5 trigram 전문 검색(두 글자는 LIKE) → 후보마다 LLM이 주로 다룸·잠깐 언급·관련 없음으로 나눔(무엇을 보일지는 질문의 정도로 앱이 정함), M2v는 근거 문장까지 확인된 것만
+- 기록: 정밀도·재현율·F1·정확히 맞음·주로 다룬 회의 찾음·잠깐 언급 찾음·등급 맞음·실제 회의 찾음·질문당 입력/캐시/출력 토큰·호출 수·시간·오류, Codex 주간 사용량(전후). 실행마다 `eval-runs/<시각>/`(config·results.jsonl·calls.jsonl·summary.md)과 `eval-runs/history.csv`에 한 줄씩 쌓는다
+- 인자: `--provider codex|claude-code --sizes 60,300 --methods M0,M1,M2 --queries q05,r1 --scope-count 100 --scope-from 2026-01-01 --concurrency 4 --label 메모`. 실행 한 번(질문 26개 × 60·300개, M2)이 LLM을 약 100번 부른다 — Codex 주간 사용량 약 1~2%, Claude Code는 Opus로 약 100번
+- **올리기**: `node scripts/dev/eval/publish.mjs`가 `eval-runs/`를 `docs/eval/`(커밋)로 거른다 — 실행마다 설정·요약·지어낸 회의 질문의 질문별 결과·쓴 회의 목록, 누적 `history.csv`. LLM 호출 원문·실제 회의 정답·실제 회의 질문 원문·제목·id는 빼고(실제 회의 질문은 번호와 수치만), `eval-runs/forbidden.txt`(회사명·실명·실제 회의 제목, git 제외)의 말이 하나라도 남으면 실패한다
 - 결과는 [docs/measurements.md](measurements.md)
 
 ## 손으로 확인할 것 (자동 시험이 못 하는 것)

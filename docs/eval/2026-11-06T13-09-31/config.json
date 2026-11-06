@@ -1,0 +1,49 @@
+{
+  "runId": "2026-11-06T13-09-31",
+  "label": "4차: 범위 올해",
+  "scope": {
+    "count": null,
+    "from": "2026-01-01",
+    "to": null
+  },
+  "sizes": [
+    300
+  ],
+  "methods": [
+    "M1",
+    "M2"
+  ],
+  "queries": [
+    "q01",
+    "q02",
+    "q03",
+    "q04",
+    "q05",
+    "q06",
+    "q07",
+    "q08",
+    "q09",
+    "q10",
+    "q11",
+    "q12",
+    "q13",
+    "q14",
+    "q15",
+    "q16",
+    "q17",
+    "q18",
+    "q19",
+    "q20",
+    "r1",
+    "r2",
+    "r3",
+    "r4"
+  ],
+  "real": 5,
+  "candMax": 40,
+  "snippets": 3,
+  "codexOverheadInput": 16660,
+  "codexLimitBefore": 20,
+  "today": "2026-11-06",
+  "node": "v26.7.0"
+}

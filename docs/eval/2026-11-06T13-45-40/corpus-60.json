@@ -1,0 +1,785 @@
+{
+ "realMeetings": 5,
+ "synthetic": [
+  {
+   "id": "s059",
+   "real": false,
+   "at": "2026-10-15T04:00:00.000Z",
+   "status": "done",
+   "title": "짧은 회의",
+   "meta": {
+    "topic": "hiring",
+    "style": "para",
+    "mention": "onboarding",
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s058",
+   "real": false,
+   "at": "2026-10-09T05:45:00.000Z",
+   "status": "fail",
+   "title": null,
+   "meta": {
+    "topic": "budget",
+    "style": "canon",
+    "mention": null,
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s057",
+   "real": false,
+   "at": "2026-09-10T06:00:00.000Z",
+   "status": "fail",
+   "title": null,
+   "meta": {
+    "topic": "perf",
+    "style": "para",
+    "mention": null,
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s056",
+   "real": false,
+   "at": "2026-08-26T07:30:00.000Z",
+   "status": "done",
+   "title": "디자인 리뷰",
+   "meta": {
+    "topic": "design",
+    "style": "canon",
+    "mention": "deploy",
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s055",
+   "real": false,
+   "at": "2026-08-13T08:45:00.000Z",
+   "status": "fail",
+   "title": null,
+   "meta": {
+    "topic": "planning",
+    "style": "para",
+    "mention": null,
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s054",
+   "real": false,
+   "at": "2026-07-27T01:00:00.000Z",
+   "status": "open",
+   "title": "보안 점검",
+   "meta": {
+    "topic": "security",
+    "style": "canon",
+    "mention": "hiring",
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s053",
+   "real": false,
+   "at": "2026-07-08T06:30:00.000Z",
+   "status": "open",
+   "title": "예산 검토",
+   "meta": {
+    "topic": "budget",
+    "style": "canon",
+    "mention": "incident",
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s052",
+   "real": false,
+   "at": "2026-06-23T03:30:00.000Z",
+   "status": "fail",
+   "title": null,
+   "meta": {
+    "topic": "security",
+    "style": "canon",
+    "mention": "hiring",
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s051",
+   "real": false,
+   "at": "2026-06-01T01:00:00.000Z",
+   "status": "done",
+   "title": "짧은 회의",
+   "meta": {
+    "topic": "planning",
+    "style": "para",
+    "mention": null,
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s050",
+   "real": false,
+   "at": "2026-05-25T07:45:00.000Z",
+   "status": "open",
+   "title": "짧은 회의",
+   "meta": {
+    "topic": "handover",
+    "style": "para",
+    "mention": null,
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s049",
+   "real": false,
+   "at": "2026-04-27T08:45:00.000Z",
+   "status": "done",
+   "title": "점심 후 회의",
+   "meta": {
+    "topic": "deploy",
+    "style": "para",
+    "mention": "budget",
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s048",
+   "real": false,
+   "at": "2026-04-15T07:15:00.000Z",
+   "status": "done",
+   "title": "점심 후 회의",
+   "meta": {
+    "topic": "perf",
+    "style": "para",
+    "mention": null,
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s047",
+   "real": false,
+   "at": "2026-03-23T00:30:00.000Z",
+   "status": "done",
+   "title": "분기 비용 점검",
+   "meta": {
+    "topic": "budget",
+    "style": "canon",
+    "mention": null,
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s046",
+   "real": false,
+   "at": "2026-03-11T07:45:00.000Z",
+   "status": "done",
+   "title": "내년 계획 논의",
+   "meta": {
+    "topic": "planning",
+    "style": "canon",
+    "mention": null,
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s045",
+   "real": false,
+   "at": "2026-02-18T00:00:00.000Z",
+   "status": "open",
+   "title": "운영 업무 인수인계",
+   "meta": {
+    "topic": "handover",
+    "style": "canon",
+    "mention": null,
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s044",
+   "real": false,
+   "at": "2026-02-02T08:15:00.000Z",
+   "status": "done",
+   "title": "면접 후보 검토",
+   "meta": {
+    "topic": "hiring",
+    "style": "canon",
+    "mention": null,
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s043",
+   "real": false,
+   "at": "2026-01-23T06:15:00.000Z",
+   "status": "done",
+   "title": "배포 점검",
+   "meta": {
+    "topic": "deploy",
+    "style": "canon",
+    "mention": "handover",
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s042",
+   "real": false,
+   "at": "2026-01-05T02:00:00.000Z",
+   "status": "done",
+   "title": "점심 후 회의",
+   "meta": {
+    "topic": "deploy",
+    "style": "para",
+    "mention": null,
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s041",
+   "real": false,
+   "at": "2025-12-15T07:00:00.000Z",
+   "status": "done",
+   "title": "주간 회의",
+   "meta": {
+    "topic": "handover",
+    "style": "para",
+    "mention": "perf",
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s040",
+   "real": false,
+   "at": "2025-11-24T06:30:00.000Z",
+   "status": "short",
+   "title": null,
+   "meta": {
+    "topic": "onboarding",
+    "style": "canon",
+    "mention": null,
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s039",
+   "real": false,
+   "at": "2025-11-14T00:45:00.000Z",
+   "status": "done",
+   "title": "주간 회의",
+   "meta": {
+    "topic": "incident",
+    "style": "para",
+    "mention": null,
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s038",
+   "real": false,
+   "at": "2025-10-28T03:15:00.000Z",
+   "status": "done",
+   "title": "점심 후 회의",
+   "meta": {
+    "topic": "customer",
+    "style": "para",
+    "mention": null,
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s037",
+   "real": false,
+   "at": "2025-09-30T01:30:00.000Z",
+   "status": "done",
+   "title": "주간 회의",
+   "meta": {
+    "topic": "perf",
+    "style": "para",
+    "mention": "budget",
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s036",
+   "real": false,
+   "at": "2025-09-24T01:00:00.000Z",
+   "status": "draft",
+   "title": "주간 회의",
+   "meta": {
+    "topic": "perf",
+    "style": "para",
+    "mention": "career",
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s035",
+   "real": false,
+   "at": "2025-09-05T03:15:00.000Z",
+   "status": "done",
+   "title": "주간 회의",
+   "meta": {
+    "topic": "security",
+    "style": "para",
+    "mention": null,
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s034",
+   "real": false,
+   "at": "2025-08-18T08:00:00.000Z",
+   "status": "done",
+   "title": "배포 점검",
+   "meta": {
+    "topic": "deploy",
+    "style": "canon",
+    "mention": null,
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s033",
+   "real": false,
+   "at": "2025-07-23T05:45:00.000Z",
+   "status": "done",
+   "title": "팀 회의",
+   "meta": {
+    "topic": "incident",
+    "style": "para",
+    "mention": "handover",
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s032",
+   "real": false,
+   "at": "2025-07-07T02:00:00.000Z",
+   "status": "done",
+   "title": "온보딩",
+   "meta": {
+    "topic": "onboarding",
+    "style": "canon",
+    "mention": null,
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s031",
+   "real": false,
+   "at": "2025-06-23T02:15:00.000Z",
+   "status": "done",
+   "title": "주간 회의",
+   "meta": {
+    "topic": "security",
+    "style": "para",
+    "mention": "handover",
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s030",
+   "real": false,
+   "at": "2025-06-09T04:00:00.000Z",
+   "status": "done",
+   "title": "점심 후 회의",
+   "meta": {
+    "topic": "handover",
+    "style": "para",
+    "mention": "customer",
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s029",
+   "real": false,
+   "at": "2025-05-28T06:45:00.000Z",
+   "status": "done",
+   "title": "화면 시안 검토",
+   "meta": {
+    "topic": "design",
+    "style": "canon",
+    "mention": null,
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s028",
+   "real": false,
+   "at": "2025-05-05T06:15:00.000Z",
+   "status": "done",
+   "title": "예산 검토",
+   "meta": {
+    "topic": "budget",
+    "style": "canon",
+    "mention": "incident",
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s027",
+   "real": false,
+   "at": "2025-04-21T05:45:00.000Z",
+   "status": "fail",
+   "title": null,
+   "meta": {
+    "topic": "hiring",
+    "style": "para",
+    "mention": null,
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s026",
+   "real": false,
+   "at": "2025-03-28T02:30:00.000Z",
+   "status": "done",
+   "title": "신규 입사자 교육",
+   "meta": {
+    "topic": "onboarding",
+    "style": "canon",
+    "mention": null,
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s025",
+   "real": false,
+   "at": "2025-03-11T03:15:00.000Z",
+   "status": "done",
+   "title": "팀 회의",
+   "meta": {
+    "topic": "onboarding",
+    "style": "para",
+    "mention": null,
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s024",
+   "real": false,
+   "at": "2025-02-28T00:45:00.000Z",
+   "status": "done",
+   "title": "응답 시간 개선 회의",
+   "meta": {
+    "topic": "perf",
+    "style": "canon",
+    "mention": null,
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s023",
+   "real": false,
+   "at": "2025-02-10T05:45:00.000Z",
+   "status": "done",
+   "title": "짧은 회의",
+   "meta": {
+    "topic": "planning",
+    "style": "para",
+    "mention": "customer",
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s022",
+   "real": false,
+   "at": "2025-01-17T04:30:00.000Z",
+   "status": "done",
+   "title": "주간 회의",
+   "meta": {
+    "topic": "design",
+    "style": "para",
+    "mention": null,
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s021",
+   "real": false,
+   "at": "2025-01-03T08:15:00.000Z",
+   "status": "done",
+   "title": "디자인 리뷰",
+   "meta": {
+    "topic": "design",
+    "style": "canon",
+    "mention": null,
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s020",
+   "real": false,
+   "at": "2024-12-13T06:15:00.000Z",
+   "status": "done",
+   "title": "팀 회의",
+   "meta": {
+    "topic": "handover",
+    "style": "para",
+    "mention": null,
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s019",
+   "real": false,
+   "at": "2024-11-26T06:30:00.000Z",
+   "status": "done",
+   "title": "화면 시안 검토",
+   "meta": {
+    "topic": "design",
+    "style": "canon",
+    "mention": null,
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s018",
+   "real": false,
+   "at": "2024-11-12T01:00:00.000Z",
+   "status": "done",
+   "title": "취약점 점검 결과",
+   "meta": {
+    "topic": "security",
+    "style": "canon",
+    "mention": null,
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s017",
+   "real": false,
+   "at": "2024-10-22T02:00:00.000Z",
+   "status": "done",
+   "title": "운영 업무 인수인계",
+   "meta": {
+    "topic": "handover",
+    "style": "canon",
+    "mention": null,
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s016",
+   "real": false,
+   "at": "2024-10-04T04:00:00.000Z",
+   "status": "done",
+   "title": "로드맵 회의",
+   "meta": {
+    "topic": "planning",
+    "style": "canon",
+    "mention": "customer",
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s015",
+   "real": false,
+   "at": "2024-09-30T04:00:00.000Z",
+   "status": "open",
+   "title": "주간 회의",
+   "meta": {
+    "topic": "deploy",
+    "style": "para",
+    "mention": null,
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s014",
+   "real": false,
+   "at": "2024-09-03T07:45:00.000Z",
+   "status": "done",
+   "title": "디자인 리뷰",
+   "meta": {
+    "topic": "design",
+    "style": "canon",
+    "mention": null,
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s013",
+   "real": false,
+   "at": "2024-08-14T01:45:00.000Z",
+   "status": "done",
+   "title": "보안 점검",
+   "meta": {
+    "topic": "security",
+    "style": "canon",
+    "mention": null,
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s012",
+   "real": false,
+   "at": "2024-08-02T08:15:00.000Z",
+   "status": "done",
+   "title": "부하 테스트 리뷰",
+   "meta": {
+    "topic": "perf",
+    "style": "canon",
+    "mention": "planning",
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s011",
+   "real": false,
+   "at": "2024-07-15T07:15:00.000Z",
+   "status": "open",
+   "title": "팀 회의",
+   "meta": {
+    "topic": "incident",
+    "style": "para",
+    "mention": null,
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s010",
+   "real": false,
+   "at": "2024-06-27T07:00:00.000Z",
+   "status": "done",
+   "title": "목요일 회의",
+   "meta": {
+    "topic": "incident",
+    "style": "para",
+    "mention": null,
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s009",
+   "real": false,
+   "at": "2024-06-05T04:45:00.000Z",
+   "status": "done",
+   "title": "배포 점검",
+   "meta": {
+    "topic": "deploy",
+    "style": "canon",
+    "mention": "career",
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s008",
+   "real": false,
+   "at": "2024-05-20T06:15:00.000Z",
+   "status": "done",
+   "title": "배포 일정 회의",
+   "meta": {
+    "topic": "deploy",
+    "style": "canon",
+    "mention": "planning",
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s007",
+   "real": false,
+   "at": "2024-05-01T07:30:00.000Z",
+   "status": "done",
+   "title": "점심 후 회의",
+   "meta": {
+    "topic": "budget",
+    "style": "para",
+    "mention": null,
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s006",
+   "real": false,
+   "at": "2024-04-26T04:45:00.000Z",
+   "status": "done",
+   "title": "취약점 점검 결과",
+   "meta": {
+    "topic": "security",
+    "style": "canon",
+    "mention": null,
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s005",
+   "real": false,
+   "at": "2024-04-08T08:00:00.000Z",
+   "status": "open",
+   "title": "접속 장애 원인 분석",
+   "meta": {
+    "topic": "incident",
+    "style": "canon",
+    "mention": null,
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s004",
+   "real": false,
+   "at": "2024-03-18T02:00:00.000Z",
+   "status": "done",
+   "title": "배포 일정 회의",
+   "meta": {
+    "topic": "deploy",
+    "style": "canon",
+    "mention": "hiring",
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s003",
+   "real": false,
+   "at": "2024-02-28T02:30:00.000Z",
+   "status": "done",
+   "title": "고객사 미팅",
+   "meta": {
+    "topic": "customer",
+    "style": "canon",
+    "mention": null,
+    "mentionStyle": "canon"
+   }
+  },
+  {
+   "id": "s002",
+   "real": false,
+   "at": "2024-02-12T05:15:00.000Z",
+   "status": "done",
+   "title": "진로 상담",
+   "meta": {
+    "topic": "career",
+    "style": "canon",
+    "mention": null,
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s001",
+   "real": false,
+   "at": "2024-01-31T06:45:00.000Z",
+   "status": "open",
+   "title": "고객사 미팅",
+   "meta": {
+    "topic": "customer",
+    "style": "canon",
+    "mention": "incident",
+    "mentionStyle": "para"
+   }
+  },
+  {
+   "id": "s000",
+   "real": false,
+   "at": "2024-01-10T03:45:00.000Z",
+   "status": "done",
+   "title": "목요일 회의",
+   "meta": {
+    "topic": "perf",
+    "style": "para",
+    "mention": null,
+    "mentionStyle": "canon"
+   }
+  }
+ ]
+}
