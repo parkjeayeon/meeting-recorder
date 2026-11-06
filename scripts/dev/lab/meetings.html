@@ -154,6 +154,11 @@
   .fab svg { width: 20px; height: 20px; }
   .fab-ring { position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--accent); border-right-color: transparent; border-bottom-color: transparent; animation: spin 1.1s linear infinite; }
   .fab-badge { position: absolute; top: -2px; right: -2px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font: 700 11px/20px var(--mono); box-shadow: 0 0 0 2px var(--panel); }
+  .fab-toast { position: fixed; z-index: 34; right: 88px; bottom: 32px; display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 6px 0 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink-2); font-size: 12.5px; box-shadow: var(--shadow-pop); animation: slide .28s cubic-bezier(.16, 1, .3, 1); }
+  .fab-toast svg { width: 14px; height: 14px; color: var(--ok); }
+  .fab-toast b { color: var(--ink); font-weight: 650; }
+  .fab-toast .go { height: 26px; padding: 0 10px; border-radius: 999px; background: var(--ink); color: var(--panel); font-weight: 600; display: grid; place-items: center; }
+  @keyframes slide { from { opacity: 0; transform: translateX(10px); } }
   .askdrawer.fabpanel { top: auto; bottom: 88px; right: 24px; height: min(600px, calc(100vh - 140px)); transform-origin: bottom right; }
   .askdrawer.fabpanel.opening { animation: pop .22s cubic-bezier(.16, 1, .3, 1); }
   @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(.97); } }
@@ -290,11 +295,11 @@
     <div class="brand"><span class="brand-mark"><svg><use href="#i-mic"/></svg></span>Meeting Recorder</div>
     <button class="search-btn"><svg><use href="#i-search"/></svg><span>검색</span><kbd>⌘K</kbd></button>
     <nav class="nav">
-      <a class="nav-item"><svg><use href="#i-home"/></svg><span>홈</span></a>
-      <a class="nav-item"><svg><use href="#i-mic"/></svg><span>받아쓰기</span></a>
-      <a class="nav-item" aria-current="page"><svg><use href="#i-people"/></svg><span>회의</span><span class="count" id="navCount"></span></a>
-      <a class="nav-item"><svg><use href="#i-book"/></svg><span>사전</span></a>
-      <a class="nav-item"><svg><use href="#i-chart"/></svg><span>통계</span></a>
+      <a class="nav-item" data-route="home" href="#"><svg><use href="#i-home"/></svg><span>홈</span></a>
+      <a class="nav-item" data-route="dictations" href="#"><svg><use href="#i-mic"/></svg><span>받아쓰기</span></a>
+      <a class="nav-item" data-route="meetings" href="#"><svg><use href="#i-people"/></svg><span>회의</span><span class="count" id="navCount"></span></a>
+      <a class="nav-item" data-route="dictionary" href="#"><svg><use href="#i-book"/></svg><span>사전</span></a>
+      <a class="nav-item" data-route="stats" href="#"><svg><use href="#i-chart"/></svg><span>통계</span></a>
     </nav>
   </aside>
   <div class="main">
@@ -433,6 +438,10 @@ const visible = () => all.filter((FILTERS.find((f) => f[0] === filter) ?? FILTER
 // 실제로는 메인 프로세스에서 돈다: 조건 풀기(LLM) → 이 Mac에서 전문 검색 → 후보 추리기(LLM). 여기서는 시간만 흉내 낸다.
 // 화면을 다시 그리거나 다른 탭·화면으로 가도 작업은 계속된다 (상태는 askTabs에, 타이머는 화면과 상관없이)
 let askUI = 'bar';
+// 왼쪽 메뉴: 회의 말고는 자리만 있는 화면 (둥근 버튼이 어느 화면에서든 보이고, 찾던 작업이 이어지는지 보려고)
+let route = 'meetings';
+const ROUTE_NAME = { home: '홈', dictations: '받아쓰기', meetings: '회의', dictionary: '사전', stats: '통계' };
+const goTab = (t) => { route = 'meetings'; filter = `ask:${t.id}`; $('view').scrollTop = 0; draw(); };
 let askTabs = [];
 let askOpen = false;
 // 찾을 범위: 개수와 기간은 따로. 비워 두면 조건에 없고, 넣으면 AND로 묶인다 (최근 N개 안에서 그리고 기간 안에서)
@@ -442,7 +451,9 @@ const LAST7 = () => ({ from: ymd(new Date(2026, 10, 6 - 6)), to: ymd(new Date(20
 const defaultScope = () => ({ count: null, from: '', to: '' });
 let askScope = defaultScope();
 let askDraft = '';
-let askJustOpened = false; // 둥근 버튼으로 막 열었을 때만 열리는 움직임 (다시 그릴 때마다 되풀이하지 않게)
+let askJustOpened = false;
+let askToast = null; // 방금 끝난 질문 (둥근 버튼 옆 알림)
+let askToastTimer = null; // 둥근 버튼으로 막 열었을 때만 열리는 움직임 (다시 그릴 때마다 되풀이하지 않게)
 let askSeq = 0;
 const COUNT_PRESETS = [50, 100, 150];
 const EXAMPLES = ['작년 2월에 한 회의', '성능 시험 관련 회의', '올해 장애 얘기한 회의', '확인 안 끝난 배포 회의'];
@@ -503,6 +514,12 @@ function startAsk(text) {
     tab.status = 'done';
     tab.stage = 'done';
     tab.ms = Date.now() - tab.t0;
+    // 다 찾으면 둥근 버튼 옆에 잠깐 알림 (보고 있는 탭이면 띄우지 않음)
+    if (filter !== `ask:${tab.id}` || route !== 'meetings') {
+      askToast = tab;
+      clearTimeout(askToastTimer);
+      askToastTimer = setTimeout(() => { askToast = null; draw(true); }, 6000);
+    }
     draw(true);
   })();
   return tab;
@@ -655,6 +672,11 @@ function askOverlay() {
     if (askUI === 'fab') {
       // 오른쪽 아래 고정 둥근 버튼: 찾는 동안 둘레가 돌고, 확인 안 한 결과 수를 뱃지로
       const unseen = askTabs.filter((t) => t.status === 'done' && !t.seen).length;
+      if (askToast && !askOpen) {
+        const t = askToast;
+        parts.push(h('button', { class: 'fab-toast', onclick: () => { askToast = null; goTab(t); } },
+          icon('i-check'), h('span', null, h('b', null, t.conds?.topic ?? t.q), t.results.length ? ` ${t.results.length}건을 찾았습니다` : ' 맞는 회의가 없습니다'), h('span', { class: 'go' }, '보기')));
+      }
       parts.push(h('button', { class: `fab${running.length ? ' busy' : ''}${askOpen ? ' on' : ''}`, 'aria-label': '질문으로 찾기', title: running.length ? `질문 ${running.length}개 찾는 중` : '질문으로 찾기', onclick: () => { askOpen = !askOpen; askJustOpened = askOpen; draw(); } },
         icon(askOpen ? 'i-x' : 'i-chat'), running.length > 0 && h('span', { class: 'fab-ring' }), !askOpen && unseen > 0 && h('span', { class: 'fab-badge' }, String(unseen))));
     }
@@ -685,7 +707,8 @@ function askPanel(cls) {
   {
     const ta = h('textarea', { rows: 1, placeholder: '예: 작년 2월 성능 시험 관련 회의', value: askDraft });
     ta.oninput = () => (askDraft = ta.value);
-    const send = () => { const t = startAsk(ta.value); if (t) { filter = `ask:${t.id}`; draw(); } };
+    // 회의 화면이면 바로 그 탭으로, 다른 화면이면 그 자리에 둔다 (다 찾으면 버튼 뱃지와 '회의에서 보기')
+    const send = () => { const t = startAsk(ta.value); if (t) { if (route === 'meetings') filter = `ask:${t.id}`; draw(); } };
     ta.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } };
     return h('aside', { class: cls },
       h('header', null, icon('i-chat'), h('span', null, '질문으로 찾기'), h('button', { class: 'icon-btn', 'aria-label': '닫기', onclick: () => { askOpen = false; draw(); } }, icon('i-x'))),
@@ -695,7 +718,7 @@ function askPanel(cls) {
           ? [h('span', { style: 'display:flex;gap:8px;align-items:center' }, h('span', { class: 'spin' }), stageText(t), h('span', { class: 'num', 'data-ask-time': t.id }, secs(t)))]
           : [h('span', null, t.results.length ? `${t.results.length}건을 찾아 탭으로 모았습니다.` : '맞는 회의를 찾지 못했습니다.'),
             t.conds && h('div', { class: 'conds' }, t.conds.from && h('span', { class: 'cond' }, `${fmtDay(t.conds.from)} ~ ${fmtDay(t.conds.to)}`), t.conds.terms.slice(0, 3).map((x) => h('span', { class: 'cond' }, x))),
-            t.results.length > 0 && h('button', { class: 'btn small', style: 'align-self:flex-start', onclick: () => { filter = `ask:${t.id}`; $('view').scrollTop = 0; draw(); } }, '탭 보기', icon('i-right'))]),
+            t.results.length > 0 && h('button', { class: 'btn small', style: 'align-self:flex-start', onclick: () => goTab(t) }, route === 'meetings' ? '탭 보기' : '회의에서 보기', icon('i-right'))]),
       ]) : h('div', { class: 'scope-label' }, '찾고 싶은 회의를 말로 적으세요. 기간·주제·상태를 함께 적어도 됩니다.', examples((x) => { askDraft = x; draw(); }))),
       h('div', { class: 'askcompose' }, h('div', { class: 'composer' }, ta, h('div', { class: 'bottom' }, condBar(), h('button', { class: 'send', 'aria-label': '찾기', title: '찾기 (Enter)', onclick: send }, icon('i-send'))))));
   }
@@ -974,9 +997,12 @@ function draw(keepFocus = false) {
   const active = document.activeElement?.type === 'search';
   const VIEWS = { ledger, mix, triage };
   const askTab = filter.startsWith('ask:') ? askTabs.find((t) => `ask:${t.id}` === filter) : null;
-  if (askTab?.status === 'done') askTab.seen = true;
+  if (askTab?.status === 'done' && route === 'meetings') askTab.seen = true; // 회의 화면에서 그 탭을 보고 있을 때만 '봄'
   if (filter.startsWith('ask:') && !askTab) filter = 'all';
-  const page = h('div', { class: 'page wide' }, head(), askTab ? askView(askTab) : list.length ? VIEWS[variant](list) : emptyState(), variant === 'mix' && askOverlay());
+  const page = route !== 'meetings'
+    ? h('div', { class: 'page wide' }, h('div', { class: 'page-head' }, h('h1', null, ROUTE_NAME[route])), h('div', { class: 'empty-state' }, h('span', { class: 'empty-mark' }, icon('i-search')), h('b', null, `${ROUTE_NAME[route]} 화면 자리`), h('p', null, '실험 페이지라 내용은 없습니다. 오른쪽 아래 둥근 버튼은 어느 화면에서든 보이고, 찾던 작업은 화면을 옮겨도 계속됩니다.')), askUI === 'fab' && askOverlay())
+    : h('div', { class: 'page wide' }, head(), askTab ? askView(askTab) : list.length ? VIEWS[variant](list) : emptyState(), variant === 'mix' && askOverlay());
+  for (const a of document.querySelectorAll('.nav-item[data-route]')) a.dataset.route === route ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current');
   const top = view.scrollTop;
   view.replaceChildren(page);
   if (keepFocus || active) { const i = view.querySelector('input[type=search]'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
@@ -990,6 +1016,7 @@ function draw(keepFocus = false) {
 for (const b of document.querySelectorAll('#variant button')) b.onclick = () => { variant = b.dataset.v; $('view').scrollTop = 0; draw(); };
 for (const b of document.querySelectorAll('#size button')) b.onclick = () => { size = Number(b.dataset.n); clean = Boolean(b.dataset.clean); sparse = Boolean(b.dataset.sparse); all = makeMeetings(size, { clean, sparse }); filter = 'all'; q = ''; $('view').scrollTop = 0; draw(); };
 for (const b of document.querySelectorAll('#askui button')) b.onclick = () => { askUI = b.dataset.a; askOpen = false; draw(); };
+for (const a of document.querySelectorAll('.nav-item[data-route]')) a.onclick = (e) => { e.preventDefault(); route = a.dataset.route; $('view').scrollTop = 0; draw(); };
 document.addEventListener('keydown', (e) => { if (e.metaKey && e.key === 'j' && askUI === 'palette') { e.preventDefault(); askOpen = true; draw(); } });
 // 바깥을 누르면 검색창 아래 패널 닫기
 document.addEventListener('mousedown', (e) => { if (askUI === 'bar' && askOpen && !e.target.closest('.askbar')) { askOpen = false; draw(true); } });
