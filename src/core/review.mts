@@ -48,3 +48,14 @@ export function toReviewItems(list: unknown, transcript: string, existing: Pick<
   }
   return items;
 }
+
+// 메모에 따옴표로 적힌 표기 중 녹취에 실제로 있는 것 ("화자 2의 이름이 '원성'과 '원석'으로 혼재" → ['원성', '원석']).
+// 이름이 두 가지로 섞인 항목에서 어느 쪽으로 통일할지 고르게 하고, 고칠 말을 들린 말과 똑같이 넣었을 때 바꿀 다른 표기를 찾는다
+export function noteVariants(note: string | null | undefined, transcript: string): string[] {
+  const out: string[] = [];
+  for (const m of String(note ?? '').matchAll(/['"‘“「]([^'"‘’“”「」\n]{1,20})['"’”」]/g)) {
+    const v = m[1]!.trim();
+    if (v && transcript.includes(v) && !out.includes(v)) out.push(v);
+  }
+  return out;
+}

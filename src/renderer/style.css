@@ -698,6 +698,7 @@ button.who:hover { color: var(--ink); text-decoration: underline; text-underline
 .tag.kind-word { background: color-mix(in srgb, var(--s1) 14%, transparent); color: var(--ink); }
 .tag.kind-name { background: color-mix(in srgb, var(--s4) 16%, transparent); color: var(--ink); }
 .tag.kind-lost { background: var(--panel-3); color: var(--ink-3); }
+.ritem-unify { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0 0 25px; }
 .ritem-fix { display: flex; align-items: center; gap: 8px; margin: 12px 0 0 25px; }
 .ritem-fix.muted { align-items: baseline; flex-wrap: wrap; }
 .ritem-fix input { flex: 1; min-width: 160px; max-width: 320px; height: 32px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel); outline: none; font-size: 13.5px; }

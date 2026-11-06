@@ -1,6 +1,7 @@
 import { Recorder } from './recorder.js';
 import { startOnboarding } from './onboarding.js';
 import { scriptMarkdown } from '../../lib/core/script.mjs';
+import { noteVariants } from '../../lib/core/review.mjs';
 
 const api = window.recorderApi;
 const $ = (id) => document.getElementById(id);
@@ -2291,7 +2292,12 @@ function pageMeeting(id) {
       const kept = fixes.filter((f) => f.keep).length;
       for (const f of fixes) reviewSel.delete(f.id);
       const words = review.addedWords ?? [];
-      toast(applied.length ? `${applied.length}개를 고쳤습니다` : `${kept}개를 그대로 두었습니다`,
+      const skip = review.skipped ?? [];
+      if (!applied.length && !kept) {
+        // 아무것도 바꾸지 못함: 왜 그런지 알린다 (예전엔 "0개를 그대로 두었습니다"로 나와 헷갈렸다)
+        const s = skip[0];
+        toast('바꿀 곳이 없습니다', s?.reason === 'same' ? `고칠 말이 들린 말('${s.heard}')과 같습니다. 이 표기가 맞다면 '그대로 두기'를 누르세요` : s?.reason === 'notfound' ? `녹취에서 '${s.heard}'를 찾지 못했습니다` : '고칠 말을 넣어 주세요', { bad: true, ms: 7000 });
+      } else toast(applied.length ? `${applied.length}개를 고쳤습니다` : `${kept}개를 그대로 두었습니다`,
         applied.length ? `녹취·정리본·회의록에서 ${applied.reduce((n, it) => n + (it.count ?? 0), 0)}곳을 바꿨습니다${words.length ? ` · 사전에 추가: ${words.join(', ')}` : ''}` : '',
         words.length ? { action: '사전 보기', onAction: () => (location.hash = '#dictionary'), ms: 7000 } : {});
       if (words.length) renderDictSettings(await api.dictSettings()); // 사전 개수·목록도 바로
@@ -2474,6 +2480,10 @@ function pageMeeting(id) {
           card.append(h('div', { class: 'ritem-fix' },
             h('span', { class: 'heard' }, it.heard), icon('i-right'), input,
             h('button', { class: 'btn small primary', onclick: () => input.value.trim() && applyFixes(r, [{ id: it.id, guess: input.value }]) }, '적용')));
+          // 이름이 두 가지로 섞인 항목: 어느 쪽으로 통일할지 바로 고른다 (다른 쪽을 고른 쪽으로 모두 바꾼다)
+          const variants = noteVariants(it.note, doc.transcript ?? '').slice(0, 2);
+          if (variants.length === 2) card.append(h('div', { class: 'ritem-unify' }, h('span', { class: 'hint', style: 'margin:0' }, '한 가지로 통일'),
+            variants.map((v, k) => h('button', { class: 'btn small', onclick: () => applyFixes(r, [{ id: it.id, heard: variants[1 - k], guess: v }]) }, `모두 '${v}'(으)로`))));
         } else if (it.heardNote) card.append(h('div', { class: 'ritem-fix muted' }, h('span', { class: 'heard' }, it.heardNote), h('span', { class: 'hint', style: 'margin:0' }, '녹취에서 같은 글자를 찾지 못해 자동으로 고칠 수 없습니다. 채팅으로 확인하거나 그대로 두세요.')));
         card.append(h('div', { class: 'ritem-acts' },
           h('button', { class: 'btn small ghost', onclick: () => openChat([it.id]) }, icon('i-chat'), '채팅'),

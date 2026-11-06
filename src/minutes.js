@@ -9,7 +9,7 @@ const dictation = require('./dictation');
 const { complete, parseJson } = require('./cleanup');
 const sandbox = require('./sandbox');
 const glossary = require('./glossary');
-const { nameSpeakers, writeFileAtomic, writeJsonAtomic, copyFileAtomic, cleanGuess, inlineGuesses, toReviewItems } = require('../lib/core/index.mjs'); // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
+const { nameSpeakers, writeFileAtomic, writeJsonAtomic, copyFileAtomic, cleanGuess, inlineGuesses, toReviewItems, noteVariants } = require('../lib/core/index.mjs'); // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
 
 const LONG_TIMEOUT_MS = 10 * 60 * 1000; // 1시간짜리 회의도 여유 있게
 const SPEAKER = { mic: '나', system: '상대방' };
@@ -816,6 +816,7 @@ function applyReview(dir, fixes) {
     return body.split(heard).length - 1;
   };
   const resumed = [];
+  const skipped = []; // 바꾸지 못한 항목과 이유 (화면에 알린다, 기록에는 남기지 않는다)
   for (const fix of fixes) {
     const item = review.items.find((it) => it.id === fix.id);
     if (!item) continue;
@@ -823,16 +824,26 @@ function applyReview(dir, fixes) {
       Object.assign(item, { status: 'kept' });
       continue;
     }
-    const heard = fix.heard ?? item.heard;
+    let heard = fix.heard ?? item.heard;
     const guess = (fix.guess ?? '').trim();
-    if (!heard || !guess || heard === guess) continue;
+    if (!heard || !guess) continue;
+    // 고칠 말을 들린 말과 똑같이 넣으면 '이 표기가 맞다'는 뜻: 메모에 적힌 다른 표기를 이 말로 바꾼다
+    // ("화자 2의 이름이 '원성'과 '원석'으로 혼재" 항목에 '원석'을 넣으면 원성 → 원석). 다른 표기가 없으면 바꿀 게 없다고 알린다
+    if (heard === guess) {
+      const other = noteVariants(item.note, texts['transcript.txt']).find((v) => v !== guess);
+      if (!other) {
+        skipped.push({ id: item.id, reason: 'same', heard });
+        continue;
+      }
+      heard = other;
+    }
     if (!texts['transcript.txt'].includes(heard)) {
       // 지난번 적용이 녹취를 고쳐 쓴 뒤 기록(review.json)을 쓰기 전에 끊긴 경우: 녹취에 고칠 말은 없고 고친 말이 있으며
       // 고치기 전 보관본에는 고칠 말이 있었다 → 남은 파일(정리본·회의록)을 마저 고치고, 되돌리기 기록은 파일을 쓴 뒤 보관본과 맞대어 채운다
       if (item.status === 'open' && texts['transcript.txt'].includes(guess) && readText(dir, 'transcript.before-review.txt').includes(heard)) {
         for (const f of files.slice(1)) replaceAll(f, heard, guess);
         resumed.push({ item, heard, guess });
-      }
+      } else skipped.push({ id: item.id, reason: 'notfound', heard });
       continue;
     }
     let count = 0;
@@ -865,7 +876,7 @@ function applyReview(dir, fixes) {
     const count = Object.values(undo ?? {}).reduce((n, u) => n + u.changed.length, 0);
     if (count) Object.assign(item, { status: 'applied', heard, applied: guess, count, undo });
   }
-  return writeReview(dir, review);
+  return { ...writeReview(dir, review), skipped };
 }
 
 function setReviewStatus(dir, ids, status) {

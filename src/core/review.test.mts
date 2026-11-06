@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanGuess, inlineGuesses, toReviewItems } from './review.mjs';
+import { cleanGuess, inlineGuesses, noteVariants, toReviewItems } from './review.mjs';
 
 const transcript = '[00:05] [화자 1] 통신 한정성이 제일 중요해요\n[12:30] [화자 2] 랩캐시도 쪽은 제가 볼게요\n';
 
@@ -51,5 +51,15 @@ describe('toReviewItems', () => {
     expect(toReviewItems(undefined, transcript, [])).toEqual([]);
     expect(toReviewItems({ items: [] }, transcript, [])).toEqual([]);
     expect(toReviewItems([{ heard: '한정성', note: 'n' }], transcript, [])[0]!.id).toBe('r1');
+  });
+});
+
+describe('noteVariants', () => {
+  const t = '[00:01] [화자 1] 원성 님 말씀처럼\n[00:05] [화자 2] 원석입니다\n[00:09] [화자 1] 원성 님은요';
+  it('메모 속 따옴표 표기 중 녹취에 있는 것만, 순서대로 한 번씩', () => {
+    expect(noteVariants("화자 2의 이름이 '원성'과 '원석'으로 혼재되어 정확한 이름 확인이 필요함.", t)).toEqual(['원성', '원석']);
+    expect(noteVariants('"원석"과 “원성”, ‘원석’', t)).toEqual(['원석', '원성']);
+    expect(noteVariants("'원선'으로도 들림", t)).toEqual([]); // 녹취에 없음
+    expect(noteVariants(null, t)).toEqual([]);
   });
 });
