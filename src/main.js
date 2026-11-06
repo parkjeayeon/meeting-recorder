@@ -11,6 +11,7 @@ const importAudio = require('./import-audio');
 const glossary = require('./glossary');
 const flowMod = require('./flow');
 const actionsMod = require('./actions');
+const usageMod = require('./usage');
 const setup = require('./setup');
 // 회의 데이터 읽기는 명령줄 도구(mr)와 같이 쓰는 코어(TypeScript·ESM, npm run build:ts → lib/)로 (결정 43)
 const core = require('../lib/core/index.mjs');
@@ -851,6 +852,7 @@ ipcMain.handle('dict:repaste', async (_e, text) => {
   return status;
 });
 ipcMain.handle('dict:providers', (_e, opts) => dictation.cleanupProviders(opts));
+ipcMain.handle('usage:get', (_e, opts) => usageMod.usage(opts));
 
 // ── 연결 설정 창: 토큰·키 저장, 삭제, 확인 ─────────────────────────────────
 const DIARIZE_MODEL = 'pyannote/speaker-diarization-community-1';

@@ -42,6 +42,7 @@ contextBridge.exposeInMainWorld('recorderApi', {
   onDictResult: (cb) => ipcRenderer.on('dict:result', (_e, r) => cb(r)),
   onDictStage: (cb) => ipcRenderer.on('dict:stage', (_e, s) => cb(s)),
   providers: (opts) => ipcRenderer.invoke('dict:providers', opts),
+  usage: (opts) => ipcRenderer.invoke('usage:get', opts),
   history: () => ipcRenderer.invoke('history:list'),
   recordingsAccess: () => ipcRenderer.invoke('recordings:access'),
   strayFolders: () => ipcRenderer.invoke('recordings:stray'),

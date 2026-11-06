@@ -56,7 +56,7 @@ const impl = {
   ],
   recordingsAccess: async () => (denied ? { ok: false, dir: '/Users/me/Documents/MeetingRecorder', code: 'EPERM' } : { ok: true }),
   dictSettings: async () => ({ enabled: true, language: 'ko', cleanup: true, provider: 'auto', vocabulary: 'PJY, Whisper', minutes: true, diarize: true, diarizeReady: true, hasHfToken: true, meetingSystemAudio: false, engine: { state: 'ready' } }),
-  providers: async () => ({ 'claude-code': { installed: true, loggedIn: true, account: 'me@example.com' }, codex: { installed: true, loggedIn: false }, api: { installed: true, loggedIn: false } }),
+  providers: async () => ({ 'claude-code': { installed: true, loggedIn: true, account: 'me@example.com' }, codex: { installed: true, loggedIn: true, account: 'me@example.com' }, api: { installed: true, loggedIn: false } }),
   permStatus: async () => ({ microphone: 'granted', inputMonitoring: process.env.OB_STEP === 'permissions' ? 'denied' : 'granted', accessibility: 'granted', systemAudio: 'granted' }),
   fnKeyWarning: async () => null,
   tokenStatus: async () => ({ hf: { cli: true }, anthropic: {} }),
@@ -102,6 +102,19 @@ const impl = {
     review.items.push({ id: `r${review.items.length + 1}`, kind: 'word', at: '00:02', heard: '배포', heardNote: '배포', guess: '릴리스', note: '사용자가 짚은 말', status: 'open', source: 'user', request });
     fs.writeFileSync(path.join(dir, 'review.json'), JSON.stringify(review));
     return { added: [review.items.at(-1).id], reply: '00:02의 "배포"를 항목으로 더했습니다.' };
+  },
+  // 사용 한도 예시 (Claude Code: 세션·주간·모델 주간, Codex: 주간 + 크레딧). 몇 번 불렸는지 센다
+  usage: async ({ force = false } = {}) => {
+    calls.usage = [...(calls.usage ?? []), force];
+    const at = (h) => new Date(Date.now() + h * 3600e3).toISOString();
+    return {
+      'claude-code': { ok: true, via: 'rule', fetchedAt: new Date(Date.now() - 120e3).toISOString(), credits: null, windows: [
+        { kind: 'session', model: null, usedPercent: 15, resetsAt: at(3), resetsText: null },
+        { kind: 'week', model: null, usedPercent: 85, resetsAt: at(50), resetsText: null },
+        { kind: 'model-week', model: 'Fable', usedPercent: 3, resetsAt: at(50), resetsText: null },
+      ] },
+      codex: { ok: true, via: 'json', fetchedAt: new Date().toISOString(), credits: '120.5', windows: [{ kind: 'week', model: null, usedPercent: 16, resetsAt: at(100), resetsText: null }] },
+    };
   },
   copy: async (text) => {
     calls.copied = text;

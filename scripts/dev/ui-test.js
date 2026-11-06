@@ -162,6 +162,20 @@ app.whenReady().then(async () => {
   const cleared = await js(`document.querySelector('.review-add textarea')?.value`);
   results.push(['확인 필요 직접 추가 보내기', asked === '"일정"은 일정표야' && after === before + 1 && cleared === '', `요청 ${JSON.stringify(asked)} · 항목 ${before}→${after} · 입력칸 ${JSON.stringify(cleared)}`]);
 
+  // 설정 › 다듬기: 로그인된 계정마다 남은 사용량 (15% 사용 → 85% 남음, 15% 남음은 주황), 새로 고침은 force
+  await js(`document.getElementById('openSettings')?.click() ?? document.querySelector('[data-sec="cleanup"]')?.click()`);
+  await wait(200);
+  await js(`document.querySelector('.set-tab[data-sec="cleanup"]')?.click()`);
+  await wait(700);
+  const usageRows = await js(`[...document.querySelectorAll('.usage-row')].map(r => r.textContent + (r.classList.contains('low') ? ' [low]' : ''))`);
+  const okRows = usageRows.length === 4 && usageRows[0].includes('85% 남음') && usageRows[1].includes('15% 남음 ') === false && usageRows[1].includes('[low]') && usageRows[3].includes('84% 남음');
+  results.push(['다듬기 계정 남은 사용량', okRows, JSON.stringify(usageRows)]);
+  await js(`[...document.querySelectorAll('.usage-foot .link')][0]?.click()`);
+  await wait(400);
+  const usageCalls = await js('window.stubCalls().usage ?? []');
+  results.push(['사용량 새로 고침', JSON.stringify(usageCalls.slice(-1)) === '[true]', `호출 ${JSON.stringify(usageCalls)}`]);
+  await js(`document.getElementById('settings')?.close()`);
+
   let failed = 0;
   for (const [name, ok, detail] of results) {
     if (!ok) failed++;

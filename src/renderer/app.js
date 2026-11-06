@@ -3084,7 +3084,7 @@ function openSettings(sec = 'general') {
   }
   if (sec === 'perms') renderPerms();
   if (sec === 'engine') api.setupStatus().then(renderSetup);
-  if (sec === 'cleanup') renderProviders(true);
+  if (sec === 'cleanup') renderProviders(true).then(() => loadUsage());
   if (sec === 'accounts') {
     for (const r of $('settings').querySelectorAll('[data-result]')) r.textContent = '';
     renderConnections();
@@ -3147,8 +3147,65 @@ async function renderProviders(fresh = false) {
     const input = h('input', { type: 'radio', name: 'provider', value: id, checked: settings.provider === id, disabled: !usable });
     input.onchange = () => saveDict({ provider: id });
     box.append(h('label', { class: `choice${usable ? '' : ' off'}` }, input, h('b', null, name), h('span', { class: 'who' }, who)));
+    if (USAGE_IDS.includes(id) && info.loggedIn) box.append(h('div', { class: 'usage', 'data-usage': id }));
   }
+  drawUsage();
   renderSideCleanup();
+}
+
+// ── 사용 한도: 로그인된 Claude Code·Codex가 얼마나 남았는지 (설정 › 다듬기를 열 때, 5분 안이면 저장해 둔 값) ──
+const USAGE_IDS = ['claude-code', 'codex'];
+let usageNow = null; // 마지막으로 받은 값
+let usageBusy = false;
+async function loadUsage(force = false) {
+  if (usageBusy) return;
+  usageBusy = true;
+  drawUsage();
+  try {
+    usageNow = await api.usage({ force });
+  } catch (err) {
+    usageNow = Object.fromEntries(USAGE_IDS.map((id) => [id, { ok: false, error: err.message }]));
+  }
+  usageBusy = false;
+  drawUsage();
+}
+
+const USAGE_NAME = { session: '현재 세션', week: '이번 주' };
+function resetLabel(w) {
+  if (!w.resetsAt) return w.resetsText ? `${w.resetsText} 초기화` : '';
+  const d = new Date(w.resetsAt);
+  const time = TIME.format(d);
+  const today = new Date();
+  const days = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - new Date(today.getFullYear(), today.getMonth(), today.getDate())) / 86400e3);
+  return `${days === 0 ? '오늘' : days === 1 ? '내일' : dayLabel(d.toISOString())} ${time} 초기화`;
+}
+
+function drawUsage() {
+  for (const el of document.querySelectorAll('[data-usage]')) {
+    const u = usageNow?.[el.dataset.usage];
+    const again = h('button', { class: 'link', disabled: usageBusy, onclick: () => loadUsage(true) }, usageBusy ? '확인 중…' : '새로 고침');
+    if (!u) {
+      el.replaceChildren(h('div', { class: 'usage-foot' }, h('span', null, usageBusy ? '남은 사용량 확인 중…' : '남은 사용량'), !usageBusy && again));
+      continue;
+    }
+    if (!u.ok) {
+      el.replaceChildren(h('div', { class: 'usage-foot bad' }, h('span', null, `남은 사용량을 읽지 못했습니다 · ${u.error}`), again));
+      continue;
+    }
+    const ago = Math.max(0, Math.round((Date.now() - new Date(u.fetchedAt)) / 60000));
+    el.replaceChildren(
+      ...u.windows.map((w) => {
+        const left = Math.max(0, Math.round(100 - w.usedPercent));
+        return h('div', { class: `usage-row${left < 20 ? ' low' : ''}` },
+          h('span', { class: 'usage-name' }, w.kind === 'model-week' ? `이번 주 · ${w.model}` : USAGE_NAME[w.kind]),
+          h('span', { class: 'meter', role: 'meter', 'aria-valuenow': String(left), 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-label': '남은 사용량' }, h('i', { style: `width:${left}%` })),
+          h('span', { class: 'num' }, `${left}% 남음`),
+          h('span', { class: 'usage-reset' }, resetLabel(w)));
+      }),
+      h('div', { class: 'usage-foot' },
+        h('span', null, [ago ? `${ago}분 전 확인` : '방금 확인', u.credits && `크레딧 ${Number.isFinite(Number(u.credits)) ? fmt.format(Math.floor(Number(u.credits))) : u.credits}`, u.via === 'llm' && '출력 형식이 바뀌어 LLM으로 읽음'].filter(Boolean).join(' · ')),
+        again));
+  }
 }
 
 function renderSideCleanup() {
