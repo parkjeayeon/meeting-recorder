@@ -92,6 +92,11 @@ html, body {
 .btn.mic svg rect { fill: currentColor; stroke: none; }
 .btn.note { width: 24px; height: 24px; }
 .btn.note svg { width: 12px; height: 12px; }
+.btn.lang { width: 24px; height: 24px; font: 700 9.5px/1 var(--mono); letter-spacing: 0.02em; color: #c9ced4; }
+.btn.lang.auto { font: 700 9px/1 -apple-system, "Apple SD Gothic Neo", sans-serif; letter-spacing: 0; }
+.btn.lang.bump { animation: bump 0.22s cubic-bezier(0.16, 1, 0.3, 1); }
+@keyframes bump { from { transform: scale(0.82); } }
+@media (prefers-reduced-motion: reduce) { .btn.lang.bump { animation: none; } }
 .ring { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid currentColor; display: grid; place-items: center; }
 .core { width: 6px; height: 6px; border-radius: 50%; background: currentColor; transition: border-radius 0.15s ease-out, background-color 0.15s ease-out; }
 .dock[data-state="memo"] .btn.mic { background: var(--red); border-color: var(--red); }

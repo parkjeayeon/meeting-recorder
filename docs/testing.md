@@ -7,7 +7,7 @@
 1. 타입 검사 `npm run typecheck` (`src/core`·`src/cli`의 TypeScript)
 2. 단위 테스트 `npm test` (컴파일 후 Vitest, 1초 안팎)
 3. 키보드 처리기 검사 `node scripts/dev/check-handlers.js` (1초 미만)
-4. 화면 테스트 `npm run test:ui` (약 20초)
+4. 화면 테스트 `npm run test:ui` (약 20초, 떠 있는 막대 시험 `scripts/dev/overlay-check.js` 포함)
 5. 끊김 시험 `npm run test:crash` (약 30초, 아래)
 6. 질문으로 찾기 본체 시험 `electron scripts/dev/ask-engine-check.js` (1초 남짓, `test:crash`에도 들어 있음)
 

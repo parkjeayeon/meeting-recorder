@@ -473,7 +473,8 @@ async function runDictation({ dir, peak, voicedMs, startedAt, durationSec, rec }
     status: result.status, // pasted | no-permission | failed | silent | empty | error
     app: rec.app?.name || null,
     bundleId: rec.app?.bundleId || null,
-    language: settings.language,
+    language: result.language ?? settings.language, // 실제로 받아쓴 언어
+    languageSetting: settings.language, // 고른 언어 (auto면 자동)
     raw: result.raw ?? null,
     text: result.text ?? null,
     chars: final?.length ?? 0,
@@ -945,8 +946,7 @@ function pasteLast() {
 
 ipcMain.handle('dict:settings', () => ({ ...dictation.getSettings(), engine: dictation.engineStatus(), diarizeReady: minutes.diarizeAvailable() }));
 ipcMain.handle('dict:saveSettings', (_e, patch) => {
-  const settings = dictation.saveSettings(patch);
-  if (PORTABLE_KEYS.some((k) => k in patch)) writePortableSettings();
+  const settings = saveDictSettings(patch);
   if (settings.enabled) dictation.startServer();
   return { ...settings, engine: dictation.engineStatus(), diarizeReady: minutes.diarizeAvailable() };
 });
@@ -1152,7 +1152,7 @@ function hideWindow() {
 }
 
 // ── 플로팅 독 (Wispr Flow처럼 화면 왼쪽 가장자리에 붙는 작은 알약) ───────────
-const OVERLAY_SIZE = { width: 320, height: 160 }; // 독 + 오른쪽으로 펼쳐지는 진행 띠
+const OVERLAY_SIZE = { width: 320, height: 200 }; // 독(받아쓰기·회의·기록·언어 버튼, 펼치면 약 165px) + 오른쪽으로 펼쳐지는 진행 띠
 
 function createOverlay() {
   overlay = new BrowserWindow({
@@ -1195,14 +1195,26 @@ function sendOverlay(channel, payload) {
 
 function sendOverlayState() {
   if (overlay && !overlay.isDestroyed()) {
-    overlay.webContents.send('overlay:state', { recording: recording?.mode ?? null, transcribing: transcribing > 0, clock: clockInfo(), handsfree: recording?.mode === 'memo' && fnState === 'handsfree' });
+    overlay.webContents.send('overlay:state', { recording: recording?.mode ?? null, transcribing: transcribing > 0, clock: clockInfo(), handsfree: recording?.mode === 'memo' && fnState === 'handsfree', language: dictation.getSettings().language });
   }
 }
 
 ipcMain.on('overlay:interactive', (_e, on) => overlay?.setIgnoreMouseEvents(!on, { forward: true }));
+// 받아쓰기 언어 바꾸기 (떠 있는 막대의 언어 버튼): 한국어 → English → 日本語 → 자동 → 한국어
+const LANG_CYCLE = ['ko', 'en', 'ja', 'auto'];
+function saveDictSettings(patch) {
+  const settings = dictation.saveSettings(patch);
+  if (PORTABLE_KEYS.some((k) => k in patch)) writePortableSettings();
+  if ('language' in patch) sendOverlayState(); // 막대의 언어 표시도
+  return settings;
+}
 ipcMain.on('overlay:action', (_e, name) => {
   if (name === 'open') showWindow();
-  else uiToggle(name);
+  else if (name === 'lang-next') {
+    const now = dictation.getSettings().language;
+    const settings = saveDictSettings({ language: LANG_CYCLE[(LANG_CYCLE.indexOf(now) + 1) % LANG_CYCLE.length] });
+    send('dict:settingsChanged', { ...settings, engine: dictation.engineStatus(), diarizeReady: minutes.diarizeAvailable() }); // 메인 창의 왼쪽 아래·설정도
+  } else uiToggle(name);
 });
 
 function updateTray() {

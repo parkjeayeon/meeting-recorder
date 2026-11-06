@@ -8,3 +8,4 @@ export { findStrayFolders, type StrayFolder, type StrayReason } from './stray.mj
 export { cleanGuess, inlineGuesses, toReviewItems, noteVariants, stampFor, stampFromNote, locateHeard, searchKeys, type ReviewItem } from './review.mjs';
 export { UsageWindow, UsageWindows, parseResets, parseClaudeUsage, verifyWindows, codexUsage } from './usage.mjs';
 export { orderProviders, isLimitText, isLimitError, withFallback, HIGH_PERCENT } from './route.mjs';
+export { chooseLanguage, AUTO_LANGUAGES, SHORT_VOICED_MS, type LanguageChoice } from './language.mjs';

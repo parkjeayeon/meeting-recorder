@@ -4060,6 +4060,8 @@ $('sideLanguage').onchange = async (e) => {
   toast('받아쓰기 언어를 바꿨습니다', `${e.target.selectedOptions[0].textContent} · 다음 fn 받아쓰기부터`);
 };
 $('meetLanguage').onchange = (e) => saveDict({ meetingLanguage: e.target.value });
+// 떠 있는 막대에서 받아쓰기 언어를 바꾸면 왼쪽 아래·설정 화면도 같이
+api.onDictSettings?.((s) => renderDictSettings(s));
 $('dictCleanup').onchange = (e) => saveDict({ cleanup: e.target.checked });
 $('minutesAuto').onchange = (e) => saveDict({ minutes: e.target.checked });
 $('diarizeOn').onchange = (e) => saveDict({ diarize: e.target.checked });

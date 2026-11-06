@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('recorderApi', {
   onFnStatus: (cb) => ipcRenderer.on('fn:status', (_e, s) => cb(s)),
   dictSettings: () => ipcRenderer.invoke('dict:settings'),
   dictSaveSettings: (patch) => ipcRenderer.invoke('dict:saveSettings', patch),
+  onDictSettings: (cb) => ipcRenderer.on('dict:settingsChanged', (_e, s) => cb(s)),
   dictDownload: () => ipcRenderer.invoke('dict:download'),
   setupStatus: () => ipcRenderer.invoke('setup:status'),
   setupInstall: (id) => ipcRenderer.invoke('setup:install', id),

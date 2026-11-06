@@ -21,27 +21,51 @@ dock.addEventListener('mouseleave', () => {
   }, 180);
 });
 
+// 받아쓰기 언어 (메인 프로세스가 overlay:state로 알려 준다)
+const LANG = { ko: ['KO', '한국어'], en: ['EN', 'English'], ja: ['JA', '日本語'], auto: ['자동', '자동 (한·영·일)'] };
+let language = 'ko';
+const langBtn = document.querySelector('.btn.lang');
+const langCode = document.getElementById('langCode');
+function showLanguage(next, bump = false) {
+  if (!LANG[next]) return;
+  const changed = next !== language;
+  language = next;
+  langCode.textContent = LANG[language][0];
+  langBtn.classList.toggle('auto', language === 'auto');
+  if (bump && changed) {
+    langBtn.classList.remove('bump');
+    void langBtn.offsetWidth;
+    langBtn.classList.add('bump');
+  }
+  if (tip.classList.contains('show') && tip.dataset.for === 'lang-next') showTip(langBtn);
+}
+
 const tipText = {
   memo: { idle: ['받아쓰기', 'fn 꾹'], active: ['받아쓰기 정지', ''] },
   meeting: { idle: ['회의 녹음', ''], active: ['회의 녹음 정지', ''] },
   open: { idle: ['기록 열기', ''] },
+  'lang-next': { idle: () => [`받아쓰기 언어 · ${LANG[language][1]}`, '눌러서 바꾸기'] },
 };
 
+function showTip(btn) {
+  const action = btn.dataset.action;
+  const entry = tipText[action];
+  const [text, key] = typeof entry.idle === 'function' ? entry.idle() : entry[dock.dataset.state === action ? 'active' : 'idle'];
+  tip.dataset.for = action;
+  tip.textContent = text;
+  if (key) {
+    const k = document.createElement('kbd');
+    k.textContent = key;
+    tip.append(k);
+  }
+  const b = btn.getBoundingClientRect();
+  const d = dock.getBoundingClientRect();
+  tip.style.top = `${b.top - d.top + b.height / 2 - tip.offsetHeight / 2}px`;
+  tip.classList.add('show');
+}
+
 for (const btn of document.querySelectorAll('.btn')) {
-  btn.addEventListener('mouseenter', () => {
-    const action = btn.dataset.action;
-    const [text, key] = tipText[action][dock.dataset.state === action ? 'active' : 'idle'];
-    tip.textContent = text;
-    if (key) {
-      const k = document.createElement('kbd');
-      k.textContent = key;
-      tip.append(k);
-    }
-    const b = btn.getBoundingClientRect();
-    const d = dock.getBoundingClientRect();
-    tip.style.top = `${b.top - d.top + b.height / 2 - tip.offsetHeight / 2}px`;
-    tip.classList.add('show');
-  });
+  btn.addEventListener('mouseenter', () => showTip(btn));
   btn.addEventListener('mouseleave', () => tip.classList.remove('show'));
   btn.addEventListener('click', () => api.action(btn.dataset.action));
 }
@@ -162,6 +186,7 @@ api.onState((state) => {
   recording = state.recording;
   if (state.clock) clockBase = { elapsedMs: state.clock.elapsedMs, at: Date.now(), paused: state.clock.paused };
   dock.dataset.state = recording ?? (state.transcribing ? 'working' : 'idle');
+  if (state.language) showLanguage(state.language, true);
   if (recording && recording !== prev) startListening(recording);
   if (recording === 'meeting') label.textContent = clockBase.paused ? '일시정지' : '회의';
   if (recording === 'memo') label.textContent = state.handsfree ? 'fn 누르면 끝' : '';

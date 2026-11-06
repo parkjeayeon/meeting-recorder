@@ -5,7 +5,7 @@ const fs = require('fs');
 const net = require('net');
 const { spawn } = require('child_process');
 const cleanupText = require('./cleanup');
-const { writeJsonAtomic } = require('../lib/core/index.mjs'); // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
+const { writeJsonAtomic, chooseLanguage, AUTO_LANGUAGES, SHORT_VOICED_MS } = require('../lib/core/index.mjs'); // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
 
 const MODEL_FILE = 'ggml-large-v3-turbo-q8_0.bin';
 const MODEL_URL = `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${MODEL_FILE}`;
@@ -284,34 +284,55 @@ async function startDedicatedServer(modelFile) {
 async function transcribeSegments(wavPath, { language, vocabulary }, port = null, { noContext = false } = {}) {
   port ??= serverPort ?? (await startServer());
   if (!port) throw new Error('음성 인식 엔진이 준비되지 않았습니다');
-  const form = new FormData();
-  form.append('file', new Blob([fs.readFileSync(wavPath)], { type: 'audio/wav' }), 'audio.wav');
-  form.append('response_format', 'verbose_json');
-  form.append('language', language);
-  form.append('temperature', '0');
-  if (vocabulary) form.append('prompt', vocabulary);
-  if (noContext) form.append('max_context', '0');
-  const res = await fetch(`http://127.0.0.1:${port}/inference`, { method: 'POST', body: form });
-  if (!res.ok) throw new Error(`Whisper 오류 (HTTP ${res.status})`);
-  const { segments = [] } = await res.json();
+  const audio = fs.readFileSync(wavPath);
+  const ask = async (lang) => {
+    const form = new FormData();
+    form.append('file', new Blob([audio], { type: 'audio/wav' }), 'audio.wav');
+    form.append('response_format', 'verbose_json');
+    form.append('language', lang);
+    form.append('temperature', '0');
+    if (vocabulary) form.append('prompt', vocabulary);
+    if (noContext) form.append('max_context', '0');
+    const res = await fetch(`http://127.0.0.1:${port}/inference`, { method: 'POST', body: form });
+    if (!res.ok) throw new Error(`Whisper 오류 (HTTP ${res.status})`);
+    return res.json();
+  };
+  let out = await ask(language);
+  // 자동 감지: 후보(한국어·영어·일본어) 밖 언어로 받아썼으면 후보 중 가장 높은 언어로 한 번 더 (결정 55)
+  if (language === 'auto') {
+    const choice = chooseLanguage(out.language_probabilities);
+    if (choice.rerun) out = await ask(choice.pick);
+  }
+  const { segments = [] } = out;
   return segments
     .map((seg) => ({ start: seg.start ?? 0, end: seg.end ?? 0, text: (seg.text ?? '').trim() }))
     .filter((seg) => seg.text && !isHallucination(seg.text));
 }
 
-async function transcribe(wavPath, { language, vocabulary }) {
-  const port = serverPort ?? (await startServer());
+// 돌려주는 것: { text, language(실제로 받아쓴 언어), detected(자동일 때 Whisper가 고른 언어) }
+// 자동 감지(language 'auto')는 한국어·영어·일본어 안에서만: 후보 밖 언어로 받아썼으면 후보 중 가장 높은 언어로 한 번 더,
+// 말소리가 1.5초보다 짧으면 감지하지 않고 첫 후보(한국어)로 (결정 55)
+async function transcribe(wavPath, { language, vocabulary }, { voicedMs = Infinity, port: usePort = null } = {}) {
+  const port = usePort ?? serverPort ?? (await startServer()); // usePort: 시험에서 이미 떠 있는 서버를 쓴다
   if (!port) throw new Error('받아쓰기 엔진이 준비되지 않았습니다');
-  const form = new FormData();
-  form.append('file', new Blob([fs.readFileSync(wavPath)], { type: 'audio/wav' }), 'audio.wav');
-  form.append('response_format', 'json');
-  form.append('language', language);
-  form.append('temperature', '0');
-  if (vocabulary) form.append('prompt', vocabulary); // 자주 쓰는 고유명사·용어를 알려 주면 인식률이 오른다
-  const res = await fetch(`http://127.0.0.1:${port}/inference`, { method: 'POST', body: form });
-  if (!res.ok) throw new Error(`Whisper 오류 (HTTP ${res.status})`);
-  const { text = '' } = await res.json();
-  return text.trim();
+  const audio = fs.readFileSync(wavPath);
+  const ask = async (lang) => {
+    const form = new FormData();
+    form.append('file', new Blob([audio], { type: 'audio/wav' }), 'audio.wav');
+    form.append('response_format', lang === 'auto' ? 'verbose_json' : 'json'); // 자동이면 언어별 확률을 받는다
+    form.append('language', lang);
+    form.append('temperature', '0');
+    if (vocabulary) form.append('prompt', vocabulary); // 자주 쓰는 고유명사·용어를 알려 주면 인식률이 오른다
+    const res = await fetch(`http://127.0.0.1:${port}/inference`, { method: 'POST', body: form });
+    if (!res.ok) throw new Error(`Whisper 오류 (HTTP ${res.status})`);
+    return res.json();
+  };
+  if (language !== 'auto') return { text: ((await ask(language)).text ?? '').trim(), language, detected: null };
+  if (voicedMs < SHORT_VOICED_MS) return { text: ((await ask(AUTO_LANGUAGES[0])).text ?? '').trim(), language: AUTO_LANGUAGES[0], detected: null, short: true };
+  const out = await ask('auto');
+  const choice = chooseLanguage(out.language_probabilities);
+  if (choice.rerun) return { text: ((await ask(choice.pick)).text ?? '').trim(), language: choice.pick, detected: choice.detected };
+  return { text: (out.text ?? '').trim(), language: choice.pick ?? choice.detected ?? 'auto', detected: choice.detected };
 }
 
 // Whisper가 무음·잡음에서 자주 지어내는 문장들
@@ -372,7 +393,8 @@ async function dictate(wavPath, { helperBin, peak, voicedMs = Infinity, onStage 
   if (peak < 0.01 || voicedMs < MIN_VOICED_MS) return { status: 'silent' };
 
   onStage({ stage: 'transcribe' });
-  const raw = await transcribe(wavPath, settings);
+  const heard = await transcribe(wavPath, settings, { voicedMs });
+  const raw = heard.text;
   timing.transcribeMs = Date.now() - t;
   if (isHallucination(raw)) return { status: 'empty', raw, timing };
 
@@ -394,6 +416,8 @@ async function dictate(wavPath, { helperBin, peak, voicedMs = Infinity, onStage 
     status: pasted,
     raw,
     text,
+    language: heard.language, // 실제로 받아쓴 언어 (자동이면 고른 언어)
+    detected: heard.detected,
     cleaned: text !== raw,
     cleanupProvider: cleanup?.provider ?? null,
     cleanupChunks: cleanup?.chunks ?? 0,
@@ -421,4 +445,4 @@ const storedSettings = () => {
   return rest;
 };
 
-module.exports = { init, engineInstalled, storedSettings, dictate, paste, transcribeSegments, startDedicatedServer, apiKey, hfToken, hfCliToken, tokenSources, cleanupProviders, downloadModel, engineStatus, startServer, stopServer, getSettings, saveSettings };
+module.exports = { init, engineInstalled, storedSettings, dictate, paste, transcribe, transcribeSegments, startDedicatedServer, apiKey, hfToken, hfCliToken, tokenSources, cleanupProviders, downloadModel, engineStatus, startServer, stopServer, getSettings, saveSettings };
