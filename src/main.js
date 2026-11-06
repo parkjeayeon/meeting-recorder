@@ -784,9 +784,11 @@ function readDictationLog() {
 }
 
 // 회의 목록에 '초안 · 확인 N개' / '확정'을 표시하기 위한 요약
+// 받아쓰기는 최근 limit개, 회의는 모두 (전에는 둘을 합쳐 300개로 잘라 받아쓰기가 많으면 오래된 회의가 목록에서 조용히 빠졌다)
 function listHistory(limit = 300) {
-  const items = [...readDictationLog(), ...listFolders(limit)];
-  return items.sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt)).slice(0, limit);
+  const byTime = (a, b) => new Date(b.startedAt) - new Date(a.startedAt);
+  const dicts = readDictationLog().sort(byTime).slice(0, limit);
+  return [...dicts, ...listFolders()].sort(byTime);
 }
 
 function listFolders(limit) {

@@ -716,15 +716,6 @@ async function trashStrays(list) {
   loadHistory();
 }
 
-function meetingRow(r) {
-  const s = r.minutes?.status;
-  return h('a', { class: `mrow${s === 'error' ? ' err' : ''}`, href: `#meeting/${encodeURIComponent(r.id)}` },
-    h('time', null, TIME.format(new Date(r.startedAt))), num(clock(r.durationSec)),
-    h('span', { class: 'status' }, s === 'error' ? `회의록 실패 · ${r.minutes.error ?? ''}` : s === 'empty' ? '들린 말 없음' : s === 'short' ? '짧은 녹음 (10초 미만)' : '녹음만 저장됨'),
-    h('span', { class: 'go' }, s === 'empty' || s === 'short' ? '열기' : '회의록 만들기'),
-    h('button', { class: 'icon-btn', title: '휴지통으로', 'aria-label': '휴지통으로', onclick: (e) => { e.preventDefault(); e.stopPropagation(); trashMeetings([r]); } }, icon('i-trash')));
-}
-
 // ── 받아쓰기 ────────────────────────────────────────────────────────────
 const openRaw = new Set();
 let showMarks = store('showMarks', true);
@@ -842,66 +833,342 @@ function pageDictations() {
 }
 
 // ── 회의 목록 ───────────────────────────────────────────────────────────
+// ── 회의 목록 ────────────────────────────────────────────────────────────
+// 확인할 회의 카드(최근 것부터 6개, 넘치면 '확인할 회의' 갈래로) → 최근 회의 20개 → 이전 회의(달별 장부), 오른쪽 바로가기.
+// 기간이 아니라 개수로 자른다: 회의는 몰릴 때도 뜸할 때도 있다 (결정 50, 실험 페이지 scripts/dev/lab/meetings.html)
+const HAND_MAX = 6;
+const RECENT_MAX = 20;
+const WEEKDAY = ['일', '월', '화', '수', '목', '금', '토'];
+
+// 회의 하나의 상태: busy(만드는 중) fail(실패) none(녹음만) short empty | open(확인 남음) draft(확인 마치기 전) done(확정) plain(확인할 것 없음)
+function meetState(r) {
+  const s = r.minutes?.status;
+  if (BUSY.includes(s)) return 'busy';
+  if (s === 'error') return 'fail';
+  if (s === 'short' || s === 'empty') return s;
+  if (s !== 'done') return 'none';
+  const rv = r.review;
+  if (!rv) return 'plain';
+  if (rv.finalized) return 'done';
+  if (rv.open) return 'open';
+  return rv.total ? 'draft' : 'plain';
+}
+const needsHand = (r) => ['busy', 'fail', 'none', 'open', 'draft'].includes(meetState(r));
+const NO_MINUTES = ['fail', 'none', 'short', 'empty'];
+
+function meetTitle(r) {
+  const st = meetState(r);
+  if (st === 'busy') return '회의록 만드는 중';
+  if (st === 'fail') return '회의록을 만들지 못했습니다';
+  if (st === 'none') return '녹음만 저장됨';
+  if (st === 'short') return '짧은 녹음 (10초 미만)';
+  if (st === 'empty') return '들린 말 없음';
+  return r.minutes?.title ?? '제목 없는 회의';
+}
+function busyShort(m) {
+  const p = progressOf(m);
+  if (m?.status === 'transcribe') return `받아쓰는 중${p !== null ? ` ${Math.round(p * 100)}%` : ''}`;
+  return m?.status === 'write' ? '회의록 쓰는 중' : '기다리는 중';
+}
+
+// 줄 목록의 상태: 바탕 없이 글자 + 작은 표시 (주홍은 실패만, 확인 남음은 점만)
+function rowState(r) {
+  const st = meetState(r);
+  if (st === 'busy') return h('span', { class: 'rs busy' }, h('i'), busyShort(r.minutes));
+  if (st === 'fail') return h('span', { class: 'rs fail' }, icon('i-alert'), '실패');
+  if (st === 'open') return h('span', { class: 'rs open' }, h('i'), `확인 ${r.review.open}개`);
+  if (st === 'draft') return h('span', { class: 'rs draft' }, h('i'), '마치기 전');
+  if (st === 'done') return h('span', { class: 'rs done' }, icon('i-check'), '확정');
+  return h('span', { class: 'rs' }, { none: '녹음만', short: '짧은 녹음', empty: '들린 말 없음', plain: '회의록' }[st]);
+}
+// 카드의 상태: 알약
+function cardState(r) {
+  const st = meetState(r);
+  if (st === 'busy') return h('span', { class: 'tag accent busy' }, busyShort(r.minutes));
+  if (st === 'fail') return h('span', { class: 'tag fail' }, '실패');
+  if (st === 'open') return h('span', { class: 'tag accent' }, `확인 ${r.review.open}`);
+  return h('span', { class: 'tag' }, st === 'draft' ? '마치기 전' : '녹음만');
+}
+
+const goMeeting = (r, review = false) => {
+  if (review) openReviewNext = r.id;
+  location.hash = `#meeting/${encodeURIComponent(r.id)}`;
+};
+const stopThen = (fn) => (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  fn();
+};
+
+function handCard(r) {
+  const st = meetState(r);
+  const act = st === 'busy' ? h('span', { class: 'hint', style: 'margin:0' }, statusText(r.minutes))
+    : st === 'fail' || st === 'none' ? h('button', { class: 'btn small', onclick: stopThen(() => goMeeting(r)) }, icon('i-redo'), st === 'fail' ? '다시 만들기' : '회의록 만들기')
+    : h('button', { class: 'btn small', onclick: stopThen(() => goMeeting(r, true)) }, st === 'draft' && icon('i-check'), st === 'draft' ? '확인 마치기' : '확인하기');
+  return h('a', { class: 'hcard', href: `#meeting/${encodeURIComponent(r.id)}` },
+    h('div', { class: 'hcard-top' }, h('span', null, `${dayLabel(r.startedAt)} ${TIME.format(new Date(r.startedAt))}`), cardState(r)),
+    h('b', null, meetTitle(r)),
+    h('div', { class: 'hcard-act' }, act));
+}
+
+// 장부 줄: 날짜는 그날 첫 줄에만. recent면 '오늘·어제·11/4' (달 제목이 없는 칸)
+function ledgerRows(list, { recent = false } = {}) {
+  const today = new Date();
+  const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  let prev = null;
+  return list.map((r) => {
+    const at = new Date(r.startedAt);
+    const first = !prev || dayKey(prev.startedAt) !== dayKey(r.startedAt);
+    prev = r;
+    const wk = at.getDay();
+    const diff = Math.round((t0 - new Date(at.getFullYear(), at.getMonth(), at.getDate())) / 864e5);
+    const label = recent && diff <= 1 ? [diff ? '어제' : '오늘', h('small', null, WEEKDAY[wk])]
+      : [recent ? `${at.getMonth() + 1}/${at.getDate()}` : String(at.getDate()), h('small', null, diff === 0 ? '오늘' : diff === 1 ? '어제' : WEEKDAY[wk])];
+    const st = meetState(r);
+    const m = r.minutes;
+    return h('a', { class: `lrow${first ? ' daystart' : ''}`, href: `#meeting/${encodeURIComponent(r.id)}` },
+      first ? h('span', { class: `lday${wk === 0 || wk === 6 ? ' weekend' : ''}` }, label) : h('span'),
+      h('time', { class: 'ltime' }, TIME.format(at)),
+      h('span', { class: `ltitle${st === 'done' || st === 'open' || st === 'draft' || st === 'plain' ? '' : ' muted'}` }, h('b', null, meetTitle(r)),
+        st === 'fail' ? h('span', { class: 'why' }, m.error ?? '') : r.summary && h('span', null, r.summary)),
+      rowState(r),
+      num(clock(r.durationSec)),
+      speakerDots(m?.speakers) ?? h('span'),
+      h('span', { class: 'racts' },
+        (st === 'fail' || st === 'none') && h('button', { class: 'icon-btn', title: st === 'fail' ? '열어서 다시 만들기' : '열어서 회의록 만들기', 'aria-label': '다시 만들기', onclick: stopThen(() => goMeeting(r)) }, icon('i-redo')),
+        NO_MINUTES.includes(st) && h('button', { class: 'icon-btn', title: '휴지통으로', 'aria-label': '휴지통으로', onclick: stopThen(() => trashMeetings([r])) }, icon('i-trash'))));
+  });
+}
+
+// 달별 장부. 바로가기(nav)에 해마다 묶음을 만든다: 올해는 늘 펼침, 지난 해는 접어 둠
+function monthSections(list, nav) {
+  const out = [];
+  const thisYear = new Date().getFullYear();
+  let year = null;
+  let group = null;
+  let month = null;
+  let sec = null;
+  let rows = [];
+  const flush = () => {
+    if (!sec) return;
+    const total = rows.reduce((n, r) => n + r.durationSec, 0);
+    sec.querySelector('.ledger-mhead span').textContent = `${rows.length}건 · ${Math.floor(total / 3600)}시간 ${Math.floor((total % 3600) / 60)}분`;
+    sec.append(...ledgerRows(rows));
+    group.querySelector('.ymonths-in').append(h('button', { 'data-target': sec.id }, `${month + 1}월`, num(rows.length)));
+    out.push(sec);
+  };
+  for (const r of list) {
+    const at = new Date(r.startedAt);
+    if (at.getFullYear() !== year || at.getMonth() !== month) {
+      flush();
+      if (at.getFullYear() !== year) {
+        year = at.getFullYear();
+        const y = year;
+        const n = list.filter((x) => new Date(x.startedAt).getFullYear() === y).length;
+        const now = year === thisYear;
+        group = h('div', { class: `ygroup${now ? ' open fixed' : ''}` },
+          h('button', { class: 'yhead', 'data-year-head': '' }, now ? `${year}년` : [icon('i-right'), `${year}년`], !now && num(n)),
+          h('div', { class: 'ymonths' }, h('div', { class: 'ymonths-in' })));
+        nav.append(group);
+      }
+      month = at.getMonth();
+      sec = h('section', { class: 'ledger-month', id: `mon-${year}-${month + 1}`, 'data-spy': '' },
+        h('div', { class: 'ledger-mhead' }, h('h2', null, `${year}년 ${month + 1}월`), h('span')));
+      rows = [];
+    }
+    rows.push(r);
+  }
+  flush();
+  for (const g of nav.querySelectorAll('.ygroup')) g.querySelector('.yhead').dataset.target = g.querySelector('.ymonths-in button')?.dataset.target ?? '';
+  return out;
+}
+
+// 바로가기: 지금 자리에서 목표까지 미끄러져 간다 (멀어도 0.65초 안, 지수 감속). 움직임 줄이기면 바로
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+let glideFrame = null;
+let gliding = false;
+function glide(id) {
+  const view = $('view');
+  const target = document.getElementById(id);
+  if (!target) return;
+  const from = view.scrollTop;
+  const to = Math.min(view.scrollHeight - view.clientHeight, from + target.getBoundingClientRect().top - view.getBoundingClientRect().top - 8);
+  const head = target.querySelector('.ledger-mhead, .sec-h') ?? target;
+  const land = () => {
+    gliding = false;
+    view.onscroll?.();
+    head.classList.remove('arrive');
+    void head.offsetWidth; // 같은 칸을 다시 눌러도 다시 밝아지게
+    head.classList.add('arrive');
+  };
+  cancelAnimationFrame(glideFrame);
+  const dist = Math.abs(to - from);
+  if (reduceMotion.matches || dist < 4) {
+    view.scrollTop = to;
+    return land();
+  }
+  const ms = Math.min(650, 260 + dist / 12);
+  const start = performance.now();
+  const ease = (t) => (t === 1 ? 1 : 1 - 2 ** (-10 * t));
+  gliding = true;
+  const step = (now) => {
+    const t = Math.min(1, (now - start) / ms);
+    view.scrollTop = from + (to - from) * ease(t);
+    if (t < 1) glideFrame = requestAnimationFrame(step);
+    else land();
+  };
+  glideFrame = requestAnimationFrame(step);
+}
+
+// 스크롤 위치에 맞춰 바로가기의 지금 칸을 표시. 연도 펼침·접힘과 표시 이동은 함께 시작해 같은 시간·감속으로 끝난다
+// (끝난 뒤의 자리를 보이지 않는 사본으로 먼저 재서 표시를 곧장 보낸다)
+function scrollSpy(root, nav) {
+  const pill = h('span', { class: 'pill', 'aria-hidden': 'true' });
+  nav.prepend(pill);
+  const view = $('view');
+  let last = null;
+  const openYear = (g) => {
+    for (const o of nav.querySelectorAll('.ygroup.open:not(.fixed)')) if (o !== g) o.classList.remove('open');
+    g?.classList.add('open');
+  };
+  const finalY = (btn) => {
+    const ghost = nav.cloneNode(true);
+    ghost.classList.add('measure-ghost');
+    Object.assign(ghost.style, { position: 'fixed', left: '-9999px', top: '0', width: `${nav.offsetWidth}px`, maxHeight: 'none', overflow: 'visible', visibility: 'hidden' });
+    document.body.append(ghost);
+    const g = ghost.querySelector(`button[data-target="${btn.dataset.target}"]:not([data-year-head])`);
+    const y = g ? g.getBoundingClientRect().top - ghost.getBoundingClientRect().top : 0;
+    ghost.remove();
+    return y;
+  };
+  const setActive = (btn) => {
+    openYear(btn?.closest('.ygroup'));
+    last = btn;
+    for (const b of nav.querySelectorAll('button')) b.setAttribute('aria-current', String(b === btn));
+    pill.style.opacity = btn ? '1' : '0';
+    if (!btn) return;
+    const y = finalY(btn);
+    pill.style.setProperty('--y', `${y}px`);
+    if (y < nav.scrollTop + 24 || y + 28 > nav.scrollTop + nav.clientHeight - 24) nav.scrollTo({ top: y - nav.clientHeight / 2, behavior: reduceMotion.matches ? 'auto' : 'smooth' });
+  };
+  for (const b of nav.querySelectorAll('button')) {
+    b.onmousedown = (e) => e.preventDefault(); // 누를 때 포커스가 본문을 끌어 움직이지 않게
+    b.onclick = () => {
+      const target = b.hasAttribute('data-year-head') ? b.closest('.ygroup').querySelector('.ymonths-in button') : b;
+      if (!target) return;
+      setActive(target);
+      glide(target.dataset.target);
+    };
+  }
+  const mark = () => {
+    if (!root.isConnected) return view.onscroll === mark && (view.onscroll = null);
+    if (gliding) return; // 미끄러져 가는 동안엔 누른 칸 그대로
+    const secs = [...root.querySelectorAll('[data-spy]')];
+    const top = view.getBoundingClientRect().top + 60;
+    const cur = secs.filter((sec) => sec.getBoundingClientRect().top <= top).pop() ?? secs[0];
+    const btn = cur ? nav.querySelector(`button[data-target="${cur.id}"]:not([data-year-head])`) : null;
+    if (btn !== last) setActive(btn);
+  };
+  view.onscroll = mark;
+  requestAnimationFrame(() => {
+    pill.style.transition = 'none';
+    mark();
+    requestAnimationFrame(() => (pill.style.transition = ''));
+  });
+}
+
 function pageMeetings() {
   let q = '';
   let filter = 'all';
   const FILTERS = [
     ['all', '전체', () => true],
-    ['done', '회의록 있음', (m) => m.minutes?.status === 'done'],
-    ['busy', '만드는 중', (m) => BUSY.includes(m.minutes?.status)],
-    ['rest', '녹음만 · 실패', (m) => !m.minutes || ['error', 'empty', 'short'].includes(m.minutes.status)],
+    ['hand', '확인할 회의', needsHand],
+    ['final', '확인 완료', (r) => ['done', 'plain'].includes(meetState(r))],
+    ['rest', '녹음만 · 실패', (r) => NO_MINUTES.includes(meetState(r))],
   ];
   const chips = h('div', { class: 'chips' });
   const bulk = h('div', { class: 'bulk-row' });
   const stray = h('div');
   const list = h('div');
   const count = num('');
-  const update = () => {
+  const search = searchBox('제목, 요약 검색', '', (v) => {
+    q = v.trim().toLowerCase();
+    update();
+  });
+  const setFilter = (id) => {
+    filter = id;
+    $('view').scrollTop = 0;
+    update();
+  };
+  function emptyState(all) {
+    const box = (ic, title, text, ...acts) => h('div', { class: 'empty-state' }, h('span', { class: 'empty-mark' }, icon(ic)), h('b', null, title), text && h('p', null, text), acts.length > 0 && h('div', { class: 'empty-acts' }, acts));
+    if (!all.length && issues.has('folder')) return folderEmpty();
+    if (!all.length) return box('i-people', '아직 회의 녹음이 없습니다', '회의를 시작할 때 위쪽 회의 녹음을 누르세요. 끝나면 녹취와 회의록이 여기에 쌓입니다. 다른 앱에서 녹음한 파일은 가져오거나 이 화면에 끌어다 놓으세요.',
+      h('button', { class: 'btn rec', onclick: openMeetingStart }, icon('i-rec'), '회의 녹음 시작'), h('button', { class: 'btn', onclick: () => importMeeting() }, icon('i-folder'), '파일 가져오기'));
+    const back = h('button', { class: 'btn', onclick: () => setFilter('all') }, '전체 보기');
+    if (q) return box('i-search', `"${q}"가 들어간 회의가 없습니다`, '제목과 요약에서 찾습니다. 다른 말로 찾아 보세요.');
+    if (filter === 'hand') return box('i-check', '확인할 회의가 없습니다', '모든 회의록을 확정했습니다. 새 회의가 끝나면 확인할 부분이 여기에 모입니다.', back);
+    if (filter === 'final') return box('i-check', '아직 확정한 회의가 없습니다', '회의록의 확인 필요를 모두 처리하고 확인을 마치면 여기에 모입니다.', back);
+    return box('i-check', '회의록이 없는 녹음이 없습니다', '', back);
+  }
+  function update() {
     const all = meetings();
     count.textContent = all.length || '';
-    chips.replaceChildren(...FILTERS.map(([id, label, fn]) => {
+    search.hidden = !all.length;
+    chips.replaceChildren(...(all.length ? FILTERS.map(([id, label, fn]) => {
       const n = all.filter(fn).length;
-      if (id !== 'all' && !n) return null;
-      return h('button', { class: 'chip', 'aria-pressed': String(filter === id), onclick: () => { filter = id; update(); } }, label, num(n));
-    }).filter(Boolean));
+      if (id !== 'all' && id !== filter && !n) return null; // 없는 갈래는 숨긴다
+      return h('button', { class: 'chip', 'aria-pressed': String(filter === id), onclick: () => setFilter(id) }, label, num(n));
+    }).filter(Boolean) : []));
     const fn = FILTERS.find((f) => f[0] === filter)[2];
-    const items = all.filter(fn).filter((m) => !q || `${m.minutes?.title ?? ''} ${m.summary ?? ''}`.toLowerCase().includes(q));
-    const failedOnes = items.filter((m) => !BUSY.includes(m.minutes?.status) && m.minutes?.status !== 'done');
-    stray.replaceChildren(...(filter === 'all' || filter === 'rest' ? [strayBox()].filter(Boolean) : []));
-    bulk.replaceChildren(...(filter === 'rest' && failedOnes.length > 1 ? [
-      h('span', null, `회의록이 없는 녹음 ${failedOnes.length}개`),
-      h('button', { class: 'btn small', onclick: () => trashMeetings(failedOnes) }, icon('i-trash'), '모두 휴지통으로'),
+    const items = all.filter(fn).filter((r) => !q || `${r.minutes?.title ?? ''} ${r.summary ?? ''}`.toLowerCase().includes(q));
+    bulk.replaceChildren(...(filter === 'rest' && items.length > 1 ? [
+      h('span', null, `회의록이 없는 녹음 ${items.length}개`),
+      h('button', { class: 'btn small', onclick: () => trashMeetings(items) }, icon('i-trash'), '모두 휴지통으로'),
     ] : []));
-    if (!all.length && issues.has('folder')) list.replaceChildren(folderEmpty());
-    else if (!all.length) list.replaceChildren(h('div', { class: 'empty' }, h('b', null, '아직 회의 녹음이 없습니다'), '회의를 시작할 때 위쪽 회의 녹음을 누르세요. 끝나면 녹취와 회의록이 만들어집니다. 다른 앱에서 녹음한 파일은 가져오거나 여기로 끌어다 놓으세요.', h('br'),
-      h('div', { style: 'display:inline-flex; gap:8px' }, h('button', { class: 'btn rec', onclick: openMeetingStart }, icon('i-rec'), '회의 녹음 시작'), h('button', { class: 'btn', onclick: () => importMeeting() }, icon('i-folder'), '파일 가져오기'))));
-    else if (!items.length) list.replaceChildren(h('div', { class: 'empty' }, h('b', null, '맞는 회의가 없습니다'), '검색어나 필터를 바꿔 보세요.'));
-    else {
-      // 회의록이 있거나 만드는 중인 회의는 카드, 녹음만·실패·들린 말 없음은 한 줄로 접는다
-      const out = [];
-      let key = null;
-      let cards = null;
-      let rows = null;
-      for (const m of items) {
-        const k = dayKey(m.startedAt);
-        if (k !== key) {
-          key = k;
-          const count = items.filter((r) => dayKey(r.startedAt) === k).length;
-          out.push(h('div', { class: 'day-head' }, dayLabel(m.startedAt), num(`${count}건`)), (cards = h('div', { class: 'mgrid' })), (rows = h('div', { class: 'mrows' })));
-        }
-        if (m.minutes?.status === 'done' || BUSY.includes(m.minutes?.status)) cards.append(meetingCard(m));
-        else rows.append(meetingRow(m));
+    stray.replaceChildren(...(filter === 'all' || filter === 'rest' ? [strayBox()].filter(Boolean) : []));
+    if (!items.length) return list.replaceChildren(emptyState(all));
+
+    const nav = h('nav', { class: 'index', 'aria-label': '바로 가기' }, h('h3', null, '바로 가기'));
+    const body = h('div');
+    if (filter !== 'all' || q) {
+      body.append(...monthSections(items, nav));
+    } else {
+      const hand = items.filter(needsHand);
+      if (hand.length) {
+        nav.append(h('button', { class: 'hot', 'data-target': 'sec-hand' }, '확인할 회의', num(hand.length)));
+        const kinds = [['확인 남음', 'open'], ['마치기 전', 'draft'], ['실패', 'fail'], ['녹음만', 'none'], ['만드는 중', 'busy']]
+          .map(([label, st]) => [label, hand.filter((r) => meetState(r) === st).length]).filter(([, n]) => n);
+        body.append(h('section', { class: 'mix-sec', id: 'sec-hand', 'data-spy': '' },
+          h('div', { class: 'sec-h' }, h('h2', null, '확인할 회의'), h('span', null, kinds.map(([k, n]) => `${k} ${n}`).join(' · '))),
+          h('div', { class: 'hgrid' }, hand.slice(0, HAND_MAX).map(handCard)),
+          hand.length > HAND_MAX && h('button', { class: 'btn small more-btn', onclick: () => setFilter('hand') }, `${hand.length - HAND_MAX}건 더 보기`, icon('i-right'))));
+      } else {
+        // 확인할 회의가 없을 때: 칸을 없애지 않고 다 끝났다는 한 줄
+        const last = items.find((r) => meetState(r) === 'done');
+        body.append(h('section', { class: 'mix-sec', id: 'sec-hand' },
+          h('div', { class: 'sec-h' }, h('h2', null, '확인할 회의')),
+          h('div', { class: 'all-clear' }, h('span', { class: 'ok-mark' }, icon('i-check')),
+            h('span', null, h('b', null, '확인할 회의가 없습니다'), h('span', null, last ? ` · 모든 회의록을 확정했습니다. 마지막 확정은 ${dayLabel(last.startedAt)} ${TIME.format(new Date(last.startedAt))} 회의` : ' · 모든 회의록을 확정했습니다')))));
       }
-      fill(list, out.filter((el) => el.childElementCount || el.classList.contains('day-head')));
+      const recent = items.slice(0, RECENT_MAX);
+      const older = items.slice(RECENT_MAX);
+      nav.append(h('button', { 'data-target': 'sec-recent' }, '최근 회의', num(recent.length)));
+      body.append(h('section', { class: 'mix-sec', id: 'sec-recent', 'data-spy': '' },
+        h('div', { class: 'sec-h recent-h' }, h('h2', null, '최근 회의'), h('span', null, `${recent.length}건`)),
+        h('div', { class: 'ledger-month' }, ledgerRows(recent, { recent: true }))));
+      if (older.length) {
+        nav.append(h('div', { class: 'sep' }));
+        body.append(h('div', { class: 'mix-sec' }, h('div', { class: 'archive-h' }, h('h2', null, '이전 회의'), h('span', null, `${older.length}건`)), monthSections(older, nav)));
+      }
     }
-  };
+    scrollSpy(body, nav);
+    list.replaceChildren(h('div', { class: 'mlist' }, body, nav));
+  }
   const el = h('div', { class: 'page wide' },
     h('div', { class: 'page-head' }, h('h1', null, '회의', count),
       h('button', { class: 'btn', title: '다른 앱에서 녹음한 파일로 회의록을 만듭니다. 여기로 끌어다 놓아도 됩니다', onclick: () => importMeeting() }, icon('i-folder'), '파일 가져오기'),
-      searchBox('제목, 요약 검색', '', (v) => {
-        q = v.trim().toLowerCase();
-        update();
-      })),
+      search),
     chips, bulk, stray, list);
   // 녹음 파일을 끌어다 놓으면 가져온다 (여러 개면 이름 순서대로 이어 붙임)
   el.ondragover = (e) => {
