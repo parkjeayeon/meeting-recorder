@@ -211,7 +211,10 @@ async function m2(q, corpus, index) {
 Return only JSON: {"from":"YYYY-MM-DD" or null,"to":"YYYY-MM-DD" or null,"status":["done"|"open"|"draft"|"fail"|"short"] or null,"terms":["..."]}
 - from/to: inclusive date range if the request names a time ("작년 2월", "올해 1분기", "이번 달"), else null.
 - status: only if the request asks for it (done=확정, open=확인 남음, draft=확인 마치기 전, fail=회의록 만들다 실패, short=10초 미만). "확인이 안 끝난" = ["open","draft"].
-- terms: 8-15 short Korean (or English) words or phrases to search in meeting transcripts for the topic: the words in the request, synonyms, colloquial ways people say it in a meeting, related technical words. Each 2-6 characters, no particles. Empty list if the request has no topic (only time/status).
+- terms: 14-22 short Korean (or English) search strings for the topic, matched as substrings of meeting transcripts. Mix two kinds, about half each:
+  (a) formal or technical words for the topic and its synonyms ("장애", "재발 방지", "부하 테스트");
+  (b) how people actually say it out loud in a meeting — everyday words and verb stems, even when the request uses formal words ("멈췄", "안 됐", "터졌", "버티", "느려", "뽑", "아껴", "넘겨").
+  Each 2-6 characters, no particles or endings, so they match any conjugation. Empty list if the request has no topic (only time/status).
 <request>${q}</request>`;
   const r1 = await codex(p1);
   const calls = [{ stage: 'parse', ...r1, chars: p1.length }];
@@ -222,7 +225,8 @@ Return only JSON: {"from":"YYYY-MM-DD" or null,"to":"YYYY-MM-DD" or null,"status
   const terms = Array.isArray(c.terms) ? c.terms.filter((t) => typeof t === 'string').slice(0, 20) : [];
   const allowed = corpus.filter((m) => (!from || new Date(m.at) >= from) && (!to || new Date(m.at) <= to) && (!status || status.has(m.status)));
   const plan = { from: c.from ?? null, to: c.to ?? null, status: c.status ?? null, terms };
-  if (!terms.length) return { ids: allowed.map((m) => m.id), calls, plan, candidates: 0 };
+  // 주제가 없으면 날짜·상태로 거른 그대로 (추리기가 없어 근거 확인도 없다 → M2v도 같게)
+  if (!terms.length) return { ids: allowed.map((m) => m.id), idsVerified: allowed.map((m) => m.id), calls, plan, candidates: 0 };
   const hits = index.search(terms, new Set(allowed.map((m) => m.id)));
   if (!hits.length) return { ids: [], calls, plan, candidates: 0 };
   const byId = new Map(corpus.map((m) => [m.id, m]));
