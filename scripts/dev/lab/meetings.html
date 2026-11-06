@@ -406,6 +406,7 @@ function ledgerRows(ms, { recent = false } = {}) {
 // 바로가기: 지금 자리에서 목표까지 미끄러져 간다 (멀어도 0.65초 안). 움직임 줄이기면 바로 이동
 const reduce = matchMedia('(prefers-reduced-motion: reduce)');
 let gliding = null;
+let glidingNow = false;
 function glide(id) {
   const view = $('view');
   const el = $(id);
@@ -414,6 +415,8 @@ function glide(id) {
   const to = Math.min(view.scrollHeight - view.clientHeight, from + el.getBoundingClientRect().top - view.getBoundingClientRect().top - 8);
   const head = el.querySelector('.ledger-mhead, .sec-h, .archive-h') ?? el;
   const land = () => {
+    glidingNow = false;
+    $('view').onscroll?.();
     head.classList.remove('arrive');
     void head.offsetWidth; // 같은 칸을 다시 눌러도 다시 밝아지게
     head.classList.add('arrive');
@@ -433,6 +436,7 @@ function glide(id) {
     if (t < 1) gliding = requestAnimationFrame(step);
     else land();
   };
+  glidingNow = true;
   gliding = requestAnimationFrame(step);
   index?.querySelector('.pill')?.classList.add('jump');
 }
@@ -443,10 +447,10 @@ function scrollSpy(root, nav) {
   index = nav;
   const pill = h('span', { class: 'pill', 'aria-hidden': 'true' });
   nav.prepend(pill);
+  // 지금 보는 곳이 지난 해면 그 해만 펼치고, 올해·최근 회의·확인할 회의면 지난 해를 모두 접는다
   const openYear = (g) => {
-    if (!g || g.classList.contains('open')) return;
-    for (const o of nav.querySelectorAll('.ygroup.open:not(.fixed)')) o.classList.remove('open');
-    g.classList.add('open');
+    for (const o of nav.querySelectorAll('.ygroup.open:not(.fixed)')) if (o !== g) o.classList.remove('open');
+    g?.classList.add('open');
   };
   for (const b of nav.querySelectorAll('button')) b.onclick = () => {
     if (b.hasAttribute('data-year-head')) openYear(b.closest('.ygroup'));
@@ -463,9 +467,11 @@ function scrollSpy(root, nav) {
       const top = view.getBoundingClientRect().top + 60;
       const cur = secs.filter((s) => s.getBoundingClientRect().top <= top).pop() ?? secs[0];
       const btn = cur && nav.querySelector(`button[data-target="${cur.id}"]:not([data-year-head])`);
+      // 미끄러져 가는 동안 지나치는 해를 열고 닫지 않는다 (도착한 뒤 맞춘다)
+      const g = btn?.closest('.ygroup');
+      if (!glidingNow && [...nav.querySelectorAll('.ygroup.open:not(.fixed)')].some((o) => o !== g) | (g && !g.classList.contains('open'))) openYear(g);
       if (btn === last) return;
       last = btn;
-      openYear(btn?.closest('.ygroup'));
       for (const b of nav.querySelectorAll('button')) b.setAttribute('aria-current', String(b === btn));
       place();
     };
