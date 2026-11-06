@@ -83,13 +83,14 @@
   .index button { position: relative; z-index: 1; transition: color .2s ease-out; }
   .index button[aria-current='true'] { color: var(--ink); font-weight: 650; }
   /* 지금 칸 표시: 버튼마다 바탕을 바꾸지 않고 한 장이 미끄러져 따라간다 */
-  .index .pill { position: absolute; left: 0; right: 0; top: 0; height: 28px; border-radius: 7px; background: var(--panel-3); transform: translateY(var(--y, 0)); transition: transform .42s cubic-bezier(.16, 1, .3, 1), opacity .2s; pointer-events: none; }
-  .index .pill.jump { transition: transform .62s cubic-bezier(.16, 1, .3, 1); }
+  /* 표시 이동과 연도 펼침·접힘은 같은 시간·같은 감속 (함께 시작해 함께 끝난다) */
+  .index .pill { position: absolute; left: 0; right: 0; top: 0; height: 28px; border-radius: 7px; background: var(--panel-3); transform: translateY(var(--y, 0)); transition: transform .36s cubic-bezier(.16, 1, .3, 1), opacity .2s; pointer-events: none; }
+  .ghost, .ghost * { transition: none !important; animation: none !important; }
   /* 바로가기로 도착한 칸: 제목 줄이 잠깐 주홍 물로 밝아졌다가 빠진다 */
   .arrive { animation: arrive 1.1s cubic-bezier(.16, 1, .3, 1); }
   @keyframes arrive { 0% { background-color: var(--accent-wash-2); box-shadow: -10px 0 0 var(--accent-wash-2), 10px 0 0 var(--accent-wash-2); } 100% { background-color: var(--panel); box-shadow: -10px 0 0 transparent, 10px 0 0 transparent; } }
   .sec-h.arrive, .archive-h.arrive { border-radius: 8px; }
-  @media (prefers-reduced-motion: reduce) { .index .pill, .index .pill.jump { transition: none; } .arrive { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .index .pill, .ymonths { transition: none; } .arrive { animation: none; } }
   .index button .num { font-size: 11px; color: var(--ink-3); }
   .index .year { margin: 10px 0 4px 8px; font-size: 11.5px; color: var(--ink-3); font-weight: 600; }
 
@@ -105,7 +106,7 @@
   .ygroup .yhead svg { width: 12px; height: 12px; transition: transform .25s cubic-bezier(.16, 1, .3, 1); }
   .ygroup.open .yhead svg { transform: rotate(90deg); }
   .ygroup.fixed .yhead { pointer-events: none; }
-  .ymonths { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .32s cubic-bezier(.16, 1, .3, 1); }
+  .ymonths { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .36s cubic-bezier(.16, 1, .3, 1); }
   .ygroup.open .ymonths { grid-template-rows: 1fr; }
   .ymonths-in { overflow: hidden; display: flex; flex-direction: column; gap: 1px; }
   .index .sep { height: 1px; margin: 8px 8px; background: var(--line); }
@@ -438,54 +439,65 @@ function glide(id) {
   };
   glidingNow = true;
   gliding = requestAnimationFrame(step);
-  index?.querySelector('.pill')?.classList.add('jump');
 }
 
-// 스크롤 위치에 맞춰 바로가기의 지금 칸을 표시 (표시 한 장이 미끄러져 따라간다)
+// 스크롤 위치에 맞춰 바로가기의 지금 칸을 표시 (표시 한 장이 미끄러져 따라간다).
+// 연도를 펼치고 접는 것과 표시 이동은 한 번에 시작해 같은 시간·같은 감속으로 끝난다:
+// 펼침·접힘이 끝난 뒤의 자리를 보이지 않는 사본으로 먼저 재서 표시를 그 자리로 곧장 보낸다 (중간 자리에 들르지 않게)
 let index = null;
 function scrollSpy(root, nav) {
   index = nav;
   const pill = h('span', { class: 'pill', 'aria-hidden': 'true' });
   nav.prepend(pill);
-  // 지금 보는 곳이 지난 해면 그 해만 펼치고, 올해·최근 회의·확인할 회의면 지난 해를 모두 접는다
+  const view = $('view');
+  let last = null;
+  const monthBtn = (id) => nav.querySelector(`button[data-target="${id}"]:not([data-year-head])`);
+  // 지금 칸이 지난 해면 그 해만 펼치고, 올해·최근 회의·확인할 회의면 지난 해를 모두 접는다
   const openYear = (g) => {
     for (const o of nav.querySelectorAll('.ygroup.open:not(.fixed)')) if (o !== g) o.classList.remove('open');
     g?.classList.add('open');
   };
-  for (const b of nav.querySelectorAll('button')) b.onclick = () => {
-    if (b.hasAttribute('data-year-head')) openYear(b.closest('.ygroup'));
-    glide(b.dataset.target);
+  // 펼침·접힘이 끝난 뒤 그 버튼의 자리 (바로가기 안 좌표)
+  const finalY = (btn) => {
+    const ghost = nav.cloneNode(true);
+    ghost.classList.add('ghost');
+    Object.assign(ghost.style, { position: 'fixed', left: '-9999px', top: '0', width: `${nav.offsetWidth}px`, maxHeight: 'none', overflow: 'visible', visibility: 'hidden' });
+    document.body.append(ghost);
+    const g = ghost.querySelector(`button[data-target="${btn.dataset.target}"]:not([data-year-head])`);
+    const y = g.getBoundingClientRect().top - ghost.getBoundingClientRect().top;
+    ghost.remove();
+    return y;
   };
-  // 펼치고 접히는 동안 표시 위치를 따라 맞춘다
-  nav.addEventListener('transitionend', (e) => e.target.classList?.contains('ymonths') && place());
-  let place = () => {};
+  const setActive = (btn) => {
+    openYear(btn?.closest('.ygroup'));
+    last = btn;
+    for (const b of nav.querySelectorAll('button')) b.setAttribute('aria-current', String(b === btn));
+    pill.style.opacity = btn ? '1' : '0';
+    if (!btn) return;
+    const y = finalY(btn);
+    pill.style.setProperty('--y', `${y}px`);
+    // 바로가기가 길면 지금 칸이 보이게 바로가기 안에서도 따라 내린다
+    if (y < nav.scrollTop + 24 || y + 28 > nav.scrollTop + nav.clientHeight - 24) nav.scrollTo({ top: y - nav.clientHeight / 2, behavior: reduce.matches ? 'auto' : 'smooth' });
+  };
+  for (const b of nav.querySelectorAll('button')) {
+    b.onmousedown = (e) => e.preventDefault(); // 누를 때 포커스가 본문을 끌어 움직이지 않게 (키보드 포커스는 그대로)
+    b.onclick = () => {
+      // 연도를 누르면 그 해의 첫 달로
+      const target = b.hasAttribute('data-year-head') ? b.closest('.ygroup').querySelector('.ymonths-in button') : b;
+      setActive(target);
+      glide(target.dataset.target);
+    };
+  }
+  const mark = () => {
+    if (glidingNow) return; // 미끄러져 가는 동안엔 누른 칸을 그대로 (지나치는 달을 따라가지 않는다)
+    const secs = [...root.querySelectorAll('[data-spy]')];
+    const top = view.getBoundingClientRect().top + 60;
+    const cur = secs.filter((sec) => sec.getBoundingClientRect().top <= top).pop() ?? secs[0];
+    const btn = cur ? monthBtn(cur.id) : null;
+    if (btn !== last) setActive(btn);
+  };
+  view.onscroll = mark;
   requestAnimationFrame(() => {
-    const view = $('view');
-    let last = null;
-    const mark = () => {
-      const secs = [...root.querySelectorAll('[data-spy]')];
-      const top = view.getBoundingClientRect().top + 60;
-      const cur = secs.filter((s) => s.getBoundingClientRect().top <= top).pop() ?? secs[0];
-      const btn = cur && nav.querySelector(`button[data-target="${cur.id}"]:not([data-year-head])`);
-      // 미끄러져 가는 동안 지나치는 해를 열고 닫지 않는다 (도착한 뒤 맞춘다)
-      const g = btn?.closest('.ygroup');
-      if (!glidingNow && [...nav.querySelectorAll('.ygroup.open:not(.fixed)')].some((o) => o !== g) | (g && !g.classList.contains('open'))) openYear(g);
-      if (btn === last) return;
-      last = btn;
-      for (const b of nav.querySelectorAll('button')) b.setAttribute('aria-current', String(b === btn));
-      place();
-    };
-    place = () => {
-      pill.style.opacity = last ? '1' : '0';
-      if (last) pill.style.setProperty('--y', `${last.getBoundingClientRect().top - nav.getBoundingClientRect().top + nav.scrollTop}px`);
-      // 바로가기가 길면 지금 칸이 보이게 바로가기 안에서도 따라 내린다
-      if (last) { const r = last.getBoundingClientRect(); const n = nav.getBoundingClientRect(); if (r.top < n.top + 24 || r.bottom > n.bottom - 24) nav.scrollTo({ top: nav.scrollTop + r.top - n.top - n.height / 2, behavior: reduce.matches ? 'auto' : 'smooth' }); }
-    };
-    view.onscroll = () => {
-      mark();
-      clearTimeout(view._idle);
-      view._idle = setTimeout(() => pill.classList.remove('jump'), 120);
-    };
     pill.style.transition = 'none';
     mark();
     requestAnimationFrame(() => (pill.style.transition = ''));
