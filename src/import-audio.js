@@ -130,7 +130,9 @@ async function importAudio(files, recordingsDir, { notes = '', speakers = null }
     // 녹음 시각: 첫 파일 이름의 시각, 없으면 첫 파일 수정 시각(녹음이 끝난 때)에서 길이를 뺀다
     const durations = parts.map((p) => p.size / 2 / rate);
     const total = durations.reduce((a, b) => a + b, 0);
-    const startedAt = timeFromName(path.basename(sorted[0])) ?? new Date(fs.statSync(sorted[0]).mtimeMs - durations[0] * 1000);
+    let startedAt = timeFromName(path.basename(sorted[0])) ?? new Date(fs.statSync(sorted[0]).mtimeMs - durations[0] * 1000);
+    // 수정 시각도 이상하면(압축 풀기 등으로 1970년·미래) 지금으로. 폴더 이름이 늘 네 자리 연도라 목록에서 사라지지 않게
+    if (!(startedAt.getFullYear() >= 2000 && startedAt.getTime() <= Date.now() + 86400e3)) startedAt = new Date();
     let name = folderName(startedAt);
     for (let n = 2; fs.existsSync(path.join(recordingsDir, name)); n++) name = `${folderName(startedAt)}-${n}`;
     dir = path.join(recordingsDir, name);
