@@ -26,7 +26,7 @@
   .ledger-mhead h2 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -0.015em; }
   .ledger-mhead span { font-size: 12px; color: var(--ink-3); }
   .lrow {
-    display: grid; grid-template-columns: 58px 46px minmax(0, 1fr) 84px 62px 44px; align-items: center; gap: 12px;
+    display: grid; grid-template-columns: 58px 46px minmax(0, 1fr) 76px 62px 44px 64px; align-items: center; gap: 12px;
     min-height: 44px; padding: 0 10px; margin: 0 -10px; border-radius: 9px; text-decoration: none; color: inherit;
   }
   .lrow:hover { background: var(--panel-2); }
@@ -54,6 +54,24 @@
   .index button { display: flex; justify-content: space-between; align-items: center; height: 28px; padding: 0 8px; border: 0; border-radius: 7px; background: none; color: var(--ink-2); font-size: 12.5px; text-align: left; }
   .index button:hover { background: var(--panel-2); color: var(--ink); }
   .index { position: sticky; }
+  /* 줄 목록의 상태: 알약 대신 글자 + 작은 표시 (알약은 손볼 회의 카드에만) */
+  .rs { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-3); white-space: nowrap; }
+  .rs i { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--line-2); }
+  .rs svg { width: 13px; height: 13px; }
+  .rs.open { color: var(--ink-2); font-weight: 550; } /* 손볼 회의 칸이 이미 알리므로 목록에서는 점만 주홍 */
+  .rs.open i { background: var(--accent); }
+  .rs.fail { color: var(--accent); font-weight: 600; }
+  .rs.busy { color: var(--ink-2); }
+  .rs.busy i { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+  .rs.done svg { color: var(--ok); }
+  .rs.draft i { background: none; box-shadow: inset 0 0 0 1.5px var(--line-2); }
+  .ltitle .why { color: var(--accent); opacity: .85; }
+  /* 줄 끝 동작: 마우스를 올리거나 키보드로 들어오면 보인다 (실패·짧은 녹음 줄만) */
+  .racts { display: flex; justify-content: flex-end; gap: 2px; opacity: 0; transition: opacity .15s ease-out; }
+  .lrow:hover .racts, .crow:hover .racts, .racts:focus-within { opacity: 1; }
+  .racts .icon-btn { width: 30px; height: 30px; }
+  .racts .icon-btn:hover { color: var(--accent); background: var(--panel-3); }
+  .bulk { display: flex; align-items: center; gap: 10px; margin: -8px 0 18px; font-size: 13px; color: var(--ink-3); }
   .index button { position: relative; z-index: 1; transition: color .2s ease-out; }
   .index button[aria-current='true'] { color: var(--ink); font-weight: 650; }
   /* 지금 칸 표시: 버튼마다 바탕을 바꾸지 않고 한 장이 미끄러져 따라간다 */
@@ -89,7 +107,7 @@
   .sec-h h2 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -0.015em; }
   .sec-h span { font-size: 12px; color: var(--ink-3); }
   .recent { margin-bottom: 36px; }
-  .crow { display: grid; grid-template-columns: 112px minmax(0, 1fr) 84px 62px; gap: 14px; align-items: center; min-height: 46px; padding: 0 10px; margin: 0 -10px; border-radius: 9px; text-decoration: none; color: inherit; }
+  .crow { display: grid; grid-template-columns: 112px minmax(0, 1fr) 76px 62px 64px; gap: 14px; align-items: center; min-height: 46px; padding: 0 10px; margin: 0 -10px; border-radius: 9px; text-decoration: none; color: inherit; }
   .crow:hover { background: var(--panel-2); }
   .crow .when { font-size: 12.5px; color: var(--ink-3); }
   .crow .when b { color: var(--ink); font-weight: 650; margin-right: 6px; }
@@ -212,6 +230,7 @@ function makeMeetings(n) {
         id: `m${out.length}`, at, dur: status === 'short' ? 6 : 600 + Math.floor(r() * 5400), title: status === 'done' || status === 'busy' ? `${t[0]}${r() < 0.5 ? '' : ` ${1 + Math.floor(r() * 9)}차`}` : null,
         summary: status === 'done' ? t[1] : null, status, open, finalized: status === 'done' && open === 0 && r() < 0.8, speakers: 1 + Math.floor(r() * 5),
         todos: status === 'done' ? Math.floor(r() * 4) : 0,
+        why: status === 'fail' ? (r() < 0.5 ? '앱이 종료되어 중단됨' : '인터넷 연결이 없어 회의록을 쓰지 못함') : null,
       });
     }
   }
@@ -248,6 +267,26 @@ function stateOf(m) {
   if (m.finalized) return h('span', { class: 'st done' }, icon('i-check'), '확정');
   return h('span', { class: 'st quiet' }, '초안');
 }
+function rowState(m) {
+  if (m.status === 'busy') return h('span', { class: 'rs busy' }, h('i'), '녹취 62%');
+  if (m.status === 'fail') return h('span', { class: 'rs fail' }, icon('i-alert'), '실패');
+  if (m.status === 'short') return h('span', { class: 'rs' }, '짧은 녹음');
+  if (m.open) return h('span', { class: 'rs open' }, h('i'), `확인 ${m.open}개`);
+  if (m.finalized) return h('span', { class: 'rs done' }, icon('i-check'), '확정');
+  return h('span', { class: 'rs draft' }, h('i'), '초안');
+}
+function trash(list) {
+  const ids = new Set(list.map((m) => m.id));
+  all = all.filter((m) => !ids.has(m.id));
+  draw(true);
+}
+const stop = (fn) => (e) => { e.preventDefault(); e.stopPropagation(); fn(); };
+function rowActs(m) {
+  if (m.status !== 'fail' && m.status !== 'short') return h('span', { class: 'racts' });
+  return h('span', { class: 'racts' },
+    m.status === 'fail' && h('button', { class: 'icon-btn', title: '녹취부터 다시 만들기', 'aria-label': '다시 만들기', onclick: stop(() => {}) }, icon('i-redo')),
+    h('button', { class: 'icon-btn', title: '휴지통으로', 'aria-label': '휴지통으로', onclick: stop(() => trash([m])) }, icon('i-trash')));
+}
 const needsHand = (m) => m.status === 'fail' || m.status === 'busy' || m.open > 0;
 
 let all = [];
@@ -266,6 +305,7 @@ function head() {
       h('button', { class: 'btn' }, icon('i-folder'), '파일 가져오기'),
       h('label', { class: 'search' }, icon('i-search'), input)),
     h('div', { class: 'chips' }, FILTERS.map(([id, label, fn]) => h('button', { class: 'chip', 'aria-pressed': String(filter === id), onclick: () => { filter = id; draw(); } }, label, h('span', { class: 'num' }, String(all.filter(fn).length))))),
+    filter === 'fail' && visible().length > 1 && h('div', { class: 'bulk' }, `회의록이 없는 녹음 ${visible().length}개`, h('button', { class: 'btn small', onclick: () => trash(visible()) }, icon('i-trash'), '모두 휴지통으로')),
   ];
 }
 
@@ -312,10 +352,11 @@ function ledgerRows(ms, { recent = false } = {}) {
     return h('a', { class: `lrow${first ? ' daystart' : ''}`, href: '#' },
       first ? h('span', { class: `lday${wk === 0 || wk === 6 ? ' weekend' : ''}` }, label) : h('span'),
       h('time', { class: 'ltime' }, hm(m.at)),
-      h('span', { class: `ltitle${m.title ? '' : ' muted'}` }, h('b', null, titleOf(m)), m.summary && h('span', null, m.summary)),
-      stateOf(m),
+      h('span', { class: `ltitle${m.title ? '' : ' muted'}` }, h('b', null, titleOf(m)), m.summary ? h('span', null, m.summary) : m.why && h('span', { class: 'why' }, m.why)),
+      rowState(m),
       h('span', { class: 'ldur num' }, clock(m.dur)),
-      speakers(m.speakers));
+      speakers(m.speakers),
+      rowActs(m));
   });
 }
 
@@ -416,8 +457,8 @@ function mix(list) {
 // C·B가 같이 쓰는 줄과 카드
 const recentRow = (m) => h('a', { class: 'crow', href: '#' },
   h('span', { class: 'when' }, h('b', null, dayName(m.at)), h('time', { class: 'num' }, hm(m.at))),
-  h('span', { class: `ltitle${m.title ? '' : ' muted'}` }, h('b', null, titleOf(m)), m.summary && h('span', null, m.summary)),
-  stateOf(m), h('span', { class: 'ldur num' }, clock(m.dur)));
+  h('span', { class: `ltitle${m.title ? '' : ' muted'}` }, h('b', null, titleOf(m)), m.summary ? h('span', null, m.summary) : m.why && h('span', { class: 'why' }, m.why)),
+  rowState(m), h('span', { class: 'ldur num' }, clock(m.dur)), rowActs(m));
 const handCard = (m) => h('a', { class: 'tcard', href: '#' },
   h('div', { class: 'top' }, `${dayName(m.at)} ${hm(m.at)}`, stateOf(m)),
   h('b', null, titleOf(m)),
