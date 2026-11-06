@@ -15,6 +15,7 @@
     "selftest": "npm run build:fn && npm run build:ts && electron . --selftest",
     "test": "npm run build:ts && vitest run",
     "test:ui": "electron scripts/dev/ui-test.js",
+    "lab:meetings": "electron scripts/dev/lab/open.js meetings",
     "test:crash": "npm run build:ts && electron scripts/dev/review-crash-check.js",
     "test:diskfull": "npm run build:ts && node scripts/dev/disk-full-check.js",
     "mr": "npm run build:ts --silent && ELECTRON_RUN_AS_NODE=1 electron lib/cli/bin.mjs",

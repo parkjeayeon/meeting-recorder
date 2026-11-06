@@ -38,9 +38,10 @@ const noop = () => {};
 const impl = {
   info: async () => ({ recordingsDir: '/Users/me/Documents/MeetingRecorder', defaultRecordingsDir: '/Users/me/Documents/MeetingRecorder' }),
   history: async () => {
-    if (!meeting) return [];
+    if (!meeting) return manyMeetings(Number(process.env.STUB_MANY) || 0);
     const items = JSON.parse(read('review.json') ?? '{"items":[]}').items;
-    return [{ ...meeting, review: { open: items.filter((it) => it.status === 'open').length, total: items.length, finalized: false } }];
+    const first = { ...meeting, review: { open: items.filter((it) => it.status === 'open').length, total: items.length, finalized: false } };
+    return [first, ...manyMeetings(Number(process.env.STUB_MANY) || 0)];
   },
   // 확인 필요 채팅: 늘 같은 제안을 돌려주고, 적용하면 review.json의 상태를 바꾼다
   chatReview: async () => ({ text: '"랩캐시도"는 **Memcached**로 보입니다.', proposals: [{ id: 'r1', heard: '랩캐시도', guess: 'Memcached' }] }),
@@ -128,6 +129,26 @@ const impl = {
   ],
 };
 const calls = {};
+// STUB_MANY=80: 회의가 많을 때의 목록 화면 (지어낸 제목·요약, 이틀에 하나꼴로 석 달)
+function manyMeetings(n) {
+  const topics = ['주간 회의', '배포 점검', '디자인 리뷰', '채용 면접', '고객사 미팅', '1:1', '분기 계획', '장애 회고', '온보딩', '예산 검토'];
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    // STUB_PER_DAY=3: 하루에 몇 개씩 (기본은 이틀에 하나꼴)
+    const per = Number(process.env.STUB_PER_DAY) || 0;
+    const day = per ? Math.floor(i / per) + Math.floor(i / per / 5) * 2 : Math.floor(i * 1.1); // 주말은 건너뜀
+    const at = new Date(Date.UTC(2026, 10, 1, 1 + (per ? (i % per) * 2 : i % 8)) - day * 86400e3);
+    const k = i % 9;
+    const status = k === 7 ? 'error' : k === 8 ? 'short' : 'done';
+    out.push({
+      id: `${at.toISOString().slice(0, 10)}_${String(i).padStart(2, '0')}-00-00_meeting`, dir: `/tmp/stub/m${i}`, mode: 'meeting', startedAt: at.toISOString(), durationSec: 300 + ((i * 397) % 4200), tracks: ['mic'], firstFile: 'mic.wav',
+      minutes: status === 'done' ? { status, title: `${topics[i % topics.length]} ${1 + (i % 4)}차`, speakers: 2 + (i % 4), provider: 'claude-code' } : status === 'error' ? { status, error: '앱이 종료되어 중단됨' } : { status },
+      summary: status === 'done' ? `${topics[i % topics.length]}에서 일정과 담당을 정리했습니다. 다음 단계와 확인할 점을 남겼습니다.` : null,
+      review: status === 'done' ? { open: i % 3, total: 3, finalized: i % 3 === 0 } : null,
+    });
+  }
+  return out;
+}
 const strays = [
   { id: '112-06-26_02-26-26_meeting', dir: '/tmp/stub/112-06-26_02-26-26_meeting', reason: 'bad-name', bytes: 21e6, audio: true, modifiedAt: '2026-11-06T09:00:00Z' },
   { id: '112-06-26_02-26-26_meeting-2', dir: '/tmp/stub/112-06-26_02-26-26_meeting-2', reason: 'bad-name', bytes: 21e6, audio: true, modifiedAt: '2026-11-06T09:01:00Z' },

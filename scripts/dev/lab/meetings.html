@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>회의 목록 실험</title>
+<!-- 회의 목록 대안 세 가지를 가짜 회의로 비교하는 개발용 페이지 (앱에 들어가지 않는다). npm run lab:meetings -->
+<link rel="stylesheet" href="../../../src/renderer/style.css" />
+<style>
+  /* ── 실험 막대 (앱에 없는 부분) ── */
+  .lab-bar { display: flex; align-items: center; gap: 10px; flex: 1; -webkit-app-region: no-drag; }
+  .seg { display: inline-flex; padding: 2px; border-radius: 9px; background: var(--shell-on); }
+  .seg button { height: 26px; padding: 0 12px; border: 0; border-radius: 7px; background: none; color: var(--ink-2); font-size: 12.5px; font-weight: 600; }
+  .seg button[aria-pressed='true'] { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(16, 20, 26, 0.08); }
+  .lab-note { font-size: 12px; color: var(--ink-3); }
+
+  .page-head .search { width: 280px; }
+  .count-line { margin: -14px 0 20px; font-size: 12.5px; color: var(--ink-3); }
+
+  /* ── A. 장부: 월로 묶은 촘촘한 줄, 오른쪽 월 색인 ── */
+  .ledger-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 132px; gap: 28px; }
+  .ledger-month { position: relative; }
+  .ledger-mhead {
+    position: sticky; top: 0; z-index: 2; display: flex; align-items: baseline; gap: 10px;
+    padding: 14px 0 8px; margin-bottom: 2px; background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  .ledger-mhead h2 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -0.015em; }
+  .ledger-mhead span { font-size: 12px; color: var(--ink-3); }
+  .lrow {
+    display: grid; grid-template-columns: 58px 46px minmax(0, 1fr) 84px 62px 44px; align-items: center; gap: 12px;
+    min-height: 44px; padding: 0 10px; margin: 0 -10px; border-radius: 9px; text-decoration: none; color: inherit;
+  }
+  .lrow:hover { background: var(--panel-2); }
+  .lrow.daystart { border-top: 1px solid var(--line); border-radius: 0 0 9px 9px; }
+  .ledger-month .lrow.daystart:first-of-type { border-top: 0; }
+  .lday { display: flex; align-items: baseline; gap: 4px; font-size: 13px; font-weight: 650; color: var(--ink); }
+  .lday small { font-size: 11.5px; font-weight: 500; color: var(--ink-3); }
+  .lday.weekend small { color: var(--accent); }
+  .ltime { font-size: 12px; color: var(--ink-3); }
+  .ltitle { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+  .ltitle b { font-weight: 620; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; max-width: 60%; }
+  .ltitle span { font-size: 12.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ltitle.muted b { color: var(--ink-3); font-weight: 550; }
+  .ldur { font-size: 12px; color: var(--ink-3); text-align: right; }
+  .st { justify-self: start; display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 6px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+  .st.open { background: var(--accent-wash); color: var(--accent); }
+  .st.done { color: var(--ink-3); padding: 0; }
+  .st.done svg { width: 13px; height: 13px; color: var(--ok); }
+  .st.fail { background: var(--accent); color: var(--accent-ink); }
+  .st.busy { background: var(--panel-3); color: var(--ink-2); }
+  .st.busy::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+  .st.quiet { color: var(--ink-3); padding: 0; font-weight: 500; }
+  .index { position: sticky; top: 8px; align-self: start; display: flex; flex-direction: column; gap: 1px; padding-top: 14px; }
+  .index h3 { margin: 0 0 6px 8px; font-size: 11.5px; font-weight: 600; color: var(--ink-3); }
+  .index button { display: flex; justify-content: space-between; align-items: center; height: 28px; padding: 0 8px; border: 0; border-radius: 7px; background: none; color: var(--ink-2); font-size: 12.5px; text-align: left; }
+  .index button:hover { background: var(--panel-2); color: var(--ink); }
+  .index button[aria-current='true'] { background: var(--panel-3); color: var(--ink); font-weight: 650; }
+  .index button .num { font-size: 11px; color: var(--ink-3); }
+  .index .year { margin: 10px 0 4px 8px; font-size: 11.5px; color: var(--ink-3); font-weight: 600; }
+
+  /* ── B. 달력: 주마다 한 줄, 요일 칸, 오른쪽 미리보기 ── */
+  .cal-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 296px; gap: 20px; align-items: start; }
+  .cal { border: 1px solid var(--line); border-radius: 14px; overflow: clip; }
+  .cal-head, .week { display: grid; grid-template-columns: 52px repeat(5, minmax(0, 1fr)) repeat(2, minmax(0, 0.45fr)); }
+  .cal-head { position: sticky; top: 0; z-index: 2; background: var(--panel-2); border-bottom: 1px solid var(--line); }
+  .cal-head div { padding: 8px 10px; font-size: 11.5px; font-weight: 600; color: var(--ink-3); }
+  .week + .week { border-top: 1px solid var(--line); }
+  .week.newmonth { border-top: 1px solid var(--line-2); }
+  .wgut { padding: 8px 6px 8px 10px; font-size: 12px; font-weight: 700; color: var(--ink); line-height: 1.2; }
+  .wgut small { display: block; font-weight: 500; color: var(--ink-3); font-size: 11px; }
+  .cell { min-height: 92px; padding: 6px 6px 8px; border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .cell.weekend { background: var(--panel-2); }
+  .cell.other { background: repeating-linear-gradient(135deg, transparent 0 6px, var(--panel-2) 6px 7px); }
+  .cell .d { white-space: nowrap; font: 500 11.5px var(--mono); color: var(--ink-3); padding: 0 4px 2px; }
+  .cell .d.first { color: var(--ink); font-weight: 700; }
+  .cell.today .d { color: var(--accent); font-weight: 700; }
+  .chipm {
+    display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; padding: 3px 6px; border: 0; border-radius: 6px;
+    background: none; color: var(--ink); font-size: 12px; text-align: left; line-height: 1.35;
+  }
+  .chipm:hover { background: var(--panel-3); }
+  .chipm[aria-pressed='true'] { background: var(--ink); color: var(--panel); }
+  .chipm[aria-pressed='true'] time { color: inherit; opacity: .7; }
+  .chipm time { font-size: 10.5px; color: var(--ink-3); flex: none; }
+  .chipm span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chipm i { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+  .chipm i.open { background: var(--accent); }
+  .chipm i.fail { background: var(--accent); box-shadow: 0 0 0 2px var(--accent-wash-2); }
+  .chipm i.done { background: var(--line-2); }
+  .chipm i.busy { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+  .chipm.muted span { color: var(--ink-3); }
+  .more { font-size: 11.5px; color: var(--ink-3); padding: 0 6px; border: 0; background: none; text-align: left; }
+  .preview { position: sticky; top: 8px; border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+  .preview .meta { font-size: 12px; color: var(--ink-3); display: flex; gap: 6px; align-items: center; }
+  .preview h2 { margin: 0; font-size: 18px; font-weight: 720; letter-spacing: -0.02em; line-height: 1.3; }
+  .preview p { margin: 0; font-size: 13.5px; color: var(--ink-2); line-height: 1.6; }
+  .preview .tags { display: flex; gap: 6px; flex-wrap: wrap; }
+  .preview .empty-p { color: var(--ink-3); font-size: 13px; padding: 24px 0; text-align: center; }
+  .preview ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--ink-2); }
+  .preview ul li { display: flex; gap: 8px; }
+  .preview ul li::before { content: ''; flex: none; width: 12px; height: 12px; margin-top: 3px; border: 1.5px solid var(--line-2); border-radius: 4px; }
+
+  /* ── C. 손볼 것 먼저: 할 일 칸 + 최근 + 접힌 달 ── */
+  .triage { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; margin-bottom: 36px; }
+  .tcard { display: flex; flex-direction: column; gap: 8px; padding: 14px 14px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); text-decoration: none; color: inherit; }
+  .tcard:hover { border-color: var(--line-2); }
+  .tcard .top { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-3); }
+  .tcard .top .st { margin-left: auto; }
+  .tcard b { font-size: 14.5px; font-weight: 650; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tcard .act { display: flex; gap: 6px; margin-top: 2px; }
+  .sec-h { display: flex; align-items: baseline; gap: 8px; margin: 0 0 10px; }
+  .sec-h h2 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -0.015em; }
+  .sec-h span { font-size: 12px; color: var(--ink-3); }
+  .recent { margin-bottom: 36px; }
+  .crow { display: grid; grid-template-columns: 112px minmax(0, 1fr) 84px 62px; gap: 14px; align-items: center; min-height: 46px; padding: 0 10px; margin: 0 -10px; border-radius: 9px; text-decoration: none; color: inherit; }
+  .crow:hover { background: var(--panel-2); }
+  .crow .when { font-size: 12.5px; color: var(--ink-3); }
+  .crow .when b { color: var(--ink); font-weight: 650; margin-right: 6px; }
+  .acc { border-top: 1px solid var(--line); }
+  .acc:last-child { border-bottom: 1px solid var(--line); }
+  .acc > button { display: grid; grid-template-columns: 16px 110px 64px minmax(0, 1fr); align-items: center; gap: 10px; width: 100%; min-height: 50px; padding: 0 4px; border: 0; background: none; text-align: left; }
+  .acc > button:hover { background: var(--panel-2); }
+  .acc > button svg { width: 14px; height: 14px; color: var(--ink-3); transition: transform .18s ease-out; }
+  .acc[open] > button svg { transform: rotate(90deg); }
+  .acc .m { font-size: 14.5px; font-weight: 680; }
+  .acc .c { font-size: 12px; color: var(--ink-3); }
+  .acc .peek { font-size: 12.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .acc .body { padding: 2px 4px 12px 30px; }
+  .acc:not([open]) .body { display: none; }
+
+  .lab-empty { padding: 60px 0; text-align: center; color: var(--ink-3); }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-home" viewBox="0 0 20 20"><path d="M3.5 9 10 3.5 16.5 9v7a1 1 0 0 1-1 1h-3.5v-4.5h-4V17H4.5a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 20 20"><rect x="7" y="2.5" width="6" height="10" rx="3"/><path d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v2.5"/></symbol>
+    <symbol id="i-people" viewBox="0 0 20 20"><circle cx="7.5" cy="7" r="2.75"/><path d="M2.5 16c.6-2.6 2.6-4 5-4s4.4 1.4 5 4"/><path d="M13 4.6a2.6 2.6 0 0 1 0 4.9M14.6 12.3c1.5.5 2.5 1.8 2.9 3.7"/></symbol>
+    <symbol id="i-book" viewBox="0 0 20 20"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H16v11.5H5.5A1.5 1.5 0 0 0 4 16zM4 16a1.5 1.5 0 0 0 1.5 1.5H16v-3"/><path d="M7.5 6.5h5"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 20 20"><path d="M3.5 16.5h13M6 13.5v-4M10 13.5v-8M14 13.5V8"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 20 20"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4"/></symbol>
+    <symbol id="i-search" viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="m13 13 4 4"/></symbol>
+    <symbol id="i-rec" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.5"/><circle cx="10" cy="10" r="3" class="fill"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 20 20"><rect x="5.5" y="5.5" width="9" height="9" rx="2" class="fill"/></symbol>
+    <symbol id="i-play" viewBox="0 0 20 20"><path d="M6.5 4.5v11l9-5.5z" class="fill"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 20 20"><rect x="5.5" y="4.5" width="3" height="11" rx="1" class="fill"/><rect x="11.5" y="4.5" width="3" height="11" rx="1" class="fill"/></symbol>
+    <symbol id="i-back10" viewBox="0 0 20 20"><path d="M4.5 10a5.5 5.5 0 1 0 1.8-4.1"/><path d="M6.5 2.5v3.6H2.9"/></symbol>
+    <symbol id="i-fwd10" viewBox="0 0 20 20"><path d="M15.5 10a5.5 5.5 0 1 1-1.8-4.1"/><path d="M13.5 2.5v3.6h3.6"/></symbol>
+    <symbol id="i-left" viewBox="0 0 20 20"><path d="M12 4.5 6.5 10l5.5 5.5"/></symbol>
+    <symbol id="i-right" viewBox="0 0 20 20"><path d="m8 4.5 5.5 5.5L8 15.5"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 20 20"><rect x="7" y="7" width="9.5" height="9.5" rx="2"/><path d="M13 7V4.5A1 1 0 0 0 12 3.5H4.5a1 1 0 0 0-1 1V12a1 1 0 0 0 1 1H7"/></symbol>
+    <symbol id="i-paste" viewBox="0 0 20 20"><path d="M7 3.5h6v2.5H7zM13 4.5h1.5a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-10a1 1 0 0 1 1-1H7"/><path d="M8 12l2 2 2-2M10 8.5V14"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 20 20"><path d="M2.5 5.5a1 1 0 0 1 1-1h4l1.5 2h7.5a1 1 0 0 1 1 1v7.5a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 20 20"><path d="M3.5 5.5h13M8 5.5V3.5h4v2M5 5.5l.8 10.6a1 1 0 0 0 1 .9h6.4a1 1 0 0 0 1-.9L15 5.5"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 20 20"><path d="M15.5 9.5a5.5 5.5 0 1 1-1.6-3.9L16 7.5"/><path d="M16 3.5v4h-4"/></symbol>
+    <symbol id="i-more" viewBox="0 0 20 20"><circle cx="5" cy="10" r="1.2" class="fill"/><circle cx="10" cy="10" r="1.2" class="fill"/><circle cx="15" cy="10" r="1.2" class="fill"/></symbol>
+    <symbol id="i-x" viewBox="0 0 20 20"><path d="m5 5 10 10M15 5 5 15"/></symbol>
+    <symbol id="i-check" viewBox="0 0 20 20"><path d="m4.5 10.5 3.5 3.5 7.5-8"/></symbol>
+    <symbol id="i-key" viewBox="0 0 20 20"><circle cx="7" cy="12.5" r="3.5"/><path d="M9.5 10l7-7M14 5.5l2 2M12 7.5l1.5 1.5"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 20 20"><path d="M10 2.5 16 5v4.5c0 3.8-2.5 6.6-6 8-3.5-1.4-6-4.2-6-8V5z"/></symbol>
+    <symbol id="i-wand" viewBox="0 0 20 20"><path d="m3.5 16.5 9-9M11 6l3 3M14.5 2.5v2M17.5 5.5h-2M16.6 3.4l-1.4 1.4"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 6v4.5M10 13.5v.5"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></symbol>
+    <symbol id="i-flag" viewBox="0 0 20 20"><path d="M5 17V3.5M5 4h9.5l-2 3.25 2 3.25H5"/></symbol>
+    <symbol id="i-pencil" viewBox="0 0 20 20"><path d="M13.5 3.5l3 3L7 16H4v-3z"/><path d="M11.5 5.5l3 3"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 20 20"><path d="M4 4.5h12a1 1 0 0 1 1 1V13a1 1 0 0 1-1 1H9l-4 3v-3H4a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1z"/></symbol>
+    <symbol id="i-send" viewBox="0 0 20 20"><path d="M3.5 10 16.5 4 12 16.5l-2.5-5z"/><path d="m9.5 11.5 7-7.5"/></symbol>
+  </svg>
+<div class="shell">
+  <aside class="side">
+    <div class="side-drag"></div>
+    <div class="brand"><span class="brand-mark"><svg><use href="#i-mic"/></svg></span>Meeting Recorder</div>
+    <button class="search-btn"><svg><use href="#i-search"/></svg><span>검색</span><kbd>⌘K</kbd></button>
+    <nav class="nav">
+      <a class="nav-item"><svg><use href="#i-home"/></svg><span>홈</span></a>
+      <a class="nav-item"><svg><use href="#i-mic"/></svg><span>받아쓰기</span></a>
+      <a class="nav-item" aria-current="page"><svg><use href="#i-people"/></svg><span>회의</span><span class="count" id="navCount"></span></a>
+      <a class="nav-item"><svg><use href="#i-book"/></svg><span>사전</span></a>
+      <a class="nav-item"><svg><use href="#i-chart"/></svg><span>통계</span></a>
+    </nav>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <div class="lab-bar">
+        <div class="seg" id="variant" role="group" aria-label="보기">
+          <button data-v="ledger">A · 장부</button><button data-v="calendar">B · 달력</button><button data-v="triage">C · 손볼 것 먼저</button>
+        </div>
+        <div class="seg" id="size" role="group" aria-label="회의 수">
+          <button data-n="40">40개</button><button data-n="160">160개</button><button data-n="420">420개</button>
+        </div>
+        <span class="lab-note">실험 페이지 · 지어낸 회의</span>
+      </div>
+      <div class="top-acts"><button class="btn rec"><svg><use href="#i-rec"/></svg><span>회의 녹음</span></button></div>
+    </header>
+    <main class="panel"><div class="view" id="view"></div></main>
+  </div>
+</div>
+<script>
+// ── 지어낸 회의 (같은 씨앗이면 같은 결과) ──
+const TOPICS = [
+  ['주간 회의', '이번 주 진행 상황과 막힌 점을 공유하고 다음 주 우선순위를 정했습니다.'],
+  ['배포 점검', '화요일 배포 범위와 롤백 기준을 정하고 QA 담당을 나눴습니다.'],
+  ['디자인 리뷰', '회의 목록 화면 시안을 보고 밀도와 탐색 방식을 논의했습니다.'],
+  ['채용 면접', '백엔드 지원자와 시스템 설계 질문을 중심으로 이야기했습니다.'],
+  ['고객사 미팅', '계약 범위와 일정, 통신 안정성 요구 사항을 확인했습니다.'],
+  ['1:1', '최근 업무 부담과 다음 분기 목표를 이야기했습니다.'],
+  ['분기 계획', '다음 분기 핵심 과제 세 가지와 담당을 정했습니다.'],
+  ['장애 회고', '지난주 접속 장애의 원인과 재발 방지 조치를 정리했습니다.'],
+  ['온보딩', '새 팀원에게 개발 환경과 배포 절차를 설명했습니다.'],
+  ['예산 검토', '클라우드 비용 증가 원인과 줄일 수 있는 항목을 살폈습니다.'],
+  ['인수인계', '결제 모듈 담당이 바뀌어 운영 절차와 주의할 점을 넘겼습니다.'],
+  ['기획 회의', '받아쓰기 다듬기 기능의 범위와 출시 순서를 정했습니다.'],
+];
+function rng(seed) { return () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648); }
+function makeMeetings(n) {
+  const r = rng(7);
+  const out = [];
+  const now = new Date(2026, 10, 6, 15, 0);
+  for (let d = 0; out.length < n; d++) {
+    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - d);
+    const wk = day.getDay();
+    const weekend = wk === 0 || wk === 6;
+    const k = weekend ? (r() < 0.12 ? 1 : 0) : [0, 1, 1, 2, 2, 3, 4][Math.floor(r() * 7)];
+    const hours = [9, 10, 11, 13, 14, 15, 16, 17].sort(() => r() - 0.5).slice(0, k).sort((a, b) => a - b);
+    for (const hr of hours) {
+      if (out.length >= n) break;
+      const at = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hr, Math.floor(r() * 4) * 15);
+      if (at > now) continue;
+      const t = TOPICS[Math.floor(r() * TOPICS.length)];
+      const x = r();
+      const age = d;
+      const status = d === 0 && out.length === 0 ? 'busy' : x < 0.04 ? 'fail' : x < 0.07 ? 'short' : 'done';
+      const open = status === 'done' ? (age < 10 ? [0, 1, 2, 3][Math.floor(r() * 4)] : r() < 0.15 ? 1 + Math.floor(r() * 2) : 0) : 0;
+      out.push({
+        id: `m${out.length}`, at, dur: status === 'short' ? 6 : 600 + Math.floor(r() * 5400), title: status === 'done' || status === 'busy' ? `${t[0]}${r() < 0.5 ? '' : ` ${1 + Math.floor(r() * 9)}차`}` : null,
+        summary: status === 'done' ? t[1] : null, status, open, finalized: status === 'done' && open === 0 && r() < 0.8, speakers: 1 + Math.floor(r() * 5),
+        todos: status === 'done' ? Math.floor(r() * 4) : 0,
+      });
+    }
+  }
+  return out;
+}
+
+// ── 공통 ──
+const $ = (id) => document.getElementById(id);
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs ?? {})) {
+    if (v == null || v === false) continue;
+    if (k.startsWith('on')) el[k] = v; else el.setAttribute(k, v);
+  }
+  for (const c of kids.flat(Infinity)) if (c != null && c !== false) el.append(c.nodeType ? c : document.createTextNode(c));
+  return el;
+}
+const icon = (id) => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); const u = document.createElementNS('http://www.w3.org/2000/svg', 'use'); u.setAttribute('href', `#${id}`); s.append(u); return s; };
+const WD = ['일', '월', '화', '수', '목', '금', '토'];
+const TODAY = new Date(2026, 10, 6);
+const p2 = (n) => String(n).padStart(2, '0');
+const hm = (d) => `${p2(d.getHours())}:${p2(d.getMinutes())}`;
+const clock = (s) => (s >= 3600 ? `${Math.floor(s / 3600)}:${p2(Math.floor((s % 3600) / 60))}:${p2(s % 60)}` : `${p2(Math.floor(s / 60))}:${p2(s % 60)}`);
+const sameDay = (a, b) => a.toDateString() === b.toDateString();
+const monthKey = (d) => `${d.getFullYear()}-${p2(d.getMonth() + 1)}`;
+const dayName = (d) => { const diff = Math.round((new Date(TODAY) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 864e5); return diff === 0 ? '오늘' : diff === 1 ? '어제' : `${d.getMonth() + 1}월 ${d.getDate()}일`; };
+const titleOf = (m) => m.title ?? (m.status === 'fail' ? '회의록을 만들지 못했습니다' : m.status === 'short' ? '짧은 녹음 (10초 미만)' : '회의록 만드는 중');
+const speakers = (n) => h('span', { class: 'speakers' }, Array.from({ length: Math.min(n, 6) }, (_, i) => h('i', { style: `background:var(--s${i + 1})` })));
+function stateOf(m) {
+  if (m.status === 'busy') return h('span', { class: 'st busy' }, '녹취 중 62%');
+  if (m.status === 'fail') return h('span', { class: 'st fail' }, '실패');
+  if (m.status === 'short') return h('span', { class: 'st quiet' }, '짧은 녹음');
+  if (m.open) return h('span', { class: 'st open' }, `확인 ${m.open}`);
+  if (m.finalized) return h('span', { class: 'st done' }, icon('i-check'), '확정');
+  return h('span', { class: 'st quiet' }, '초안');
+}
+const needsHand = (m) => m.status === 'fail' || m.status === 'busy' || m.open > 0;
+
+let all = [];
+let variant = 'ledger';
+let size = 160;
+let q = '';
+let filter = 'all';
+let picked = null;
+const FILTERS = [['all', '전체', () => true], ['open', '확인 남음', (m) => m.open > 0], ['fail', '실패·짧은 녹음', (m) => m.status === 'fail' || m.status === 'short']];
+const visible = () => all.filter(FILTERS.find((f) => f[0] === filter)[2]).filter((m) => !q || `${m.title ?? ''} ${m.summary ?? ''}`.includes(q));
+
+function head() {
+  const input = h('input', { type: 'search', placeholder: '제목, 요약 검색', value: q });
+  input.oninput = () => { q = input.value.trim(); draw(true); };
+  return [
+    h('div', { class: 'page-head' }, h('h1', null, '회의', h('span', { class: 'num' }, String(all.length))),
+      h('button', { class: 'btn' }, icon('i-folder'), '파일 가져오기'),
+      h('label', { class: 'search' }, icon('i-search'), input)),
+    h('div', { class: 'chips' }, FILTERS.map(([id, label, fn]) => h('button', { class: 'chip', 'aria-pressed': String(filter === id), onclick: () => { filter = id; draw(); } }, label, h('span', { class: 'num' }, String(all.filter(fn).length))))),
+  ];
+}
+
+function byMonth(list) {
+  const map = new Map();
+  for (const m of list) { const k = monthKey(m.at); if (!map.has(k)) map.set(k, []); map.get(k).push(m); }
+  return [...map.entries()];
+}
+const hours = (list) => { const s = list.reduce((n, m) => n + m.dur, 0); return `${Math.floor(s / 3600)}시간 ${Math.floor((s % 3600) / 60)}분`; };
+
+// ── A. 장부 ──
+function ledger(list) {
+  const months = byMonth(list);
+  const body = h('div');
+  const index = h('nav', { class: 'index', 'aria-label': '달' }, h('h3', null, '바로 가기'));
+  let year = null;
+  for (const [k, ms] of months) {
+    const d = ms[0].at;
+    if (d.getFullYear() !== year) { year = d.getFullYear(); index.append(h('div', { class: 'year' }, `${year}년`)); }
+    const sec = h('section', { class: 'ledger-month', id: `mon-${k}` }, h('div', { class: 'ledger-mhead' }, h('h2', null, `${d.getFullYear()}년 ${d.getMonth() + 1}월`), h('span', null, `${ms.length}건 · ${hours(ms)}`)));
+    let prev = null;
+    for (const m of ms) {
+      const first = !prev || !sameDay(prev.at, m.at);
+      const wk = m.at.getDay();
+      sec.append(h('a', { class: `lrow${first ? ' daystart' : ''}`, href: '#' },
+        first ? h('span', { class: `lday${wk === 0 || wk === 6 ? ' weekend' : ''}` }, String(m.at.getDate()), h('small', null, sameDay(m.at, TODAY) ? '오늘' : WD[wk])) : h('span'),
+        h('time', { class: 'ltime' }, hm(m.at)),
+        h('span', { class: `ltitle${m.title ? '' : ' muted'}` }, h('b', null, titleOf(m)), m.summary && h('span', null, m.summary)),
+        stateOf(m),
+        h('span', { class: 'ldur num' }, clock(m.dur)),
+        speakers(m.speakers)));
+      prev = m;
+    }
+    body.append(sec);
+    index.append(h('button', { 'data-k': k, onclick: () => $(`mon-${k}`).scrollIntoView({ block: 'start' }) }, `${d.getMonth() + 1}월`, h('span', { class: 'num' }, String(ms.length))));
+  }
+  // 지금 보고 있는 달을 색인에 표시
+  requestAnimationFrame(() => {
+    const view = $('view');
+    const mark = () => {
+      const secs = [...body.querySelectorAll('.ledger-month')];
+      const top = view.getBoundingClientRect().top + 60;
+      const cur = secs.filter((s) => s.getBoundingClientRect().top <= top).pop() ?? secs[0];
+      for (const b of index.querySelectorAll('button')) b.setAttribute('aria-current', String(cur && `mon-${b.dataset.k}` === cur.id));
+    };
+    view.onscroll = mark;
+    mark();
+  });
+  return h('div', { class: 'ledger-wrap' }, body, index);
+}
+
+// ── B. 달력 ──
+function calendar(list) {
+  const byDay = new Map();
+  for (const m of list) { const k = m.at.toDateString(); if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(m); }
+  for (const v of byDay.values()) v.sort((a, b) => a.at - b.at);
+  const oldest = list.length ? list[list.length - 1].at : TODAY;
+  const monday = (d) => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
+  const cal = h('div', { class: 'cal' }, h('div', { class: 'cal-head' }, h('div'), ['월', '화', '수', '목', '금', '토', '일'].map((w) => h('div', null, w))));
+  let lastMonth = null;
+  for (let w = monday(TODAY); w >= monday(oldest); w = new Date(w.getFullYear(), w.getMonth(), w.getDate() - 7)) {
+    const days = Array.from({ length: 7 }, (_, i) => new Date(w.getFullYear(), w.getMonth(), w.getDate() + i));
+    const monthOfRow = days[6].getMonth();
+    const newMonth = monthOfRow !== lastMonth;
+    const row = h('div', { class: `week${newMonth && lastMonth !== null ? ' newmonth' : ''}` },
+      h('div', { class: 'wgut' }, newMonth ? [`${monthOfRow + 1}월`, h('small', null, String(days[6].getFullYear()))] : ''));
+    lastMonth = monthOfRow;
+    days.forEach((d, i) => {
+      const ms = byDay.get(d.toDateString()) ?? [];
+      const future = d > TODAY;
+      const cell = h('div', { class: `cell${i >= 5 ? ' weekend' : ''}${future ? ' other' : ''}${sameDay(d, TODAY) ? ' today' : ''}` },
+        h('div', { class: `d${d.getDate() === 1 ? ' first' : ''}` }, d.getDate() === 1 ? `${d.getMonth() + 1}/1` : String(d.getDate())));
+      ms.slice(0, 4).forEach((m) => {
+        const kind = m.status === 'fail' ? 'fail' : m.status === 'busy' ? 'busy' : m.open ? 'open' : 'done';
+        cell.append(h('button', { class: `chipm${m.title ? '' : ' muted'}`, 'aria-pressed': String(picked === m.id), title: `${hm(m.at)} ${titleOf(m)}`, onclick: () => { picked = m.id; draw(); } },
+          h('i', { class: kind }), h('span', null, m.title ?? titleOf(m))));
+      });
+      if (ms.length > 4) cell.append(h('button', { class: 'more' }, `+${ms.length - 4}개 더`));
+      row.append(cell);
+    });
+    cal.append(row);
+  }
+  const m = list.find((x) => x.id === picked);
+  const preview = h('aside', { class: 'preview' }, m ? [
+    h('div', { class: 'meta' }, `${dayName(m.at)} (${WD[m.at.getDay()]}) ${hm(m.at)}`, '·', h('span', { class: 'num' }, clock(m.dur)), h('span', { style: 'flex:1' }), speakers(m.speakers)),
+    h('h2', null, titleOf(m)),
+    m.summary && h('p', null, m.summary),
+    h('div', { class: 'tags' }, stateOf(m), h('span', { class: 'tag' }, `화자 ${m.speakers}명`)),
+    m.todos > 0 && h('ul', null, Array.from({ length: m.todos }, (_, i) => h('li', null, ['QA 마치기 — 민준', '배포 체크리스트 공유 — 서연', '비용 보고서 초안 — 지호'][i]))),
+    h('div', { style: 'display:flex;gap:6px' }, h('button', { class: 'btn primary' }, '회의록 열기'), m.open ? h('button', { class: 'btn' }, `확인 ${m.open}개`) : null),
+  ] : h('div', { class: 'empty-p' }, '달력에서 회의를 누르면', h('br'), '여기에 요약이 보입니다'));
+  return h('div', { class: 'cal-wrap' }, cal, preview);
+}
+
+// ── C. 손볼 것 먼저 ──
+function triage(list) {
+  const hand = list.filter(needsHand);
+  const cut = new Date(TODAY.getFullYear(), TODAY.getMonth(), TODAY.getDate() - 13);
+  const recent = list.filter((m) => m.at >= cut);
+  const older = list.filter((m) => m.at < cut);
+  const row = (m) => h('a', { class: 'crow', href: '#' },
+    h('span', { class: 'when' }, h('b', null, dayName(m.at)), h('time', { class: 'num' }, hm(m.at))),
+    h('span', { class: `ltitle${m.title ? '' : ' muted'}` }, h('b', null, titleOf(m)), m.summary && h('span', null, m.summary)),
+    stateOf(m), h('span', { class: 'ldur num' }, clock(m.dur)));
+  const out = [];
+  if (hand.length) {
+    out.push(h('div', { class: 'sec-h' }, h('h2', null, '손볼 회의'), h('span', null, `${hand.length}건 · 확인이 남았거나 실패한 회의`)));
+    out.push(h('div', { class: 'triage' }, hand.slice(0, 6).map((m) => h('a', { class: 'tcard', href: '#' },
+      h('div', { class: 'top' }, `${dayName(m.at)} ${hm(m.at)}`, stateOf(m)),
+      h('b', null, titleOf(m)),
+      h('div', { class: 'act' }, m.status === 'fail' ? h('button', { class: 'btn small' }, icon('i-redo'), '다시 만들기') : m.status === 'busy' ? h('span', { class: 'lab-note' }, '약 4분 남음') : h('button', { class: 'btn small' }, '확인하기'))))));
+    if (hand.length > 6) out.push(h('p', { class: 'count-line', style: 'margin-top:-26px' }, `외 ${hand.length - 6}건은 아래 목록에서 '확인 남음'으로 거를 수 있습니다`));
+  }
+  out.push(h('section', { class: 'recent' }, h('div', { class: 'sec-h' }, h('h2', null, '최근 2주'), h('span', null, `${recent.length}건`)), recent.map(row)));
+  for (const [k, ms] of byMonth(older)) {
+    const d = ms[0].at;
+    const det = h('div', { class: 'acc' });
+    const sum = h('button', { onclick: () => det.toggleAttribute('open') }, icon('i-right'), h('span', { class: 'm' }, `${d.getFullYear() === TODAY.getFullYear() ? '' : `${d.getFullYear()}년 `}${d.getMonth() + 1}월`), h('span', { class: 'c num' }, `${ms.length}건`),
+      h('span', { class: 'peek' }, [...new Set(ms.filter((m) => m.title).map((m) => m.title.replace(/ \d+차$/, '')))].slice(0, 5).join(' · ')));
+    det.append(sum, h('div', { class: 'body' }, ms.map(row)));
+    out.push(det);
+  }
+  return h('div', null, out);
+}
+
+function draw(keepFocus = false) {
+  const view = $('view');
+  const list = visible();
+  const active = document.activeElement?.type === 'search';
+  const VIEWS = { ledger, calendar, triage };
+  const page = h('div', { class: 'page wide' }, head(), list.length ? VIEWS[variant](list) : h('div', { class: 'lab-empty' }, '맞는 회의가 없습니다'));
+  const top = view.scrollTop;
+  view.replaceChildren(page);
+  if (keepFocus || active) { const i = view.querySelector('input[type=search]'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
+  view.scrollTop = keepFocus ? top : top;
+  $('navCount').textContent = String(all.length);
+  for (const b of document.querySelectorAll('#variant button')) b.setAttribute('aria-pressed', String(b.dataset.v === variant));
+  for (const b of document.querySelectorAll('#size button')) b.setAttribute('aria-pressed', String(Number(b.dataset.n) === size));
+}
+for (const b of document.querySelectorAll('#variant button')) b.onclick = () => { variant = b.dataset.v; $('view').scrollTop = 0; draw(); };
+for (const b of document.querySelectorAll('#size button')) b.onclick = () => { size = Number(b.dataset.n); all = makeMeetings(size); picked = all.find((m) => m.title)?.id; $('view').scrollTop = 0; draw(); };
+const params = new URLSearchParams(location.search);
+variant = params.get('v') ?? variant;
+size = Number(params.get('n') ?? size);
+all = makeMeetings(size);
+picked = all.find((m) => m.title && m.open)?.id ?? all[0]?.id;
+draw();
+</script>
+</body>
+</html>
