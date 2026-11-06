@@ -71,6 +71,8 @@
   .lrow:hover .racts, .crow:hover .racts, .racts:focus-within { opacity: 1; }
   .racts .icon-btn { width: 30px; height: 30px; }
   .racts .icon-btn:hover { color: var(--accent); background: var(--panel-3); }
+  .more-btn { margin-top: 12px; }
+  .more-btn svg { width: 13px; height: 13px; margin: 0 -2px 0 2px; }
   .bulk { display: flex; align-items: center; gap: 10px; margin: -8px 0 18px; font-size: 13px; color: var(--ink-3); }
   .index button { position: relative; z-index: 1; transition: color .2s ease-out; }
   .index button[aria-current='true'] { color: var(--ink); font-weight: 650; }
@@ -294,7 +296,7 @@ let variant = 'ledger';
 let size = 160;
 let q = '';
 let filter = 'all';
-const FILTERS = [['all', '전체', () => true], ['open', '확인 남음', (m) => m.open > 0], ['fail', '실패·짧은 녹음', (m) => m.status === 'fail' || m.status === 'short']];
+const FILTERS = [['all', '전체', () => true], ['open', '확인 남음', (m) => needsHand(m)], ['fail', '실패·짧은 녹음', (m) => m.status === 'fail' || m.status === 'short']];
 const visible = () => all.filter(FILTERS.find((f) => f[0] === filter)[2]).filter((m) => !q || `${m.title ?? ''} ${m.summary ?? ''}`.includes(q));
 
 function head() {
@@ -427,23 +429,37 @@ function scrollSpy(root, nav) {
   });
 }
 
-// 기간(최근 2주)으로 자르지 않는다: 회의가 몰린 주엔 넘치고 뜸한 때엔 빈다.
-// 손볼 회의는 최근 것부터 6개(더 보기로 펼침), 그 아래는 이번 달부터 바로 장부
-let handOpen = false;
+// 기간으로 자르지 않고 개수로: 손볼 회의 카드 6개(넘치면 '확인 남음' 필터로), 최근 회의 20개, 그 아래 달별 장부.
+// 필터를 고르면 카드·최근 칸 없이 장부만 (같은 회의가 두 번 나오지 않게)
+const HAND_MAX = 6;
+const RECENT_MAX = 20;
 function mix(list) {
-  const hand = list.filter(needsHand);
   const index = h('nav', { class: 'index', 'aria-label': '바로 가기' }, h('h3', null, '바로 가기'));
   const body = h('div');
-  if (hand.length) {
-    index.append(h('button', { class: 'hot', 'data-target': 'sec-hand' }, '손볼 회의', h('span', { class: 'num' }, String(hand.length))), h('div', { class: 'sep' }));
-    const kinds = [['확인 남음', hand.filter((m) => m.open).length], ['실패', hand.filter((m) => m.status === 'fail').length], ['만드는 중', hand.filter((m) => m.status === 'busy').length]].filter(([, n]) => n);
-    const shown = handOpen ? hand : hand.slice(0, 6);
-    body.append(h('section', { class: 'mix-sec', id: 'sec-hand', 'data-spy': '', style: 'margin-bottom:28px' },
-      h('div', { class: 'sec-h' }, h('h2', null, '손볼 회의'), h('span', null, kinds.map(([k, n]) => `${k} ${n}`).join(' · '))),
-      h('div', { class: 'triage', style: 'margin-bottom:0' }, shown.map(handCard)),
-      hand.length > 6 && h('button', { class: 'link', style: 'margin-top:10px;font-size:12.5px', onclick: () => { handOpen = !handOpen; draw(true); } }, handOpen ? '접기' : `${hand.length - 6}건 더 보기`)));
+  if (filter !== 'all') {
+    body.append(...monthSections(list, index));
+    scrollSpy(body, index);
+    return h('div', { class: 'mix-wrap' }, body, index);
   }
-  body.append(...monthSections(list, index));
+  const hand = list.filter(needsHand);
+  if (hand.length) {
+    index.append(h('button', { class: 'hot', 'data-target': 'sec-hand' }, '손볼 회의', h('span', { class: 'num' }, String(hand.length))));
+    const kinds = [['확인 남음', hand.filter((m) => m.open).length], ['실패', hand.filter((m) => m.status === 'fail').length], ['만드는 중', hand.filter((m) => m.status === 'busy').length]].filter(([, n]) => n);
+    body.append(h('section', { class: 'mix-sec', id: 'sec-hand', 'data-spy': '' },
+      h('div', { class: 'sec-h' }, h('h2', null, '손볼 회의'), h('span', null, kinds.map(([k, n]) => `${k} ${n}`).join(' · '))),
+      h('div', { class: 'triage', style: 'margin-bottom:0' }, hand.slice(0, HAND_MAX).map(handCard)),
+      hand.length > HAND_MAX && h('button', { class: 'btn small more-btn', onclick: () => { filter = 'open'; $('view').scrollTop = 0; draw(); } }, `${hand.length - HAND_MAX}건 더 보기`, icon('i-right'))));
+  }
+  const recent = list.slice(0, RECENT_MAX);
+  const older = list.slice(RECENT_MAX);
+  index.append(h('button', { 'data-target': 'sec-recent' }, '최근 회의', h('span', { class: 'num' }, String(recent.length))));
+  body.append(h('section', { class: 'mix-sec', id: 'sec-recent', 'data-spy': '' },
+    h('div', { class: 'sec-h', style: 'margin-bottom:2px;padding-bottom:8px;border-bottom:1px solid var(--line)' }, h('h2', null, '최근 회의'), h('span', null, `${recent.length}건`)),
+    h('div', { class: 'ledger-month' }, ledgerRows(recent, { recent: true }))));
+  if (older.length) {
+    index.append(h('div', { class: 'sep' }));
+    body.append(h('div', { class: 'mix-sec' }, h('div', { class: 'archive-h' }, h('h2', null, '이전 회의'), h('span', null, `${older.length}건`)), monthSections(older, index)));
+  }
   scrollSpy(body, index);
   return h('div', { class: 'mix-wrap' }, body, index);
 }
