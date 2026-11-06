@@ -1125,3 +1125,5 @@ dialog[open] { animation: pop .22s cubic-bezier(.16, 1, .3, 1); }
 .proposal.unmatched .proposal-row { display: flex; align-items: center; gap: 8px; }
 .proposal.unmatched input { flex: 1; min-width: 0; height: 28px; }
 .proposal.unmatched .proposal-row svg { width: 14px; height: 14px; flex: none; color: var(--ink-3); }
+.ritem-pair svg { width: 14px; height: 14px; flex: none; color: var(--ink-3); }
+.ritem-pair input { flex: 1; min-width: 0; }

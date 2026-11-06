@@ -45,13 +45,15 @@ const impl = {
   },
   // 확인 필요 채팅: 늘 같은 제안을 돌려주고, 적용하면 review.json의 상태를 바꾼다
   // '띄어쓰기'가 든 말에는 녹취에서 그대로 찾지 못한 제안(unmatched)을 돌려준다 — 예전에는 조용히 버려 적용 버튼이 없었다
-  chatReview: async (_d, ids, messages) => (/띄어쓰기/.test(messages.at(-1)?.text ?? '')
+  chatReview: async (_d, ids, messages) => (/외부/.test(messages.at(-1)?.text ?? '')
+    ? { text: '외부 분으로 확정하겠습니다.', proposals: [{ id: ids[0], resolve: '외부 개발자, 이름은 그대로' }], unmatched: [] }
+    : /띄어쓰기/.test(messages.at(-1)?.text ?? '')
     ? { text: '"랩 캐시 도"는 **Memcached**로 보입니다.', proposals: [], unmatched: [{ id: ids[0], heard: '랩 캐시 도', guess: 'Memcached' }] }
     : { text: '"랩캐시도"는 **Memcached**로 보입니다.', proposals: [{ id: 'r1', heard: '랩캐시도', guess: 'Memcached' }] }),
   applyReview: async (_dir, fixes) => {
     calls.applyReview = [...(calls.applyReview ?? []), fixes];
     const review = JSON.parse(read('review.json'));
-    for (const f of fixes) Object.assign(review.items.find((it) => it.id === f.id), f.keep ? { status: 'kept' } : { status: 'applied', applied: f.guess, count: 1 });
+    for (const f of fixes) Object.assign(review.items.find((it) => it.id === f.id), f.keep ? { status: 'kept' } : f.resolve ? { status: 'resolved', resolution: f.resolve } : { status: 'applied', applied: f.guess, count: 1 });
     fs.writeFileSync(path.join(dir, 'review.json'), JSON.stringify(review));
     return review;
   },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanGuess, inlineGuesses, locateHeard, noteVariants, stampFor, toReviewItems } from './review.mjs';
+import { cleanGuess, inlineGuesses, locateHeard, noteVariants, searchKeys, stampFor, toReviewItems } from './review.mjs';
 
 const transcript = '[00:05] [화자 1] 통신 한정성이 제일 중요해요\n[12:30] [화자 2] 랩캐시도 쪽은 제가 볼게요\n';
 
@@ -89,5 +89,16 @@ describe('locateHeard', () => {
     expect(locateHeard('없는말', t)).toBeNull();
     expect(locateHeard('랩', t)).toBe('랩');
     expect(locateHeard('', t)).toBeNull();
+  });
+});
+
+describe('searchKeys', () => {
+  const t = '[00:05] [화자 1] 오늘은 하윤님이 오셨어요\n[02:10] [화자 2] 팀장님 말씀대로 하죠\n';
+  it('메모 표기가 녹취에 그대로 없으면 괄호·띄어쓰기 조각과 님을 뗀 이름으로', () => {
+    expect(searchKeys({ heard: null, heardNote: '하윤님(팀장님)', note: "'하윤님(팀장님)'이 누구인지 확인이 필요함" }, t)).toEqual(['하윤님', '하윤', '팀장님', '팀장']);
+    expect(stampFor({ at: null, heard: null, heardNote: '하윤님(팀장님)', note: '' }, t)).toBe('00:05');
+  });
+  it('녹취에 없는 말과 화자 표시는 빼고, 고칠 말이 먼저', () => {
+    expect(searchKeys({ heard: '하윤님이', heardNote: null, note: "'화자 1'과 '없는이름'" }, t)).toEqual(['하윤님이']);
   });
 });

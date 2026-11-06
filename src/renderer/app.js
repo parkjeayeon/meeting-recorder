@@ -2708,7 +2708,12 @@ function pageMeeting(id) {
       const review = await api.applyReview(r.dir, fixes);
       const applied = review.items.filter((it) => fixes.some((f) => f.id === it.id) && it.status === 'applied');
       const kept = fixes.filter((f) => f.keep).length;
+      const resolved = review.items.filter((it) => fixes.some((f) => f.id === it.id && f.resolve) && it.status === 'resolved');
       for (const f of fixes) reviewSel.delete(f.id);
+      if (resolved.length && !applied.length) {
+        toast(`${resolved.length}개를 확인됨으로 처리했습니다`, '녹취는 그대로 두고, 확인을 마칠 때 회의록 문장에 반영합니다');
+        return await refreshDoc(r);
+      }
       const words = review.addedWords ?? [];
       const skip = review.skipped ?? [];
       if (!applied.length && !kept) {
@@ -2902,7 +2907,25 @@ function pageMeeting(id) {
           const variants = noteVariants(it.note, doc.transcript ?? '').slice(0, 2);
           if (variants.length === 2) card.append(h('div', { class: 'ritem-unify' }, h('span', { class: 'hint', style: 'margin:0' }, '한 가지로 통일'),
             variants.map((v, k) => h('button', { class: 'btn small', onclick: () => applyFixes(r, [{ id: it.id, heard: variants[1 - k], guess: v }]) }, `모두 '${v}'(으)로`))));
-        } else if (it.heardNote) card.append(h('div', { class: 'ritem-fix muted' }, h('span', { class: 'heard' }, it.heardNote), h('span', { class: 'hint', style: 'margin:0' }, '녹취에서 같은 글자를 찾지 못해 자동으로 고칠 수 없습니다. 채팅으로 확인하거나 그대로 두세요.')));
+        } else {
+          // 녹취에 같은 글자가 없는 항목(이름·뜻 확인 등): LLM을 거치지 않고 바로 처리할 수 있게
+          // ① 확인한 내용을 적고 '확인됨' (녹취는 그대로, 확인을 마칠 때 회의록 문장에 반영)
+          // ② 녹취에 적힌 글자와 고칠 말을 넣어 '적용' (녹취에 그 글자가 없으면 이유를 알린다)
+          if (it.heardNote) card.append(h('div', { class: 'ritem-fix muted' }, h('span', { class: 'heard' }, it.heardNote), h('span', { class: 'hint', style: 'margin:0' }, '녹취에 이 글자 그대로는 없습니다')));
+          const what = h('input', { type: 'text', placeholder: '확인한 내용 (예: 외부 개발자, 이름은 그대로)', 'aria-label': '확인한 내용', spellcheck: false });
+          const resolve = () => applyFixes(r, [{ id: it.id, resolve: what.value.trim() || '확인함' }]);
+          what.onkeydown = (e) => {
+            if (e.key === 'Enter' && !e.isComposing) resolve();
+          };
+          card.append(h('div', { class: 'ritem-fix' }, what, h('button', { class: 'btn small primary', onclick: resolve }, icon('i-check'), '확인됨')));
+          const from = h('input', { type: 'text', placeholder: '녹취에 적힌 글자', 'aria-label': '녹취에 적힌 글자', spellcheck: false });
+          const to = h('input', { type: 'text', placeholder: '고칠 말', 'aria-label': '고칠 말', spellcheck: false });
+          const fix = () => (from.value.trim() && to.value.trim() ? applyFixes(r, [{ id: it.id, heard: from.value.trim(), guess: to.value.trim() }]) : (from.value.trim() ? to : from).focus());
+          to.onkeydown = (e) => {
+            if (e.key === 'Enter' && !e.isComposing) fix();
+          };
+          card.append(h('div', { class: 'ritem-fix ritem-pair' }, from, icon('i-right'), to, h('button', { class: 'btn small', onclick: fix }, '적용')));
+        }
         card.append(h('div', { class: 'ritem-acts' },
           h('button', { class: 'btn small ghost', onclick: () => openChat([it.id]) }, icon('i-chat'), '채팅'),
           (it.kind === 'lost' || it.kind === 'meaning') && r.firstFile && itemRange(it) && h('button', { class: 'btn small ghost', title: '이 구간만 녹음에서 다시 받아씁니다', onclick: () => {
@@ -2918,8 +2941,9 @@ function pageMeeting(id) {
         // (단어 항목은 기록이 없어도 고치기 전 보관본에서 바꾼 줄을 다시 찾는다)
         const noUndo = it.status === 'applied' && isRedo && !it.redo.replaced;
         const doneRow = h('div', { class: 'ritem-done' },
-          it.status === 'applied' ? [isRedo ? h('span', { class: 'num' }, `${clock(it.redo.start)}~${clock(it.redo.end)} 구간`) : h('span', { class: 'heard' }, it.heard ?? it.heardNote ?? ''), icon('i-right'), h('b', null, it.applied), h('span', { class: 'hint', style: 'margin:0' }, isRedo ? `${it.count ?? 0}줄` : `${it.count ?? 0}곳 고침`)] : h('span', null, '그대로 둠'),
-          !locked && it.status === 'kept' && h('button', { class: 'btn small ghost', onclick: async () => { await api.setReviewStatus(r.dir, [it.id], 'open'); refreshDoc(r); } }, '다시 열기'),
+          it.status === 'resolved' ? [h('span', { class: 'proposal-state ok', style: 'margin:0' }, icon('i-check'), '확인됨'), h('span', null, it.resolution ?? '')]
+          : it.status === 'applied' ? [isRedo ? h('span', { class: 'num' }, `${clock(it.redo.start)}~${clock(it.redo.end)} 구간`) : h('span', { class: 'heard' }, it.heard ?? it.heardNote ?? ''), icon('i-right'), h('b', null, it.applied), h('span', { class: 'hint', style: 'margin:0' }, isRedo ? `${it.count ?? 0}줄` : `${it.count ?? 0}곳 고침`)] : h('span', null, '그대로 둠'),
+          !locked && (it.status === 'kept' || it.status === 'resolved') && h('button', { class: 'btn small ghost', onclick: async () => { await api.setReviewStatus(r.dir, [it.id], 'open'); refreshDoc(r); } }, '다시 열기'),
           !locked && it.status === 'applied' && !noUndo && !isRedo && it.heard && h('button', { class: 'btn small ghost', onclick: () => editApplied(r, it, doneRow) }, icon('i-pencil'), '고치기'),
           !locked && it.status === 'applied' && !noUndo && h('button', { class: 'btn small ghost', onclick: () => revertItem(r, it) }, '되돌리기'),
           !locked && noUndo && h('span', { class: 'hint', style: 'margin:0' }, '되돌리기 기능 전에 반영한 구간이라 되돌릴 수 없습니다'));
@@ -3014,7 +3038,7 @@ function pageMeeting(id) {
       if (m.proposals?.length) {
         // 이미 처리한 항목(적용·그대로 둠)은 버튼 대신 결과를 보여 준다 → 같은 제안을 두 번 누르지 않게
         const itemOf = (p) => items.find((x) => x.id === p.id);
-        const fixes = m.proposals.filter((p) => !p.keep && !p.redo && itemOf(p)?.status === 'open');
+        const fixes = m.proposals.filter((p) => !p.keep && !p.redo && !p.resolve && itemOf(p)?.status === 'open');
         const apply = async (list) => {
           list.forEach((f) => chat.applying.add(f.id));
           draw();
@@ -3032,8 +3056,14 @@ function pageMeeting(id) {
             }
             const done = it && it.status !== 'open';
             const busy = chat.applying.has(p.id);
+            if (p.resolve) {
+              return h('div', { class: `proposal${done ? ' done' : ''}` }, h('span', null, '확인됨으로: ', h('b', null, p.resolve)),
+                done ? h('span', { class: `proposal-state${it.status === 'resolved' ? ' ok' : ''}` }, it.status === 'resolved' ? [icon('i-check'), '확인됨'] : '처리함')
+                  : h('button', { class: `btn small primary${busy ? ' busy' : ''}`, onclick: () => apply([{ id: p.id, resolve: p.resolve }]) }, busy ? '처리 중…' : '확인됨으로'));
+            }
             const state = !done ? null
               : it.status === 'kept' ? h('span', { class: 'proposal-state' }, '그대로 둠')
+              : it.status === 'resolved' ? h('span', { class: 'proposal-state ok' }, icon('i-check'), '확인됨')
               : h('span', { class: 'proposal-state ok' }, icon('i-check'), it.applied === p.guess || p.keep ? '적용됨' : `'${it.applied}'로 적용됨`);
             return h('div', { class: `proposal${done ? ' done' : ''}` },
               p.keep ? h('span', null, `${it?.heard ?? it?.heardNote ?? p.id}: 그대로 두기`) : [h('span', { class: 'heard' }, p.heard), icon('i-right'), h('b', null, p.guess)],

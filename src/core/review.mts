@@ -65,8 +65,7 @@ export function noteVariants(note: string | null | undefined, transcript: string
 // 회의록 메모에 시각이 안 적혀 있으면 LLM이 at을 비워 둔다 ("'하윤님'이 대표를 가리키는지 불분명함")
 export function stampFor(item: Pick<ReviewItem, 'at' | 'heard' | 'heardNote' | 'note'>, transcript: string): string | null {
   if (item.at) return item.at;
-  const keys = [item.heard, item.heardNote, ...noteVariants(item.note, transcript)].filter((k): k is string => Boolean(k && k.trim()));
-  for (const key of keys) {
+  for (const key of searchKeys(item, transcript)) {
     for (const line of transcript.split('\n')) {
       const m = /^\[([\d:]+)\]\s*(?:\[[^\]]+\]\s*)?(.*)$/.exec(line);
       if (m && m[2]!.includes(key)) return m[1]!;
@@ -90,4 +89,22 @@ export function locateHeard(heard: string | null | undefined, transcript: string
     if (m) return m[0];
   }
   return null;
+}
+
+// 녹취에서 이 항목이 나온 곳을 찾을 말 (앞에 둔 것일수록 정확): 고칠 말 → LLM이 적은 표기 → 메모에 따옴표로 적힌 표기 →
+// 그 표기의 조각. 메모 표기는 녹취에 그대로 없는 일이 많다 ("'하윤님(팀장님)'이 누구인지" → 녹취에는 "하윤님"만) —
+// 그러면 괄호·띄어쓰기로 나눈 조각과 '님'을 뗀 이름으로 찾는다. 녹취에 실제로 있는 말만, 두 글자 이상만
+export function searchKeys(item: Pick<ReviewItem, 'heard' | 'heardNote' | 'note'>, transcript: string): string[] {
+  const quoted = [...String(item.note ?? '').matchAll(/['"‘“「]([^'"‘’“”「」\n]{1,30})['"’”」]/g)].map((m) => m[1]!.trim());
+  const whole = [item.heard, item.heardNote, ...quoted].filter((k): k is string => Boolean(k && k.trim())).map((k) => k.trim());
+  const parts: string[] = [];
+  for (const w of whole) {
+    for (const piece of w.split(/[()（）[\]\s,·/]+/)) {
+      if (piece.length >= 2) parts.push(piece);
+      const bare = piece.replace(/님$/, '');
+      if (bare !== piece && bare.length >= 2) parts.push(bare);
+    }
+  }
+  const body = transcript.split('\n').map((l) => l.replace(/^\[[\d:]+\]\s*(?:\[[^\]]+\]\s*)?/, '')).join('\n');
+  return [...new Set([...whole, ...parts])].filter((k) => body.includes(k));
 }

@@ -23,6 +23,7 @@ fs.writeFileSync(path.join(meeting, 'minutes.md'), '# 예시 회의\n\n## 요약
 fs.writeFileSync(path.join(meeting, 'review.json'), JSON.stringify({ items: [
   { id: 'r1', kind: 'word', at: '00:15', heard: '랩캐시도', guess: 'Memcached', note: '오인식', status: 'open' },
   { id: 'r2', kind: 'word', at: '00:06', heard: '화요일', applied: '수요일', count: 1, note: '요일', status: 'applied', undo: { 'transcript.txt': { changed: [], inserted: [] } } },
+  { id: 'r3', kind: 'name', at: null, heard: null, heardNote: '도윤님(선배님)', note: "'도윤님(선배님)'이 누구인지 확인이 필요함", status: 'open' },
 ] }));
 process.env.STUB_MEETING_DIR = meeting;
 process.env.STUB_MANY = process.env.STUB_MANY ?? '2'; // 질문 탭에 '잠깐 언급된 회의'까지 나오게
@@ -292,6 +293,32 @@ app.whenReady().then(async () => {
   const sentFix = await js('window.stubCalls().applyReview?.at(-1) ?? null');
   results.push(['채팅 제안: 녹취에서 못 찾아도 적용 버튼', um.row && um.target === '랩 캐시 도' && Boolean(um.hint?.includes('그대로 찾지 못했습니다')) && sentFix?.[0]?.heard === '랩캐시도' && sentFix[0].guess === 'Memcached', `${JSON.stringify(um)} · 보낸 것 ${JSON.stringify(sentFix)}`]);
   await js(`document.querySelector('.chat-head .icon-btn')?.click()`);
+
+  // 녹취에 같은 글자가 없는 이름 항목: 채팅이 '확인됨으로'를 제안하고, 카드에서도 바로 확인됨·녹취 글자 넣어 고치기
+  await js(`location.hash='#meeting/${id}'`);
+  await wait(900);
+  await tabClick('확인 필요');
+  await wait(400);
+  const card = `[...document.querySelectorAll('.ritem.open')].find(c=>c.textContent.includes('도윤님(선배님)'))`;
+  const cardUi = await js(`(() => { const c = ${card}; return c ? { resolveInput: Boolean(c.querySelector('input[aria-label="확인한 내용"]')), resolveBtn: [...c.querySelectorAll('button')].some(b=>b.textContent.includes('확인됨')), pair: c.querySelectorAll('.ritem-pair input').length } : null; })()`);
+  await js(`[...${card}.querySelectorAll('button')].find(b=>b.textContent.includes('채팅'))?.click()`);
+  await wait(400);
+  await js(`(() => { const t = document.querySelector('.chat textarea'); t.value = '외부 개발자야 그냥 그 이름으로 둬'; t.dispatchEvent(new Event('input')); t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`);
+  await wait(600);
+  const resolveBtn = `[...document.querySelectorAll('.chat .proposal button')].find(b=>b.textContent==='확인됨으로')`;
+  const offeredResolve = await js(`Boolean(${resolveBtn})`);
+  await js(`${resolveBtn}?.click()`);
+  await wait(700);
+  const sentResolve = await js('window.stubCalls().applyReview?.at(-1) ?? null');
+  const stateAfter = await js(`[...document.querySelectorAll('.chat .proposal .proposal-state')].map(x=>x.textContent).join('|')`);
+  results.push(['채팅: 확인됨으로 처리', Boolean(cardUi?.resolveInput && cardUi.resolveBtn && cardUi.pair === 2) && offeredResolve && sentResolve?.[0]?.resolve === '외부 개발자, 이름은 그대로' && stateAfter.includes('확인됨'), `카드 ${JSON.stringify(cardUi)} · 버튼 ${offeredResolve} · 보낸 것 ${JSON.stringify(sentResolve)} · ${stateAfter}`]);
+  await js(`document.querySelector('.chat-head .icon-btn')?.click()`);
+  await wait(300);
+  await js(`[...document.querySelectorAll('button')].find(b=>b.textContent.startsWith('처리함'))?.click()`);
+  await wait(400);
+  const doneRow = await js(`[...document.querySelectorAll('.ritem-done')].map(x=>x.textContent).find(t=>t.includes('확인됨')) ?? null`);
+  results.push(['처리함에 확인됨과 내용', Boolean(doneRow?.includes('외부 개발자') && doneRow.includes('다시 열기')), JSON.stringify(doneRow)]);
+  await js(`[...document.querySelectorAll('button')].find(b=>b.textContent.startsWith('남은 것'))?.click()`);
 
   // 찾는 도중 멈추기: 질문 탭의 '멈추기' → 칩에 '멈춤', 알림 없음
   await ask('느린 배포 질문');
