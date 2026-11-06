@@ -72,6 +72,10 @@
   .lrow:hover .racts, .crow:hover .racts, .racts:focus-within { opacity: 1; }
   .racts .icon-btn { width: 30px; height: 30px; }
   .racts .icon-btn:hover { color: var(--accent); background: var(--panel-3); }
+  .all-clear { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); font-size: 13px; color: var(--ink-3); }
+  .all-clear b { color: var(--ink); font-weight: 620; }
+  .ok-mark { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); flex: none; }
+  .ok-mark svg { width: 13px; height: 13px; stroke-width: 2; }
   .more-btn { margin-top: 12px; }
   .more-btn svg { width: 13px; height: 13px; margin: 0 -2px 0 2px; }
   .bulk { display: flex; align-items: center; gap: 10px; margin: -8px 0 18px; font-size: 13px; color: var(--ink-3); }
@@ -190,7 +194,7 @@
           <button data-v="ledger">A · 장부</button><button data-v="mix">B · 손볼 것 + 장부</button><button data-v="triage">C · 손볼 것 먼저</button>
         </div>
         <div class="seg" id="size" role="group" aria-label="회의 수">
-          <button data-n="0">0개</button><button data-n="5">5개</button><button data-n="40">40개</button><button data-n="160">160개</button><button data-n="420">420개</button>
+          <button data-n="0">0개</button><button data-n="5">5개</button><button data-n="40">40개</button><button data-n="160">160개</button><button data-n="420">420개</button><button data-n="40" data-clean="1">40개 · 모두 확정</button>
         </div>
         <span class="lab-note">실험 페이지 · 지어낸 회의</span>
       </div>
@@ -216,7 +220,7 @@ const TOPICS = [
   ['기획 회의', '받아쓰기 다듬기 기능의 범위와 출시 순서를 정했습니다.'],
 ];
 function rng(seed) { return () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648); }
-function makeMeetings(n) {
+function makeMeetings(n, { clean = false } = {}) {
   const r = rng(7);
   const out = [];
   const now = new Date(2026, 10, 6, 15, 0);
@@ -233,11 +237,11 @@ function makeMeetings(n) {
       const t = TOPICS[Math.floor(r() * TOPICS.length)];
       const x = r();
       const age = d;
-      const status = d === 0 && out.length === 0 ? 'busy' : x < 0.04 ? 'fail' : x < 0.07 ? 'short' : 'done';
-      const open = status === 'done' ? (age < 10 ? [0, 1, 2, 3][Math.floor(r() * 4)] : r() < 0.15 ? 1 + Math.floor(r() * 2) : 0) : 0;
+      const status = clean ? 'done' : d === 0 && out.length === 0 ? 'busy' : x < 0.04 ? 'fail' : x < 0.07 ? 'short' : 'done';
+      const open = clean ? 0 : status === 'done' ? (age < 10 ? [0, 1, 2, 3][Math.floor(r() * 4)] : r() < 0.15 ? 1 + Math.floor(r() * 2) : 0) : 0;
       out.push({
         id: `m${out.length}`, at, dur: status === 'short' ? 6 : 600 + Math.floor(r() * 5400), title: status === 'done' || status === 'busy' ? `${t[0]}${r() < 0.5 ? '' : ` ${1 + Math.floor(r() * 9)}차`}` : null,
-        summary: status === 'done' ? t[1] : null, status, open, finalized: status === 'done' && open === 0 && r() < 0.8, speakers: 1 + Math.floor(r() * 5),
+        summary: status === 'done' ? t[1] : null, status, open, finalized: status === 'done' && open === 0 && (clean || r() < 0.8), speakers: 1 + Math.floor(r() * 5),
         todos: status === 'done' ? Math.floor(r() * 4) : 0,
         why: status === 'fail' ? (r() < 0.5 ? '앱이 종료되어 중단됨' : '인터넷 연결이 없어 회의록을 쓰지 못함') : null,
       });
@@ -303,6 +307,7 @@ const needsHand = (m) => m.status === 'fail' || m.status === 'busy' || m.open > 
 let all = [];
 let variant = 'ledger';
 let size = 160;
+let clean = false;
 let q = '';
 let filter = 'all';
 const FILTERS = [['all', '전체', () => true], ['open', '확인할 회의', (m) => needsHand(m)], ['done', '확인 완료', (m) => m.finalized], ['fail', '실패·짧은 녹음', (m) => m.status === 'fail' || m.status === 'short']];
@@ -462,6 +467,13 @@ function mix(list) {
       h('div', { class: 'sec-h' }, h('h2', null, '확인할 회의'), h('span', null, kinds.map(([k, n]) => `${k} ${n}`).join(' · '))),
       h('div', { class: 'triage', style: 'margin-bottom:0' }, hand.slice(0, HAND_MAX).map(handCard)),
       hand.length > HAND_MAX && h('button', { class: 'btn small more-btn', onclick: () => { filter = 'open'; $('view').scrollTop = 0; draw(); } }, `${hand.length - HAND_MAX}건 더 보기`, icon('i-right'))));
+  } else {
+    // 확인할 회의가 없을 때: 칸을 없애지 않고 다 끝났다는 한 줄 (자리는 작게)
+    const last = list.find((m) => m.finalized);
+    body.append(h('section', { class: 'mix-sec', id: 'sec-hand' },
+      h('div', { class: 'sec-h' }, h('h2', null, '확인할 회의')),
+      h('div', { class: 'all-clear' }, h('span', { class: 'ok-mark' }, icon('i-check')),
+        h('span', null, h('b', null, '확인할 회의가 없습니다'), h('span', null, last ? ` · 모든 회의록을 확정했습니다. 마지막 확정은 ${dayName(last.at)} ${hm(last.at)} 회의` : ' · 모든 회의록을 확정했습니다')))));
   }
   const recent = list.slice(0, RECENT_MAX);
   const older = list.slice(RECENT_MAX);
@@ -536,14 +548,15 @@ function draw(keepFocus = false) {
   view.scrollTop = keepFocus ? top : top;
   $('navCount').textContent = String(all.length);
   for (const b of document.querySelectorAll('#variant button')) b.setAttribute('aria-pressed', String(b.dataset.v === variant));
-  for (const b of document.querySelectorAll('#size button')) b.setAttribute('aria-pressed', String(Number(b.dataset.n) === size));
+  for (const b of document.querySelectorAll('#size button')) b.setAttribute('aria-pressed', String(Number(b.dataset.n) === size && Boolean(b.dataset.clean) === clean));
 }
 for (const b of document.querySelectorAll('#variant button')) b.onclick = () => { variant = b.dataset.v; $('view').scrollTop = 0; draw(); };
-for (const b of document.querySelectorAll('#size button')) b.onclick = () => { size = Number(b.dataset.n); all = makeMeetings(size); filter = 'all'; q = ''; $('view').scrollTop = 0; draw(); };
+for (const b of document.querySelectorAll('#size button')) b.onclick = () => { size = Number(b.dataset.n); clean = Boolean(b.dataset.clean); all = makeMeetings(size, { clean }); filter = 'all'; q = ''; $('view').scrollTop = 0; draw(); };
 const params = new URLSearchParams(location.search);
 variant = params.get('v') ?? variant;
 size = Number(params.get('n') ?? size);
-all = makeMeetings(size);
+clean = params.get('clean') === '1';
+all = makeMeetings(size, { clean });
 draw();
 </script>
 </body>
