@@ -33,6 +33,58 @@ function icon(id) {
 }
 
 const num = (text) => h('span', { class: 'num' }, String(text));
+
+// 아이콘만 있는 버튼: 마우스를 올리거나 키보드로 옮겨 오면 잠깐 뒤 무슨 버튼인지 글로 보인다 (화면 전체에 하나, 새로 그린 버튼에도).
+// 글은 자세한 설명(title)이 있으면 그것, 없으면 이름(aria-label). macOS 기본 말풍선과 겹치지 않게 보이는 동안 title을 잠시 뗀다
+const hoverTip = h('div', { class: 'hover-tip', role: 'tooltip', 'aria-hidden': 'true' });
+document.body.append(hoverTip);
+let tipFor = null;
+let tipTimer = null;
+const ICON_ONLY = 'button, [role="button"], a.icon-btn';
+function tipTarget(node) {
+  const el = node?.closest?.(ICON_ONLY);
+  if (!el || el.closest('.no-tip') || (el.textContent ?? '').trim()) return null; // 글자가 있는 버튼은 이미 무슨 버튼인지 보인다
+  return el.getAttribute('title') || el.dataset.tip || el.getAttribute('aria-label') ? el : null;
+}
+function showHoverTip(el) {
+  const text = el.dataset.tip || el.getAttribute('title') || el.getAttribute('aria-label');
+  if (el.hasAttribute('title')) {
+    el.dataset.tip = el.getAttribute('title');
+    el.removeAttribute('title');
+  }
+  // 설정·⌘K 같은 대화상자는 맨 위층에 떠서 본문의 툴팁이 가려진다 → 그 대화상자 안에서 띄운다
+  const host = el.closest('dialog[open]') ?? document.body;
+  if (hoverTip.parentNode !== host) host.append(hoverTip);
+  hoverTip.textContent = text;
+  hoverTip.classList.add('show');
+  const r = el.getBoundingClientRect();
+  const t = hoverTip.getBoundingClientRect();
+  const below = r.bottom + 8 + t.height < innerHeight;
+  hoverTip.style.top = `${below ? r.bottom + 8 : r.top - 8 - t.height}px`;
+  hoverTip.style.left = `${Math.min(innerWidth - t.width - 8, Math.max(8, r.left + r.width / 2 - t.width / 2))}px`;
+}
+function hideHoverTip() {
+  clearTimeout(tipTimer);
+  hoverTip.classList.remove('show');
+  if (tipFor?.dataset.tip && !tipFor.hasAttribute('title')) tipFor.setAttribute('title', tipFor.dataset.tip); // 다음에 이 버튼을 바꾼 코드가 title을 읽어도 그대로
+  tipFor = null;
+}
+const armHoverTip = (el, ms) => {
+  if (el === tipFor) return;
+  hideHoverTip();
+  if (!el) return;
+  tipFor = el;
+  tipTimer = setTimeout(() => el.isConnected && tipFor === el && showHoverTip(el), ms);
+};
+document.addEventListener('mouseover', (e) => armHoverTip(tipTarget(e.target), 400));
+document.addEventListener('mouseout', (e) => tipFor && !tipFor.contains(e.relatedTarget) && hideHoverTip());
+document.addEventListener('focusin', (e) => e.target.matches?.(':focus-visible') && armHoverTip(tipTarget(e.target), 250));
+document.addEventListener('focusout', () => hideHoverTip());
+document.addEventListener('mousedown', () => hideHoverTip(), true);
+document.addEventListener('scroll', () => hideHoverTip(), true);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && hoverTip.classList.contains('show')) hideHoverTip();
+});
 const fmt = new Intl.NumberFormat('ko-KR');
 const DAY = new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
 const FULL = new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
@@ -1581,7 +1633,7 @@ function drawAsk() {
     parts.push(h('button', { class: `fab-toast${bad ? ' bad' : ''}`, onclick: () => (bad ? toggleAsk(true) : goAsk(t)) },
       icon(bad ? 'i-alert' : 'i-check'), h('span', null, h('b', null, askLabel(t)), t.status === 'error' ? ' 찾지 못했습니다' : t.results.length ? ` ${t.results.length}건을 찾았습니다` : ' 맞는 회의가 없습니다'), h('span', { class: 'go' }, '보기')));
   }
-  parts.push(h('button', { class: 'fab', 'aria-label': '질문으로 찾기', 'aria-expanded': String(askOpen), title: running.length ? `질문 ${running.length}개 찾는 중` : '질문으로 찾기', onclick: () => toggleAsk() },
+  parts.push(h('button', { class: 'fab', 'aria-label': askOpen ? '질문 창 닫기' : '질문으로 찾기', 'aria-expanded': String(askOpen), title: askOpen ? '질문 창 닫기' : running.length ? `질문으로 찾기 · ${running.length}개 찾는 중` : '질문으로 찾기', onclick: () => toggleAsk() },
     icon(askOpen ? 'i-x' : 'i-chat'), running.length > 0 && h('span', { class: 'fab-ring' }), !askOpen && unseen > 0 && h('span', { class: 'fab-badge' }, String(unseen))));
   askRoot.replaceChildren(...parts);
 }

@@ -337,6 +337,35 @@ app.whenReady().then(async () => {
   results.push(['유실 구간 직접 고르기', picker && redoCall?.id === 'r4' && redoCall.start === 2 && redoCall.end === 62, `고르는 줄 ${picker} · 보낸 것 ${JSON.stringify(redoCall)}`]);
   await js(`document.querySelector('.chat-head .icon-btn')?.click()`);
 
+  // 아이콘만 있는 버튼: 마우스를 올리면 잠깐 뒤 설명(title이 있으면 그것, 없으면 aria-label), 글자 버튼엔 없음, 대화상자 안에서도 보임
+  const hover = (sel) => js(`(() => { const b = ${sel}; if (!b) return 'none'; b.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); return 'ok'; })()`);
+  const tipNow = () => js(`(() => { const t = document.querySelector('.hover-tip'); return t ? { show: t.classList.contains('show'), text: t.textContent, host: t.parentNode.tagName, visible: getComputedStyle(t).opacity } : null; })()`);
+  const unhover = (sel) => js(`(() => { const b = ${sel}; b?.dispatchEvent(new MouseEvent('mouseout', { bubbles: true, relatedTarget: document.body })); })()`);
+  await js(`location.hash='#home'`);
+  await wait(400);
+  await hover(`document.getElementById('navBack')`);
+  await wait(150);
+  const early = await tipNow();
+  await wait(400);
+  const back = await tipNow();
+  const titleWhile = await js(`document.getElementById('navBack').getAttribute('title')`);
+  await unhover(`document.getElementById('navBack')`);
+  await wait(100);
+  const titleAfter = await js(`document.getElementById('navBack').getAttribute('title')`);
+  await hover(`document.getElementById('memoBtn')`);
+  await wait(550);
+  const textBtn = await tipNow();
+  await unhover(`document.getElementById('memoBtn')`);
+  await js(`document.getElementById('openSettings').click()`);
+  await wait(300);
+  await hover(`document.querySelector('#settings .set-close')`);
+  await wait(550);
+  const inDialog = await tipNow();
+  await unhover(`document.querySelector('#settings .set-close')`);
+  await js(`document.getElementById('settings').close()`);
+  results.push(['아이콘 버튼 설명', !early.show && back.show && back.text === '뒤로 (⌘[)' && titleWhile === null && titleAfter === '뒤로 (⌘[)' && !textBtn.show && inDialog.show && inDialog.text === '닫기' && inDialog.host === 'DIALOG',
+    `0.15초 ${early.show} · 0.55초 ${JSON.stringify(back)} · title ${titleWhile}→${titleAfter} · 글자 버튼 ${textBtn.show} · 설정 ${JSON.stringify(inDialog)}`]);
+
   // 받아쓰기 기록: 30개씩 이어 받기(스크롤 끝), 검색은 전체에서(첫 묶음 밖의 기록도), 개수는 전체
   await js(`location.hash='#dictations'`);
   await wait(700);
