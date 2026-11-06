@@ -54,7 +54,8 @@
   .index h3 { margin: 0 0 6px 8px; font-size: 11.5px; font-weight: 600; color: var(--ink-3); }
   .index button { display: flex; justify-content: space-between; align-items: center; height: 28px; padding: 0 8px; border: 0; border-radius: 7px; background: none; color: var(--ink-2); font-size: 12.5px; text-align: left; }
   .index button:hover { background: var(--panel-2); color: var(--ink); }
-  .index { position: sticky; }
+  .index { position: sticky; max-height: calc(100vh - 120px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+  .index::-webkit-scrollbar { display: none; }
   /* 줄 목록의 상태: 알약 대신 글자 + 작은 표시 (알약은 손볼 회의 카드에만) */
   .rs { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-3); white-space: nowrap; }
   .rs i { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--line-2); }
@@ -99,6 +100,14 @@
   .archive-h { display: flex; align-items: baseline; gap: 8px; margin: 0 0 4px; padding-top: 4px; }
   .archive-h h2 { margin: 0; font-size: 16px; font-weight: 700; letter-spacing: -0.015em; }
   .archive-h span { font-size: 12px; color: var(--ink-3); }
+  .ygroup .yhead { gap: 6px; justify-content: flex-start; color: var(--ink-3); font-size: 11.5px; font-weight: 600; height: 26px; margin-top: 6px; }
+  .ygroup .yhead .num { margin-left: auto; }
+  .ygroup .yhead svg { width: 12px; height: 12px; transition: transform .25s cubic-bezier(.16, 1, .3, 1); }
+  .ygroup.open .yhead svg { transform: rotate(90deg); }
+  .ygroup.fixed .yhead { pointer-events: none; }
+  .ymonths { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .32s cubic-bezier(.16, 1, .3, 1); }
+  .ygroup.open .ymonths { grid-template-rows: 1fr; }
+  .ymonths-in { overflow: hidden; display: flex; flex-direction: column; gap: 1px; }
   .index .sep { height: 1px; margin: 8px 8px; background: var(--line); }
   .index button.hot .num { color: var(--accent); font-weight: 600; }
 
@@ -194,7 +203,7 @@
           <button data-v="ledger">A · 장부</button><button data-v="mix">B · 손볼 것 + 장부</button><button data-v="triage">C · 손볼 것 먼저</button>
         </div>
         <div class="seg" id="size" role="group" aria-label="회의 수">
-          <button data-n="0">0개</button><button data-n="5">5개</button><button data-n="40">40개</button><button data-n="160">160개</button><button data-n="420">420개</button><button data-n="40" data-clean="1">40개 · 모두 확정</button>
+          <button data-n="0">0개</button><button data-n="5">5개</button><button data-n="40">40개</button><button data-n="160">160개</button><button data-n="420">420개</button><button data-n="40" data-clean="1">40개 · 모두 확정</button><button data-n="330" data-sparse="1">여러 해</button>
         </div>
         <span class="lab-note">실험 페이지 · 지어낸 회의</span>
       </div>
@@ -220,7 +229,7 @@ const TOPICS = [
   ['기획 회의', '받아쓰기 다듬기 기능의 범위와 출시 순서를 정했습니다.'],
 ];
 function rng(seed) { return () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648); }
-function makeMeetings(n, { clean = false } = {}) {
+function makeMeetings(n, { clean = false, sparse = false } = {}) {
   const r = rng(7);
   const out = [];
   const now = new Date(2026, 10, 6, 15, 0);
@@ -228,7 +237,9 @@ function makeMeetings(n, { clean = false } = {}) {
     const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - d);
     const wk = day.getDay();
     const weekend = wk === 0 || wk === 6;
-    const k = weekend ? (r() < 0.12 ? 1 : 0) : [0, 1, 1, 2, 2, 3, 4][Math.floor(r() * 7)];
+    // sparse: 몇 해에 걸쳐 띄엄띄엄 (몰린 달과 빈 달이 섞이게)
+    const busyMonth = !sparse || (day.getMonth() * 7 + day.getFullYear()) % 5 !== 0;
+    const k = !busyMonth ? 0 : weekend ? (r() < 0.12 ? 1 : 0) : sparse ? (r() < 0.45 ? 1 : 0) : [0, 1, 1, 2, 2, 3, 4][Math.floor(r() * 7)];
     const hours = [9, 10, 11, 13, 14, 15, 16, 17].sort(() => r() - 0.5).slice(0, k).sort((a, b) => a - b);
     for (const hr of hours) {
       if (out.length >= n) break;
@@ -308,6 +319,7 @@ let all = [];
 let variant = 'ledger';
 let size = 160;
 let clean = false;
+let sparse = false;
 let q = '';
 let filter = 'all';
 const FILTERS = [['all', '전체', () => true], ['open', '확인할 회의', (m) => needsHand(m)], ['done', '확인 완료', (m) => m.finalized], ['fail', '실패·짧은 녹음', (m) => m.status === 'fail' || m.status === 'short']];
@@ -349,13 +361,23 @@ function ledger(list) {
 function monthSections(list, index) {
   const out = [];
   let year = null;
+  let group = null;
   for (const [k, ms] of byMonth(list)) {
     const d = ms[0].at;
-    if (d.getFullYear() !== year) { year = d.getFullYear(); index.append(h('div', { class: 'year' }, `${year}년`)); }
+    if (d.getFullYear() !== year) {
+      year = d.getFullYear();
+      const n = list.filter((m) => m.at.getFullYear() === year).length;
+      const now = year === TODAY.getFullYear();
+      // 올해는 늘 펼침. 지난 해는 접어 두고, 누르거나 스크롤해서 그 해에 들어가면 펼친다 (지난 해는 하나만 펼침)
+      group = h('div', { class: `ygroup${now ? ' open fixed' : ''}`, 'data-year': String(year) },
+        h('button', { class: 'yhead', 'data-target': `mon-${k}`, 'data-year-head': '' }, now ? `${year}년` : [icon('i-right'), `${year}년`], !now && h('span', { class: 'num' }, String(n))),
+        h('div', { class: 'ymonths' }, h('div', { class: 'ymonths-in' })));
+      index.append(group);
+    }
     const sec = h('section', { class: 'ledger-month', id: `mon-${k}`, 'data-spy': '' }, h('div', { class: 'ledger-mhead' }, h('h2', null, `${d.getFullYear()}년 ${d.getMonth() + 1}월`), h('span', null, `${ms.length}건 · ${hours(ms)}`)));
     sec.append(...ledgerRows(ms));
     out.push(sec);
-    index.append(h('button', { 'data-target': `mon-${k}` }, `${d.getMonth() + 1}월`, h('span', { class: 'num' }, String(ms.length))));
+    group.querySelector('.ymonths-in').append(h('button', { 'data-target': `mon-${k}` }, `${d.getMonth() + 1}월`, h('span', { class: 'num' }, String(ms.length))));
   }
   return out;
 }
@@ -421,7 +443,18 @@ function scrollSpy(root, nav) {
   index = nav;
   const pill = h('span', { class: 'pill', 'aria-hidden': 'true' });
   nav.prepend(pill);
-  for (const b of nav.querySelectorAll('button')) b.onclick = () => glide(b.dataset.target);
+  const openYear = (g) => {
+    if (!g || g.classList.contains('open')) return;
+    for (const o of nav.querySelectorAll('.ygroup.open:not(.fixed)')) o.classList.remove('open');
+    g.classList.add('open');
+  };
+  for (const b of nav.querySelectorAll('button')) b.onclick = () => {
+    if (b.hasAttribute('data-year-head')) openYear(b.closest('.ygroup'));
+    glide(b.dataset.target);
+  };
+  // 펼치고 접히는 동안 표시 위치를 따라 맞춘다
+  nav.addEventListener('transitionend', (e) => e.target.classList?.contains('ymonths') && place());
+  let place = () => {};
   requestAnimationFrame(() => {
     const view = $('view');
     let last = null;
@@ -429,12 +462,18 @@ function scrollSpy(root, nav) {
       const secs = [...root.querySelectorAll('[data-spy]')];
       const top = view.getBoundingClientRect().top + 60;
       const cur = secs.filter((s) => s.getBoundingClientRect().top <= top).pop() ?? secs[0];
-      const btn = cur && nav.querySelector(`button[data-target="${cur.id}"]`);
+      const btn = cur && nav.querySelector(`button[data-target="${cur.id}"]:not([data-year-head])`);
       if (btn === last) return;
       last = btn;
+      openYear(btn?.closest('.ygroup'));
       for (const b of nav.querySelectorAll('button')) b.setAttribute('aria-current', String(b === btn));
-      pill.style.opacity = btn ? '1' : '0';
-      if (btn) pill.style.setProperty('--y', `${btn.offsetTop}px`);
+      place();
+    };
+    place = () => {
+      pill.style.opacity = last ? '1' : '0';
+      if (last) pill.style.setProperty('--y', `${last.getBoundingClientRect().top - nav.getBoundingClientRect().top + nav.scrollTop}px`);
+      // 바로가기가 길면 지금 칸이 보이게 바로가기 안에서도 따라 내린다
+      if (last) { const r = last.getBoundingClientRect(); const n = nav.getBoundingClientRect(); if (r.top < n.top + 24 || r.bottom > n.bottom - 24) nav.scrollTo({ top: nav.scrollTop + r.top - n.top - n.height / 2, behavior: reduce.matches ? 'auto' : 'smooth' }); }
     };
     view.onscroll = () => {
       mark();
@@ -548,15 +587,16 @@ function draw(keepFocus = false) {
   view.scrollTop = keepFocus ? top : top;
   $('navCount').textContent = String(all.length);
   for (const b of document.querySelectorAll('#variant button')) b.setAttribute('aria-pressed', String(b.dataset.v === variant));
-  for (const b of document.querySelectorAll('#size button')) b.setAttribute('aria-pressed', String(Number(b.dataset.n) === size && Boolean(b.dataset.clean) === clean));
+  for (const b of document.querySelectorAll('#size button')) b.setAttribute('aria-pressed', String(Number(b.dataset.n) === size && Boolean(b.dataset.clean) === clean && Boolean(b.dataset.sparse) === sparse));
 }
 for (const b of document.querySelectorAll('#variant button')) b.onclick = () => { variant = b.dataset.v; $('view').scrollTop = 0; draw(); };
-for (const b of document.querySelectorAll('#size button')) b.onclick = () => { size = Number(b.dataset.n); clean = Boolean(b.dataset.clean); all = makeMeetings(size, { clean }); filter = 'all'; q = ''; $('view').scrollTop = 0; draw(); };
+for (const b of document.querySelectorAll('#size button')) b.onclick = () => { size = Number(b.dataset.n); clean = Boolean(b.dataset.clean); sparse = Boolean(b.dataset.sparse); all = makeMeetings(size, { clean, sparse }); filter = 'all'; q = ''; $('view').scrollTop = 0; draw(); };
 const params = new URLSearchParams(location.search);
 variant = params.get('v') ?? variant;
 size = Number(params.get('n') ?? size);
 clean = params.get('clean') === '1';
-all = makeMeetings(size, { clean });
+sparse = params.get('sparse') === '1';
+all = makeMeetings(size, { clean, sparse });
 draw();
 </script>
 </body>
