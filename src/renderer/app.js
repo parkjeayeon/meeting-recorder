@@ -689,6 +689,7 @@ const STRAY_REASON = {
   'bad-name': '폴더 이름에서 날짜를 읽지 못함',
   'no-meta': '녹음이 끊겨 회의 정보(meta.json)가 없음',
   'bad-meta': '회의 정보(meta.json)가 깨짐',
+  'old-memo': '예전 버전이 남긴 받아쓰기 녹음 (글 없음)',
 };
 const sizeLabel = (n) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)}GB` : n >= 1e6 ? `${Math.round(n / 1e6)}MB` : `${Math.max(1, Math.round(n / 1e3))}KB`);
 

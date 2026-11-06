@@ -23,6 +23,8 @@ folder('112-06-26_02-26-26_meeting', { 'meta.json': meta, 'mic.wav': 'RIFF....' 
 folder('112-06-26_02-26-26_meeting-2', { 'meta.json': meta, 'mic.wav': 'RIFF' });
 folder('2026-11-04_09-00-00_meeting', { 'mic.wav': 'RIFF' }); // 녹음이 끊겨 meta.json 없음
 folder('2026-11-03_09-00-00_meeting', { 'meta.json': '{"mode":"meet', 'mic.wav': 'RIFF' }); // meta.json 깨짐
+folder('2026-10-31_18-44-33_memo', { 'meta.json': JSON.stringify({ mode: 'memo', startedAt: '2026-10-31T09:44:33.000Z' }), 'mic.wav': 'RIFF' }); // 예전 버전의 받아쓰기 녹음 (녹취 없음)
+folder('2026-10-30_10-00-00_memo', { 'meta.json': JSON.stringify({ mode: 'memo' }), 'mic.wav': 'RIFF', 'transcript.json': '{}' }); // 녹취가 있으면 받아쓰기 화면에 나온다
 folder('2026-11-06_11-00-00_meeting', { 'mic.wav': 'RIFF' }, Date.now() - 10_000); // 방금 바뀜: 녹음·가져오기 중일 수 있음
 const recording = folder('2026-11-06_12-00-00_meeting', { 'mic.wav': 'RIFF' }); // 지금 녹음 중 (skip)
 folder('사진', { 'a.jpg': 'x' }); // 사용자가 고른 녹음 폴더에 있던 다른 폴더
@@ -35,10 +37,11 @@ describe('findStrayFolders', () => {
   const by = Object.fromEntries(found.map((f) => [f.id, f]));
 
   it('목록에 안 나오는 이 앱의 폴더만 이유와 함께', () => {
-    expect(Object.keys(by).sort()).toEqual(['112-06-26_02-26-26_meeting', '112-06-26_02-26-26_meeting-2', '2026-11-03_09-00-00_meeting', '2026-11-04_09-00-00_meeting']);
+    expect(Object.keys(by).sort()).toEqual(['112-06-26_02-26-26_meeting', '112-06-26_02-26-26_meeting-2', '2026-10-31_18-44-33_memo', '2026-11-03_09-00-00_meeting', '2026-11-04_09-00-00_meeting']);
     expect(by['112-06-26_02-26-26_meeting']).toMatchObject({ reason: 'bad-name', audio: true, bytes: meta.length + 8 });
     expect(by['2026-11-04_09-00-00_meeting']!.reason).toBe('no-meta');
     expect(by['2026-11-03_09-00-00_meeting']!.reason).toBe('bad-meta');
+    expect(by['2026-10-31_18-44-33_memo']!.reason).toBe('old-memo'); // 녹취가 있는 _memo(2026-10-30)는 받아쓰기 화면에 나오므로 빠진다
   });
 
   it('지금 쓰는 폴더·방금 바뀐 폴더·사용자 폴더·숨김 폴더·파일은 건드리지 않는다', () => {

@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export type StrayReason = 'bad-name' | 'no-meta' | 'bad-meta';
+export type StrayReason = 'bad-name' | 'no-meta' | 'bad-meta' | 'old-memo';
 
 export interface StrayFolder {
   id: string; // 폴더 이름
@@ -51,7 +51,13 @@ export function findStrayFolders(root: string, { skip = [] as string[], now = Da
     let reason: StrayReason | null = null;
     if (!LISTED.test(e.name)) reason = 'bad-name';
     else if (!hasMeta) reason = 'no-meta';
-    else if (!readsAsJson(path.join(dir, 'meta.json'))) reason = 'bad-meta';
+    else {
+      const m = readJson(path.join(dir, 'meta.json'));
+      if (!m) reason = 'bad-meta';
+      // 예전 버전이 녹음 폴더에 남긴 받아쓰기 녹음 (지금은 임시 폴더에 녹음하고 바로 지운다). 녹취가 없으면 받아쓰기 화면에도
+      // 안 나와 어디에도 보이지 않았다 (2026-11-07, 10/31·11/1의 1초짜리 `_memo` 폴더 다섯 개)
+      else if (m.mode === 'memo' && !names.includes('transcript.json')) reason = 'old-memo';
+    }
     if (!reason) continue;
 
     let bytes = 0;
@@ -70,11 +76,11 @@ export function findStrayFolders(root: string, { skip = [] as string[], now = Da
   return out.sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
 }
 
-function readsAsJson(file: string): boolean {
+function readJson(file: string): { mode?: unknown } | null {
   try {
-    JSON.parse(fs.readFileSync(file, 'utf8'));
-    return true;
+    const v = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return v && typeof v === 'object' ? v : null;
   } catch {
-    return false;
+    return null;
   }
 }
