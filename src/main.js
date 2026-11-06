@@ -454,6 +454,9 @@ async function runDictation({ dir, peak, voicedMs, startedAt, durationSec, rec }
     sendOverlay('overlay:stage', stage);
     send('dict:stage', stage);
   };
+  // 단계는 본체가 차례대로 알린다. 예전엔 화면이 녹음 저장 답을 받은 뒤 스스로 '인식'으로 바꿨는데, 말소리가 없어(silent) 결과가 저장 답보다
+  // 먼저 도착하면 화면이 결과로 '끝'을 그린 뒤 다시 '인식'으로 돌아가 멈춰 있었다 (2026-11-07)
+  send('dict:stage', { stage: 'transcribe' });
   let result;
   try {
     result = await dictation.dictate(path.join(dir, 'mic.wav'), { helperBin: helperPath('permissions'), peak, voicedMs, onStage });
@@ -761,39 +764,47 @@ function readJson(file) {
   }
 }
 
-function readDictationLog() {
-  let lines = [];
+// 받아쓰기 기록 전체 (최신순). 파일이 그대로면 읽어 둔 것을 쓴다 (찾기·나눠 보기·통계가 부를 때마다 다시 읽지 않게)
+let dictCache = { key: null, records: [] };
+function dictationRecords() {
+  let key = null;
   try {
-    lines = fs.readFileSync(DICTATION_LOG, 'utf8').split('\n');
-  } catch {}
-  return lines
-    .filter(Boolean)
-    .map((line) => {
-      try {
-        return JSON.parse(line);
-      } catch {
-        return null;
-      }
-    })
-    .filter((d) => d?.raw && d.status !== 'empty') // 말이 없었거나 지어낸 문장으로 걸러진 시도는 통계용으로만 남긴다
-    .map((d) => ({
-      id: d.id,
-      mode: 'memo',
-      startedAt: d.startedAt,
-      durationSec: d.durationSec,
-      app: d.app,
-      words: d.words,
-      chars: d.chars,
-      wpm: d.wpm,
-      transcript: { raw: d.raw, text: d.text, cleanupProvider: d.cleanupProvider, cleanupError: d.cleanupError, timing: d.timing },
-    }));
+    const st = fs.statSync(DICTATION_LOG);
+    key = `${DICTATION_LOG}:${st.size}:${st.mtimeMs}`;
+  } catch {
+    return [];
+  }
+  if (dictCache.key !== key) {
+    let text = '';
+    try {
+      text = fs.readFileSync(DICTATION_LOG, 'utf8');
+    } catch {}
+    dictCache = { key, records: core.parseDictationLog(text) }; // 말이 없었거나 지어낸 문장으로 걸러진 시도는 빼고
+  }
+  return dictCache.records;
+}
+// 화면이 쓰는 모양 (회의 기록과 같은 history 항목)
+const dictationItem = (d) => ({
+  id: d.id,
+  mode: 'memo',
+  startedAt: d.startedAt,
+  durationSec: d.durationSec,
+  app: d.app,
+  words: d.words,
+  chars: d.chars,
+  wpm: d.wpm,
+  language: d.language ?? null,
+  transcript: { raw: d.raw, text: d.text, cleanupProvider: d.cleanupProvider, cleanupError: d.cleanupError, timing: d.timing },
+});
+function readDictationLog() {
+  return dictationRecords().map(dictationItem);
 }
 
 // 회의 목록에 '초안 · 확인 N개' / '확정'을 표시하기 위한 요약
 // 받아쓰기는 최근 limit개, 회의는 모두 (전에는 둘을 합쳐 300개로 잘라 받아쓰기가 많으면 오래된 회의가 목록에서 조용히 빠졌다)
 function listHistory(limit = 300) {
   const byTime = (a, b) => new Date(b.startedAt) - new Date(a.startedAt);
-  const dicts = readDictationLog().sort(byTime).slice(0, limit);
+  const dicts = dictationRecords().slice(0, limit).map(dictationItem); // 홈·⌘K용 최근 것만. 받아쓰기 화면·통계는 dict:page·dict:stats로 전체를
   return [...dicts, ...listFolders()].sort(byTime);
 }
 
@@ -861,6 +872,19 @@ ipcMain.handle('dict:repaste', async (_e, text) => {
 });
 ipcMain.handle('dict:providers', (_e, opts) => dictation.cleanupProviders(opts));
 ipcMain.handle('usage:get', (_e, opts) => usageMod.usage(opts));
+// 받아쓰기 기록: 최신순으로 나눠 받기(찾기는 전체에서), 통계는 전체 기록으로
+ipcMain.handle('dict:page', (_e, opts) => {
+  const page = core.pageDictations(dictationRecords(), opts ?? {});
+  return { ...page, items: page.items.map(dictationItem) };
+});
+// 통계는 기록 파일이 바뀔 때만 다시 센다 (기록을 읽을 때마다 화면이 부른다). 날이 바뀌면 오늘·연속 사용일이 달라지므로 날짜도 열쇠에
+let statsCache = { key: null, value: null };
+ipcMain.handle('dict:stats', () => {
+  const records = dictationRecords();
+  const key = `${dictCache.key}|${new Date().toDateString()}`;
+  if (statsCache.key !== key) statsCache = { key, value: core.dictationStats(records) };
+  return statsCache.value;
+});
 
 // ── 질문으로 회의 찾기 (src/ask.js, 결정 51): 메인 프로세스에서 돌아 화면을 옮기거나 창을 닫아도 이어진다 ──
 // 회의 상태는 화면의 meetState와 같은 말로 (done 확정·확인할 것 없음 / open 확인 남음 / draft 마치기 전 / fail / short / none 녹음만 / busy)

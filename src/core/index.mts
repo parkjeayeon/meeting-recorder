@@ -9,3 +9,4 @@ export { cleanGuess, inlineGuesses, toReviewItems, noteVariants, stampFor, stamp
 export { UsageWindow, UsageWindows, parseResets, parseClaudeUsage, verifyWindows, codexUsage } from './usage.mjs';
 export { orderProviders, isLimitText, isLimitError, withFallback, HIGH_PERCENT } from './route.mjs';
 export { chooseLanguage, AUTO_LANGUAGES, SHORT_VOICED_MS, type LanguageChoice } from './language.mjs';
+export { parseDictationLog, pageDictations, dictationStats, type DictRecord, type DictationStats } from './dictlog.mjs';

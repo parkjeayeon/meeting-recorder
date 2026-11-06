@@ -27,7 +27,8 @@ fs.writeFileSync(path.join(meeting, 'review.json'), JSON.stringify({ items: [
   { id: 'r3', kind: 'name', at: null, heard: null, heardNote: '도윤님(선배님)', note: "'도윤님(선배님)'이 누구인지 확인이 필요함", status: 'open' },
 ] }));
 process.env.STUB_MEETING_DIR = meeting;
-process.env.STUB_MANY = process.env.STUB_MANY ?? '2'; // 질문 탭에 '잠깐 언급된 회의'까지 나오게
+process.env.STUB_MANY = process.env.STUB_MANY ?? '2';
+process.env.STUB_DICTS = process.env.STUB_DICTS ?? '75'; // 받아쓰기 기록이 한 묶음(30개)보다 많을 때 // 질문 탭에 '잠깐 언급된 회의'까지 나오게
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 setTimeout(() => {
@@ -335,6 +336,29 @@ app.whenReady().then(async () => {
   const redoCall = await js('window.stubCalls().redoRange?.at(-1) ?? null');
   results.push(['유실 구간 직접 고르기', picker && redoCall?.id === 'r4' && redoCall.start === 2 && redoCall.end === 62, `고르는 줄 ${picker} · 보낸 것 ${JSON.stringify(redoCall)}`]);
   await js(`document.querySelector('.chat-head .icon-btn')?.click()`);
+
+  // 받아쓰기 기록: 30개씩 이어 받기(스크롤 끝), 검색은 전체에서(첫 묶음 밖의 기록도), 개수는 전체
+  await js(`location.hash='#dictations'`);
+  await wait(700);
+  const first = await js(`({ rows: document.querySelectorAll('.dlist > *').length, count: document.querySelector('.page-head h1 .num')?.textContent, line: document.querySelector('.dict-count')?.textContent })`);
+  await js(`document.getElementById('view').scrollTop = 1e7`);
+  await wait(700);
+  const more = await js(`document.querySelectorAll('.dlist > *').length`);
+  await js(`document.getElementById('view').scrollTop = 1e7`);
+  await wait(700);
+  await js(`document.getElementById('view').scrollTop = 1e7`);
+  await wait(700);
+  const end = await js(`({ rows: document.querySelectorAll('.dlist > *').length, foot: document.querySelector('.load-more')?.textContent })`);
+  results.push(['받아쓰기 이어 받기', first.rows === 30 && first.count === '75' && more === 60 && end.rows === 75 && Boolean(end.foot?.includes('다 보았습니다')), `처음 ${JSON.stringify(first)} · 스크롤 ${more} · 끝 ${JSON.stringify(end)}`]);
+  await js(`(() => { const i = document.querySelector('.page-head input[type=search]'); i.value = '배포'; i.dispatchEvent(new Event('input')); })()`);
+  await wait(800);
+  const found = await js(`({ rows: document.querySelectorAll('.dlist > *').length, text: document.querySelector('.dlist')?.textContent ?? '', line: document.querySelector('.dict-count')?.textContent })`);
+  results.push(['받아쓰기 검색은 전체에서', found.rows === 1 && found.text.includes('오래된 배포') && Boolean(found.line?.includes('전체 75개')), JSON.stringify({ ...found, text: found.text.slice(0, 30) })]);
+  // 통계: 언어별 비율 (전체 기록 기준)
+  await js(`location.hash='#stats'`);
+  await wait(600);
+  const langCard = await js(`[...document.querySelectorAll('.card')].find(c=>c.textContent.includes('어떤 언어로'))?.textContent ?? null`);
+  results.push(['통계: 언어별 비율', Boolean(langCard?.includes('한국어') && langCard.includes('English') && langCard.includes('80%') && langCard.includes('15회')), JSON.stringify(langCard)]);
 
   // 왼쪽 아래 받아쓰기 언어: 어느 화면에서든 보이고, 바꾸면 받아쓰기 언어만 (회의 언어는 그대로), 설정 화면 값도 같이
   const langOn = {};

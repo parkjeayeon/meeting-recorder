@@ -124,6 +124,24 @@ const impl = {
     return { added: [review.items.at(-1).id], reply: '00:02의 "배포"를 항목으로 더했습니다.' };
   },
   // 사용 한도 예시 (Claude Code: 세션·주간·모델 주간, Codex: 주간 + 크레딧). 몇 번 불렸는지 센다
+  dictPage: async ({ q = '', before = null, limit = 50 } = {}) => {
+    calls.dictPage = [...(calls.dictPage ?? []), { q, before, limit }];
+    const matched = q ? dicts.filter((r) => `${r.transcript.text} ${r.app}`.toLowerCase().includes(q.toLowerCase())) : dicts;
+    const start = before ? matched.findIndex((r) => r.id === before) + 1 : 0;
+    const items = matched.slice(start, start + limit);
+    return { items, total: dicts.length, matched: matched.length, next: start + limit < matched.length ? items.at(-1).id : null };
+  },
+  dictStats: async () => {
+    if (!dicts.length) return null;
+    const by = (key) => [...dicts.reduce((m, r) => m.set(key(r), [(m.get(key(r))?.[0] ?? 0) + r.chars, (m.get(key(r))?.[1] ?? 0) + 1]), new Map())];
+    return {
+      count: dicts.length, total: dicts.reduce((n, r) => n + r.chars, 0), today: 0, todayCount: 0, wpm: 120, streak: 3,
+      days: Array.from({ length: 14 }, (_, i) => ({ date: new Date(Date.now() - (13 - i) * 864e5).toISOString().slice(0, 10), chars: 10 * i, count: i })),
+      apps: by((r) => r.app).map(([app, [chars]]) => ({ app, chars })),
+      languages: by((r) => r.language).sort((a, b) => b[1][0] - a[1][0]).map(([language, [chars, count]]) => ({ language, chars, count })),
+      asrMs: 300, cleanup: [{ provider: 'claude-code', avgMs: 2500, count: dicts.length }],
+    };
+  },
   askStart: async (question, scope) => {
     calls.askStart = [...(calls.askStart ?? []), { question, scope }];
     return stubAsk(question, scope);
@@ -167,6 +185,11 @@ const impl = {
   ],
 };
 const calls = {};
+// STUB_DICTS=75: 받아쓰기 기록 (최신순, 다섯에 하나는 영어, 70번째에만 '배포' — 첫 묶음 밖의 기록도 찾는지)
+const dicts = Array.from({ length: Number(process.env.STUB_DICTS) || 0 }, (_, i) => {
+  const text = i === 70 ? '오래된 배포 메모입니다' : `받아쓴 글 ${i}번입니다`;
+  return { id: `d${String(i).padStart(4, '0')}`, mode: 'memo', startedAt: new Date(Date.now() - i * 5 * 3600e3).toISOString(), durationSec: 4, app: i % 2 ? 'Slack' : 'Notes', chars: text.length, wpm: 120, language: i % 5 === 0 ? 'en' : 'ko', transcript: { raw: text, text, cleanupProvider: 'claude-code', timing: { transcribeMs: 300, cleanupMs: 2500 } } };
+});
 const dictStore = { enabled: true, language: 'ko', meetingLanguage: 'ko', cleanup: true, provider: 'auto', vocabulary: 'PJY, Whisper', minutes: true, diarize: true, diarizeReady: true, hasHfToken: true, meetingSystemAudio: false, engine: { state: 'ready' } };
 // 질문으로 찾기 흉내 (LLM 없이): 단계를 짧게 지나 끝난다. "작년"이 든 질문에 올해 기간 칩을 주면 기간이 겹치지 않아 멈춘다.
 // "실패"가 든 질문은 오류로 끝난다. 결과는 예시 회의에서 고른다 (첫 회의는 주로 다룸, 둘째는 잠깐 언급)

@@ -268,7 +268,6 @@ async function run({ action, mode }) {
   setRecording(null);
   if (action === 'cancel' && wasMode === 'meeting') toast('회의 녹음을 취소했습니다', '녹음은 저장하지 않았습니다');
   if (!result) return;
-  if (wasMode === 'memo' && settings?.enabled) showStage('transcribe');
   const savedSec = Math.max(0, ...Object.values(result.files ?? {}).map((f) => f.durationSec ?? 0));
   if (wasMode === 'meeting' && savedSec >= 10) toast('회의 녹음을 저장했습니다', settings?.minutes ? '회의록을 만들기 시작합니다' : '');
   loadHistory();
@@ -355,11 +354,12 @@ function folderEmpty() {
 }
 
 async function loadHistory() {
-  const [list, access, stray] = await Promise.all([api.history(), api.recordingsAccess(), api.strayFolders()]);
+  const [list, access, stray, totals] = await Promise.all([api.history(), api.recordingsAccess(), api.strayFolders(), api.dictStats()]);
   history = list;
   strays = stray ?? [];
+  dictTotals = totals ?? null;
   setIssue('folder', folderIssue(access));
-  $('countDict').textContent = dictations().length || '';
+  $('countDict').textContent = dictTotals?.count || dictations().length || '';
   $('countMeet').textContent = meetings().length || '';
   refresh();
 }
@@ -555,8 +555,11 @@ function greeting() {
   return '늦게까지 수고 많아요';
 }
 
-function dictStats(items = dictations()) {
+let dictTotals = null; // 본체가 전체 받아쓰기 기록으로 계산한 통계 (dict:stats)
+function dictStats(items = dictations(), { local = false } = {}) {
   const chars = (r) => r.chars ?? (r.transcript.text ?? r.transcript.raw ?? '').length;
+  // 전체 기록 통계가 있으면 그것으로 (화면이 받은 기록은 최근 300개뿐이라 그걸로 세면 오래된 기록이 빠진다)
+  if (dictTotals && !local) return { total: dictTotals.total, today: dictTotals.today, todayCount: dictTotals.todayCount, wpm: dictTotals.wpm, streak: dictTotals.streak, chars };
   const today = items.filter((r) => dayKey(r.startedAt) === new Date().toDateString());
   const wpms = items.map((r) => r.wpm).filter((w) => w > 0);
   const days = new Set(items.map((r) => dayKey(r.startedAt)));
@@ -804,34 +807,80 @@ function searchBox(placeholder, value, onInput) {
   return h('label', { class: 'search' }, icon('i-search'), input);
 }
 
+// 받아쓰기 기록: 최신순 30개씩 이어 받고(스크롤 끝 200px 전에 다음 묶음), 검색은 입력이 멈추고 0.3초 뒤 본체가 전체 기록에서.
+// 예전엔 화면이 받은 최근 300개만 한꺼번에 그리고 그 안에서만 찾았다 (Wispr Flow도 25개 → 10개씩 이어 받기, 검색은 전체 DB에서)
+const DICT_PAGE = 30;
 function pageDictations() {
   let q = '';
+  let items = [];
+  let next = null;
+  let total = 0;
+  let matched = 0;
+  let loading = false;
+  let ticket = 0; // 더 새로운 요청(검색어 바뀜·새 받아쓰기)이 오면 늦게 온 답은 버린다
+  let typing = null;
   const list = h('div');
   const marksInput = h('input', { type: 'checkbox', checked: showMarks });
   marksInput.onchange = () => {
     showMarks = marksInput.checked;
     remember('showMarks', showMarks);
-    update();
+    render();
   };
   const marks = h('label', { class: 'inline-switch', title: '다듬기가 지운 말(취소선)과 넣은 말(밑줄) 표시' }, h('span', { class: 'switch' }, marksInput, h('i')), '고친 곳 표시');
   const count = num('');
-  const update = () => {
-    const all = dictations();
-    count.textContent = all.length || '';
-    const items = q ? all.filter((r) => `${r.transcript.text ?? ''} ${r.transcript.raw} ${r.app ?? ''}`.toLowerCase().includes(q)) : all;
-    if (!all.length && issues.has('folder')) list.replaceChildren(folderEmpty());
-    else if (!all.length) list.replaceChildren(h('div', { class: 'empty' }, h('b', null, '아직 받아쓴 글이 없습니다'), '아무 입력칸에 커서를 두고 ', h('kbd', null, 'fn'), '을 꾹 누른 채 말해 보세요.'));
-    else if (!items.length) list.replaceChildren(h('div', { class: 'empty' }, h('b', null, '찾는 글이 없습니다'), `"${q}"가 들어간 받아쓰기가 없습니다.`));
-    else list.replaceChildren(...groupByDay(items, (r) => dictItem(r), 'dlist'));
-  };
+  const sentinel = h('div', { class: 'load-more', 'aria-live': 'polite' });
+  async function load(reset) {
+    if (loading && !reset) return;
+    const mine = ++ticket;
+    loading = true;
+    // 새 받아쓰기로 다시 그릴 때는 보던 만큼 다시 받는다 (스크롤이 위로 튀지 않게)
+    const res = await api.dictPage({ q, before: reset ? null : next, limit: reset ? Math.max(DICT_PAGE, items.length) : DICT_PAGE });
+    if (mine !== ticket) return;
+    loading = false;
+    const seen = new Set(reset ? [] : items.map((r) => r.id));
+    items = reset ? res.items : [...items, ...res.items.filter((r) => !seen.has(r.id))];
+    ({ next, total, matched } = res);
+    render();
+  }
+  function render() {
+    count.textContent = total || '';
+    if (!total && issues.has('folder')) return list.replaceChildren(folderEmpty());
+    if (!total) return list.replaceChildren(h('div', { class: 'empty' }, h('b', null, '아직 받아쓴 글이 없습니다'), '아무 입력칸에 커서를 두고 ', h('kbd', null, 'fn'), '을 꾹 누른 채 말해 보세요.'));
+    if (!items.length) return list.replaceChildren(q ? h('div', { class: 'empty' }, h('b', null, '찾는 글이 없습니다'), `"${q}"가 들어간 받아쓰기가 없습니다. 받아쓴 말·원문·앱 이름에서 전체 ${fmt.format(total)}개를 찾았습니다.`) : h('div'));
+    // 날짜별 묶음. 아직 다 받지 않은 마지막 날은 "N건+"
+    const perDay = new Map();
+    for (const r of items) perDay.set(dayKey(r.startedAt), (perDay.get(dayKey(r.startedAt)) ?? 0) + 1);
+    const lastDay = dayKey(items.at(-1).startedAt);
+    const out = [];
+    let key = null;
+    let box = null;
+    for (const r of items) {
+      const k = dayKey(r.startedAt);
+      if (k !== key) {
+        key = k;
+        out.push(h('div', { class: 'day-head' }, dayLabel(r.startedAt), num(`${perDay.get(k)}건${next && k === lastDay ? '+' : ''}`)));
+        out.push((box = h('div', { class: 'dlist' })));
+      }
+      box.append(dictItem(r));
+    }
+    sentinel.textContent = next ? `${fmt.format(items.length)} / ${fmt.format(matched)}개 · 더 불러오는 중…` : items.length > DICT_PAGE ? `${q ? '찾은' : '모든'} 받아쓰기 ${fmt.format(matched)}개를 다 보았습니다` : '';
+    list.replaceChildren(h('p', { class: 'hint dict-count' }, q ? `"${q}" ${fmt.format(matched)}개 · 전체 ${fmt.format(total)}개에서` : `전체 ${fmt.format(total)}개`), ...out, sentinel);
+  }
+  // 스크롤 끝 200px 전에 다음 묶음
+  const seeing = new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && next && load(false), { root: $('view'), rootMargin: '200px' });
+  seeing.observe(sentinel);
   const el = h('div', { class: 'page' },
-    h('div', { class: 'page-head' }, h('h1', null, '받아쓰기', count), h('div', { class: 'head-tools' }, marks, searchBox('받아쓴 말, 앱 이름 검색', '', (v) => {
-      q = v.trim().toLowerCase();
-      update();
+    h('div', { class: 'page-head' }, h('h1', null, '받아쓰기', count), h('div', { class: 'head-tools' }, marks, searchBox('받아쓴 말, 앱 이름 검색 (전체)', '', (v) => {
+      clearTimeout(typing);
+      typing = setTimeout(() => {
+        q = v.trim();
+        items = [];
+        load(true);
+      }, 300);
     }))),
     list);
-  update();
-  return { el, update };
+  load(true);
+  return { el, update: () => load(true), leave: () => seeing.disconnect() };
 }
 
 // ── 회의 목록 ───────────────────────────────────────────────────────────
@@ -3629,7 +3678,8 @@ function pageDictionary() {
 function pageStats() {
   const el = h('div', { class: 'page' });
   const items = dictations();
-  const st = dictStats(items);
+  const st = dictStats(items); // 전체 기록 통계 (dictTotals)가 있으면 그것으로
+  const all = dictTotals; // 본체가 전체 기록으로 계산한 값 (화면의 items는 최근 300개뿐)
   const meets = meetings().filter((m) => m.minutes?.status === 'done');
   const meetSec = meetings().reduce((n, m) => n + (m.durationSec ?? 0), 0);
 
@@ -3640,8 +3690,11 @@ function pageStats() {
     h('div', { class: 'stat' }, h('span', null, '연속 사용'), h('b', null, st.streak, h('small', null, '일'))),
     h('div', { class: 'stat' }, h('span', null, '회의 녹음'), h('b', null, clock(meetSec), h('small', null, `${meetings().length}건`))));
 
-  // 최근 14일 받아쓴 글자: 막대 하나 = 하루
-  const days = Array.from({ length: 14 }, (_, i) => {
+  // 최근 14일 받아쓴 글자: 막대 하나 = 하루 (전체 기록 기준)
+  const days = all ? all.days.map((x) => {
+    const [y, m, dd] = x.date.split('-').map(Number);
+    return { d: new Date(y, m - 1, dd), chars: x.chars, count: x.count };
+  }) : Array.from({ length: 14 }, (_, i) => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
     d.setDate(d.getDate() - 13 + i);
@@ -3650,22 +3703,20 @@ function pageStats() {
   });
   const chart = barChart(days);
 
-  const byApp = new Map();
-  for (const r of items) byApp.set(r.app ?? '알 수 없음', (byApp.get(r.app ?? '알 수 없음') ?? 0) + st.chars(r));
-  const apps = [...byApp.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const apps = all ? all.apps.map((a) => [a.app, a.chars]) : [];
   const maxApp = apps[0]?.[1] || 1;
+  // 언어별: 받아쓴 글자 수 기준, 자동이면 고른 언어
+  const langs = all?.languages ?? [];
+  const langTotal = langs.reduce((n, l) => n + l.chars, 0) || 1;
+  const LANG_NAME = { ko: '한국어', en: 'English', ja: '日本語' };
 
   const avg = (list) => (list.length ? list.reduce((a, b) => a + b, 0) / list.length : null);
-  const asr = avg(items.map((r) => r.transcript.timing?.transcribeMs).filter((v) => v !== undefined));
-  const providers = new Map();
-  for (const r of items) {
-    const p = r.transcript.cleanupProvider;
-    if (p && r.transcript.timing?.cleanupMs) providers.set(p, [...(providers.get(p) ?? []), r.transcript.timing.cleanupMs]);
-  }
+  const asr = all?.asrMs ?? null;
+  const providers = new Map((all?.cleanup ?? []).map((c) => [c.provider, c]));
   const perHour = avg(meets.filter((m) => m.minutes.timing?.transcribeMs && m.durationSec > 60).map((m) => (m.minutes.timing.transcribeMs + (m.minutes.timing.writeMs ?? 0)) / 1000 / (m.durationSec / 3600)));
 
   el.append(head, row);
-  if (!items.length) {
+  if (!(all?.count ?? items.length)) {
     el.append(h('div', { class: 'empty locked' }, h('b', null, '받아쓰기를 해 보면 통계가 쌓입니다'), h('kbd', null, 'fn'), '을 꾹 누른 채 말한 글자 수, 속도, 자주 쓰는 앱이 여기에 나타납니다.'));
   } else {
     el.append(
@@ -3676,8 +3727,12 @@ function pageStats() {
         h('div', { class: 'card' }, h('h3', null, '걸린 시간'), h('p', { class: 'sub' }, '손을 뗀 뒤부터의 평균'),
           h('dl', { class: 'kv' },
             asr !== null && [h('dt', null, '음성 인식 (Whisper turbo)'), h('dd', null, seconds(asr))],
-            [...providers.entries()].map(([p, list]) => [h('dt', null, `다듬기 · ${PROVIDER_NAME[p] ?? p}`), h('dd', null, `${seconds(avg(list))} · ${list.length}회`)]),
-            perHour !== null && [h('dt', null, '회의록 (녹음 1시간당)'), h('dd', null, `${Math.round(perHour / 60)}분`)]))));
+            [...providers.entries()].map(([p, c]) => [h('dt', null, `다듬기 · ${PROVIDER_NAME[p] ?? p}`), h('dd', null, `${seconds(c.avgMs)} · ${c.count}회`)]),
+            perHour !== null && [h('dt', null, '회의록 (녹음 1시간당)'), h('dd', null, `${Math.round(perHour / 60)}분`)]))),
+      langs.length > 0 && h('div', { class: 'card', style: 'margin-top:12px' }, h('h3', null, '어떤 언어로 썼나'), h('p', { class: 'sub' }, '받아쓴 글자 수 기준 · 자동이면 고른 언어'),
+        h('div', { class: 'hbars lang' }, langs.map((l) => h('div', { class: 'hbar' }, h('span', { title: l.language }, LANG_NAME[l.language] ?? l.language),
+          h('div', { class: 'track' }, h('i', { style: `width:${(l.chars / langTotal) * 100}%` })),
+          num(`${Math.round((l.chars / langTotal) * 100)}% · ${fmt.format(l.count)}회`))))));
   }
   return { el };
 }
