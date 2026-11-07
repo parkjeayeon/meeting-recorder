@@ -1146,3 +1146,12 @@ dialog[open] { animation: pop .22s cubic-bezier(.16, 1, .3, 1); }
 .hover-tip { position: fixed; z-index: 200; top: 0; left: 0; max-width: 260px; padding: 5px 9px; border-radius: 7px; background: var(--ink); color: var(--panel); font-size: 12px; font-weight: 550; line-height: 1.4; white-space: normal; box-shadow: var(--shadow-pop); pointer-events: none; opacity: 0; transform: translateY(-2px); transition: opacity .12s ease-out, transform .12s ease-out; }
 .hover-tip.show { opacity: 1; transform: none; }
 @media (prefers-reduced-motion: reduce) { .hover-tip { transition: none; } }
+/* 회의 화면: 확인을 마친 뒤 녹음 압축 안내 (모달 아님, 고를 때까지 늘 보임) */
+.compress-note { display: flex; align-items: center; gap: 12px; margin: 12px 0 4px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); }
+.compress-mark { display: grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: 50%; background: var(--panel-3); color: var(--ink-2); }
+.compress-mark svg { width: 15px; height: 15px; }
+.compress-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.compress-text b { font-size: 13.5px; font-weight: 650; color: var(--ink); }
+.compress-text span { font-size: 12.5px; line-height: 1.5; color: var(--ink-3); }
+.compress-acts { display: flex; gap: 6px; flex: none; }
+@media (max-width: 760px) { .compress-note { flex-wrap: wrap; } .compress-acts { width: 100%; justify-content: flex-end; } }

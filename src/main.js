@@ -13,6 +13,7 @@ const flowMod = require('./flow');
 const actionsMod = require('./actions');
 const usageMod = require('./usage');
 const askMod = require('./ask');
+const compress = require('./compress');
 const setup = require('./setup');
 // 회의 데이터 읽기는 명령줄 도구(mr)와 같이 쓰는 코어(TypeScript·ESM, npm run build:ts → lib/)로 (결정 43)
 const core = require('../lib/core/index.mjs');
@@ -589,6 +590,20 @@ ipcMain.handle('minutes:resume', (_e, dir) => {
   if (!minutes.canResume(d)) throw new Error('이어서 쓸 녹취가 없습니다. 녹취부터 다시 만들어 주세요');
   runMinutes(d, null, { resume: true });
 });
+// 회의 녹음 압축 (확인을 마친 회의, 사용자가 고를 때만): WAV → AAC 96kbps. 녹음 중·회의록을 만드는 중인 회의는 막는다
+const compressing = new Set();
+ipcMain.handle('meeting:compress', async (_e, dir) => {
+  const d = recordingDir(dir);
+  if (recording?.dir === d || activeMinutes.has(d)) throw new Error('녹음 중이거나 회의록을 만드는 중에는 압축할 수 없습니다');
+  if (compressing.has(d)) throw new Error('이미 압축하고 있습니다');
+  compressing.add(d);
+  try {
+    return await compress.compressMeeting(d);
+  } finally {
+    compressing.delete(d);
+  }
+});
+ipcMain.handle('meeting:compressDecline', (_e, dir, declined = true) => compress.declineCompress(recordingDir(dir), declined));
 ipcMain.handle('speaker:rename', (_e, dir, from, to) => minutes.renameSpeaker(recordingDir(dir), from, to));
 ipcMain.handle('minutes:read', (_e, dir) => {
   const d = recordingDir(dir);
@@ -844,6 +859,7 @@ function listFolders(limit) {
         minutes: minutesState,
         summary,
         review: core.reviewSummary(dir),
+        audio: compress.audioInfo(dir, meta), // 녹음 크기·압축 여부 (확인을 마치면 압축 안내)
       };
     })
     .filter(Boolean);
@@ -1296,14 +1312,14 @@ protocol.registerSchemesAsPrivileged([{ scheme: 'rec', privileges: { standard: t
 function serveRecording(request) {
   const [, folder = '', name = ''] = new URL(request.url).pathname.split('/');
   const file = path.resolve(RECORDINGS_DIR, decodeURIComponent(folder), decodeURIComponent(name));
-  if (path.dirname(path.dirname(file)) !== RECORDINGS_DIR || !/\.wav$/i.test(file) || !fs.existsSync(file)) {
+  if (path.dirname(path.dirname(file)) !== RECORDINGS_DIR || !/\.(wav|m4a)$/i.test(file) || !fs.existsSync(file)) {
     return new Response('not found', { status: 404 });
   }
   const size = fs.statSync(file).size;
   const range = /bytes=(\d*)-(\d*)/.exec(request.headers.get('range') ?? '');
   const start = range?.[1] ? Number(range[1]) : 0;
   const end = range?.[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
-  const headers = { 'Content-Type': 'audio/wav', 'Accept-Ranges': 'bytes', 'Content-Length': String(end - start + 1) };
+  const headers = { 'Content-Type': /\.m4a$/i.test(file) ? 'audio/mp4' : 'audio/wav', 'Accept-Ranges': 'bytes', 'Content-Length': String(end - start + 1) };
   if (range) headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
   return new Response(Readable.toWeb(fs.createReadStream(file, { start, end })), { status: range ? 206 : 200, headers });
 }

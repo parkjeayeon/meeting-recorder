@@ -46,6 +46,8 @@ contextBridge.exposeInMainWorld('recorderApi', {
   usage: (opts) => ipcRenderer.invoke('usage:get', opts),
   dictPage: (opts) => ipcRenderer.invoke('dict:page', opts),
   dictStats: () => ipcRenderer.invoke('dict:stats'),
+  compressMeeting: (dir) => ipcRenderer.invoke('meeting:compress', dir),
+  declineCompress: (dir, declined) => ipcRenderer.invoke('meeting:compressDecline', dir, declined),
   askStart: (question, scope) => ipcRenderer.invoke('ask:start', question, scope),
   askList: () => ipcRenderer.invoke('ask:list'),
   askStop: (id) => ipcRenderer.invoke('ask:stop', id),

@@ -3,7 +3,7 @@
 // minutes.md(회의록), minutes.json(상태)으로 남는다.
 const path = require('path');
 const fs = require('fs');
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 const { app, net } = require('electron');
 const dictation = require('./dictation');
 const { complete, parseJson } = require('./cleanup');
@@ -125,6 +125,64 @@ async function cleanScript(transcript, settings) {
   await Promise.all(Array.from({ length: Math.min(4, chunks.length) }, worker));
   return { text: results.flat().join('\n'), provider, chunks: chunks.length, failed };
 }
+
+// 트랙의 녹음 파일 (압축했으면 .m4a, 아니면 .wav — meta.json의 files가 정한다). 없으면 null
+function trackPath(dir, meta, track) {
+  const file = path.join(dir, meta.files?.[track]?.file ?? `${track}.wav`);
+  return fs.existsSync(file) ? file : null;
+}
+const recordedTracks = (dir, meta) => Object.keys(meta.files ?? {}).filter((t) => trackPath(dir, meta, t));
+
+// 압축한 녹음(AAC .m4a)을 16kHz 모노 WAV(44바이트 머리, 아래 함수들이 읽는 형식)로 푼다. 2시간에 약 1초
+async function decodeTo16k(src, dst) {
+  const tmp = `${dst}.af.wav`;
+  await new Promise((resolve, reject) => execFile('/usr/bin/afconvert', ['-f', 'WAVE', '-d', 'LEI16@16000', '-c', '1', src, tmp], (err, _o, stderr) => (err ? reject(new Error((stderr || err.message).trim().split('\n')[0])) : resolve())));
+  // afconvert는 확장 WAV 머리(FLLR 등 덧붙은 칸)를 쓴다 → data 칸만 꺼내 표준 44바이트 머리로 다시 쓴다
+  const fd = fs.openSync(tmp, 'r');
+  let offset = 12;
+  let size = 0;
+  try {
+    const total = fs.fstatSync(fd).size;
+    const h8 = Buffer.alloc(8);
+    while (offset + 8 <= total) {
+      fs.readSync(fd, h8, 0, 8, offset);
+      const id = h8.toString('ascii', 0, 4);
+      const len = h8.readUInt32LE(4);
+      if (id === 'data') {
+        size = Math.min(len, total - offset - 8);
+        offset += 8;
+        break;
+      }
+      offset += 8 + len + (len & 1);
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+  if (!size) throw new Error('압축한 녹음을 풀지 못했습니다');
+  const head = Buffer.alloc(44);
+  head.write('RIFF', 0);
+  head.writeUInt32LE(36 + size, 4);
+  head.write('WAVEfmt ', 8);
+  head.writeUInt32LE(16, 16);
+  head.writeUInt16LE(1, 20);
+  head.writeUInt16LE(1, 22);
+  head.writeUInt32LE(16000, 24);
+  head.writeUInt32LE(32000, 28);
+  head.writeUInt16LE(2, 32);
+  head.writeUInt16LE(16, 34);
+  head.write('data', 36);
+  head.writeUInt32LE(size, 40);
+  await new Promise((resolve, reject) => {
+    const out = fs.createWriteStream(dst);
+    out.on('error', reject).on('finish', resolve);
+    out.write(head);
+    fs.createReadStream(tmp, { start: offset, end: offset + size - 1 }).on('error', reject).pipe(out);
+  });
+  fs.rmSync(tmp, { force: true });
+}
+
+// 녹음 → 16kHz 모노 WAV: 원본 WAV는 줄이고, 압축한 녹음은 푼다
+const to16k = (src, dst) => (/\.wav$/i.test(src) ? downsampleTo16k(src, dst) : decodeTo16k(src, dst));
 
 // 48kHz 16bit 모노 WAV(WavWriter 형식)를 16kHz로 줄인다. 3샘플 평균이라 말소리 대역엔 충분하다.
 // 1시간 회의 기준 345MB → 115MB라 Whisper에 넘기는 시간과 메모리가 줄어든다.
@@ -496,7 +554,7 @@ async function run(dir, onStage, { speakers = null, prev = null } = {}) {
 
 // 녹음 → 16kHz → 조각별 Whisper 녹취(+반복 구간 다시) · 화자 구분 → transcript.txt
 async function transcribeMeeting(dir, meta, settings, speakers, timing, report) {
-  const tracks = Object.keys(meta.files ?? {}).filter((t) => fs.existsSync(path.join(dir, `${t}.wav`)));
+  const tracks = recordedTracks(dir, meta);
   let server = null;
   const temp = [];
   try {
@@ -512,7 +570,7 @@ async function transcribeMeeting(dir, meta, settings, speakers, timing, report) 
     for (const track of tracks) {
       const small = path.join(dir, `.${track}-16k.wav`);
       temp.push(small);
-      await downsampleTo16k(path.join(dir, `${track}.wav`), small);
+      await to16k(trackPath(dir, meta, track), small);
       // 화자 구분은 대면 회의 마이크 트랙에서 녹취와 동시에 돌린다
       const wantDiarize = settings.diarize && track === 'mic' && diarizeAvailable();
       const diarizeJob = wantDiarize
@@ -1087,14 +1145,21 @@ function retranscribeRange(dir, itemId, start, end) {
     const item = review?.items.find((it) => it.id === itemId);
     if (!item) throw new Error('확인 항목이 없습니다');
     const meta = JSON.parse(readText(dir, 'meta.json'));
-    const tracks = Object.keys(meta.files ?? {}).filter((t) => fs.existsSync(path.join(dir, `${t}.wav`)));
+    const tracks = recordedTracks(dir, meta);
     const track = tracks.includes('mic') ? 'mic' : tracks[0];
     if (!track) throw new Error('녹음 파일이 없습니다');
     const tmp = path.join(dir, `.redo-${itemId}.wav`);
+    // 압축한 녹음이면 먼저 16kHz WAV로 푼다 (2시간에 약 1초) — 구간 자르기는 WAV를 바이트로 읽는다
+    let source = trackPath(dir, meta, track);
+    const decoded = /\.wav$/i.test(source) ? null : path.join(dir, `.redo-${itemId}-src.wav`);
+    if (decoded) {
+      await decodeTo16k(source, decoded);
+      source = decoded;
+    }
     const settings = dictation.getSettings();
     let server = null;
     try {
-      const cut = sliceTo16k(path.join(dir, `${track}.wav`), Math.max(0, s - REDO_PAD_SEC), e + REDO_PAD_SEC, tmp);
+      const cut = sliceTo16k(source, Math.max(0, s - REDO_PAD_SEC), e + REDO_PAD_SEC, tmp);
       server = await dictation.startDedicatedServer(path.join(app.getPath('userData'), 'models', MEETING_MODEL)).catch(() => null);
       const segs = (await dictation.transcribeSegments(tmp, meetingAsr(settings), server?.port ?? null, { noContext: true }))
         .map((x) => ({ start: x.start + cut.start, end: x.end + cut.start, text: x.text }))
@@ -1108,6 +1173,7 @@ function retranscribeRange(dir, itemId, start, end) {
     } finally {
       server?.stop();
       fs.rmSync(tmp, { force: true });
+      if (decoded) fs.rmSync(decoded, { force: true });
     }
   });
   queue = job.catch(() => {});
@@ -1244,4 +1310,5 @@ function makeCleanScript(dir) {
 }
 
 module.exports = {
+  decodeTo16k,
   findLoops, nameSpeakers, makeMinutes, canResume, makeCleanScript, renameSpeaker, diarizeAvailable, readReview, makeReview, addReview, applyReview, setReviewStatus, chatReview, finalizeReview, retranscribeRange, applyRetranscribe, speakerTurns, revertReview, markReviewItems };

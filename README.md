@@ -193,7 +193,7 @@ Homebrew 설치, Claude Code·Codex 호출(자체 샌드박스·읽기 전용), 
 
 녹음 폴더 기본값은 `~/Documents/MeetingRecorder/`. 설정 › 받아쓰기 › 녹음 폴더에서 **변경…**으로 다른 폴더(외장 디스크 등)를 고를 수 있다. 고를 때 기존 녹음을 옮길지 정하고, 같은 이름이 있으면 덮어쓰지 않는다. 지정한 폴더가 없으면(디스크 분리 등) 기본 폴더를 쓴다.
 
-- 회의 `<날짜>_meeting/`: `mic.wav`(+ 화상 회의면 `system.wav`), `meta.json`(참석 인원·바꾼 화자 이름, 가져온 녹음이면 원래 파일 이름과 이어 붙인 위치 `imported`·녹음 외 메모 `notes` 포함), `transcript.txt`(원본 스크립트), `script-clean.txt`(정리본), `minutes.md`(회의록), `minutes.json`(상태), `review.json`(확인 필요 항목·처리 결과·채팅 요지), `glossary.json`(용어 설명), `flow.json`(흐름도), `actions.json`(액션: 할 일·조언), `segments.json`(녹취 구간, 같은 문장 반복으로 다시 받아쓴 구간 `redo`)·`diarization.json`(화자 구간)
+- 회의 `<날짜>_meeting/`: `mic.wav`(+ 화상 회의면 `system.wav`, 확인을 마친 뒤 압축하면 `mic.m4a`·`system.m4a` — AAC 96kbps, meta.json의 `compressed`), `meta.json`(참석 인원·바꾼 화자 이름, 가져온 녹음이면 원래 파일 이름과 이어 붙인 위치 `imported`·녹음 외 메모 `notes` 포함), `transcript.txt`(원본 스크립트), `script-clean.txt`(정리본), `minutes.md`(회의록), `minutes.json`(상태), `review.json`(확인 필요 항목·처리 결과·채팅 요지), `glossary.json`(용어 설명), `flow.json`(흐름도), `actions.json`(액션: 할 일·조언), `segments.json`(녹취 구간, 같은 문장 반복으로 다시 받아쓴 구간 `redo`)·`diarization.json`(화자 구간)
 - `settings.json`: 사전과 일반 설정(언어·다듬기 계정·회의록 자동 등, 토큰·키는 제외)의 사본. 녹음 폴더만 다른 컴퓨터로 옮겨도 이어 쓸 수 있다. 앱 설정이 비어 있으면(새 컴퓨터) 그대로 가져오고, 아니면 사전 단어만 합친다
 - `dictations.jsonl`: 받아쓰기 한 건마다 한 줄 (시각, 길이, 실제 말소리 길이, 입력한 앱, 정리 전/후 글, 글자·단어 수, WPM, 다듬기 계정, 단계별 소요 시간). 음성은 임시 폴더에 녹음해 변환 후 바로 지운다
 

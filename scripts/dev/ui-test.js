@@ -366,6 +366,25 @@ app.whenReady().then(async () => {
   results.push(['아이콘 버튼 설명', !early.show && back.show && back.text === '뒤로 (⌘[)' && titleWhile === null && titleAfter === '뒤로 (⌘[)' && !textBtn.show && inDialog.show && inDialog.text === '닫기' && inDialog.host === 'DIALOG',
     `0.15초 ${early.show} · 0.55초 ${JSON.stringify(back)} · title ${titleWhile}→${titleAfter} · 글자 버튼 ${textBtn.show} · 설정 ${JSON.stringify(inDialog)}`]);
 
+  // 녹음 압축: 확인을 마친 회의에 안내(모달 아님) → 그대로 두기면 숨김 → … 메뉴에서 압축 → '압축함'
+  await js(`location.hash='#meetings'`);
+  await wait(600);
+  await js(`[...document.querySelectorAll('a.lrow')].find(a=>a.textContent.includes('주간 회의 1차'))?.click()`);
+  await wait(900);
+  const note = await js(`document.querySelector('.compress-note')?.textContent ?? null`);
+  const modal = await js(`Boolean(document.querySelector('dialog[open]'))`);
+  await js(`[...document.querySelectorAll('.compress-note button')].find(b=>b.textContent==='그대로 두기')?.click()`);
+  await wait(700);
+  const declined = await js(`({ calls: window.stubCalls().decline ?? [], note: Boolean(document.querySelector('.compress-note')) })`);
+  await js(`document.querySelector('.meet-acts .icon-btn[aria-label="더 보기"]')?.click()`);
+  await wait(200);
+  const menuItem = await js(`[...document.querySelectorAll('.meet-acts .menu button')].find(b=>b.textContent.startsWith('녹음 압축하기'))?.textContent ?? null`);
+  await js(`[...document.querySelectorAll('.meet-acts .menu button')].find(b=>b.textContent.startsWith('녹음 압축하기'))?.click()`);
+  await wait(900);
+  const compressed = await js(`({ calls: window.stubCalls().compress ?? [], tag: [...document.querySelectorAll('.meet-meta .tag')].map(t=>t.textContent).find(t=>t.startsWith('녹음')) ?? null, note: Boolean(document.querySelector('.compress-note')), toast: [...document.querySelectorAll('#toasts .toast')].map(t=>t.textContent).find(t=>t.includes('압축했습니다')) ?? null })`);
+  results.push(['녹음 압축 안내', Boolean(note?.includes('689MB → 약 86MB') && note.includes('96kbps')) && !modal && declined.calls.length === 1 && !declined.note && Boolean(menuItem?.includes('689MB → 약 86MB')) && compressed.calls.length === 1 && compressed.tag === '녹음 86MB · 압축함' && !compressed.note && Boolean(compressed.toast?.includes('689MB → 86MB')),
+    `안내 ${JSON.stringify(note?.slice(0, 40))} · 모달 ${modal} · 그대로 두기 ${JSON.stringify(declined)} · 메뉴 ${JSON.stringify(menuItem)} · 압축 ${JSON.stringify(compressed)}`]);
+
   // 받아쓰기 기록: 30개씩 이어 받기(스크롤 끝), 검색은 전체에서(첫 묶음 밖의 기록도), 개수는 전체
   await js(`location.hash='#dictations'`);
   await wait(700);

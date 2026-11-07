@@ -1844,7 +1844,7 @@ function pageMeeting(id) {
   }
   let lastKey = null;
   // 회의록 진행 상태와 확인 필요 숫자(제목 아래 배지)가 바뀌면 다시 그린다
-  const stateKey = (r) => JSON.stringify([r.minutes?.status, r.minutes?.progress, r.minutes?.diarizing, r.minutes?.updatedAt, r.minutes?.title, r.review?.open, r.review?.finalized]);
+  const stateKey = (r) => JSON.stringify([r.minutes?.status, r.minutes?.progress, r.minutes?.diarizing, r.minutes?.updatedAt, r.minutes?.title, r.review?.open, r.review?.finalized, r.audio?.bytes, r.audio?.declined]); // 녹음 압축·그대로 두기도 다시 그린다
   let lineEls = [];
   let lineTimes = [];
   let playingIdx = -1;
@@ -1915,6 +1915,7 @@ function pageMeeting(id) {
             r.review.finalized ? '확정된 회의록' : r.review.open ? `초안 · 확인 ${r.review.open}개 남음` : '초안 · 확인 마치기 전'),
           s === 'done' && m.provider && h('span', { class: 'tag' }, `${PROVIDER_NAME[m.provider] ?? m.provider}로 작성`),
           m?.timing?.model && h('span', { class: 'tag' }, `Whisper ${m.timing.model}`),
+          r.audio?.bytes > 0 && h('span', { class: 'tag' }, `녹음 ${sizeLabel(r.audio.bytes)}${r.audio.compressed ? ' · 압축함' : ''}`),
           m?.diarizeError && h('span', { class: 'tag accent' }, `화자 구분 실패: ${m.diarizeError}`))),
       meetingActions(r, doc));
 
@@ -1960,6 +1961,7 @@ function pageMeeting(id) {
       head,
       order.length > 0 && speakerBar(r, order, color),
       player?.el,
+      compressNote(r),
       s !== 'done' && stateCard(r),
       tabs.length > 0 && h('div', { class: 'tabs', role: 'tablist' }, tabs.map(([tid, label, n]) =>
         h('button', { class: 'tab', role: 'tab', 'aria-selected': String(tid === tab), onclick: () => { tab = tid; draw(); } }, label, n && num(n)))),
@@ -3330,6 +3332,52 @@ function pageMeeting(id) {
       h('div', { class: 'row' }, h('label', { class: 'hint', style: 'margin:0' }, '참석 인원 '), sel, go));
   }
 
+  // 녹음 압축 (AAC 96kbps): 확인을 마친 회의에만 안내한다. 고를 때까지 늘 보이고(모달 아님), '그대로 두기'면 숨기고 … 메뉴에 남긴다.
+  // 처음 녹취·회의록·확인은 원본 WAV로 하고, 다 끝난 뒤에만 줄인다 (측정: 96kbps는 받아쓰기 결과가 원본의 흔들림 폭 안)
+  // function·var: 화면을 처음 그릴 때(이 줄보다 먼저 실행될 수 있음)도 쓸 수 있게
+  function canCompress(r) {
+    return r.minutes?.status === 'done' && r.review?.finalized && r.audio?.wav && r.audio.supported; // 32kHz 미만(가져온 전화 녹음 등)은 압축하지 않는다
+  }
+  var compressBusy = false;
+  async function runCompress(r) {
+    if (compressBusy) return;
+    compressBusy = true;
+    draw();
+    const at = audio.currentTime;
+    const playing = !audio.paused;
+    audio.pause(); // 압축하는 동안 원본을 읽고 있으면 지울 수 없다
+    try {
+      const res = await api.compressMeeting(r.dir);
+      toast('녹음을 압축했습니다', `${sizeLabel(res.before)} → ${sizeLabel(res.after)} · 재생·구간 다시 받아쓰기는 그대로 됩니다`);
+      await loadHistory();
+      const next = history.find((x) => x.id === r.id);
+      if (next?.firstFile) {
+        audio.src = `rec://m/${encodeURIComponent(next.id)}/${encodeURIComponent(next.firstFile)}`;
+        audio.currentTime = at;
+        if (playing) audio.play();
+      }
+    } catch (err) {
+      toast('압축하지 못했습니다', err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { bad: true, ms: 8000 });
+    }
+    compressBusy = false;
+    draw();
+  }
+  function compressNote(r) {
+    if (!canCompress(r) || r.audio.declined) return null;
+    return h('div', { class: 'compress-note' },
+      h('span', { class: 'compress-mark' }, icon('i-folder')),
+      h('div', { class: 'compress-text' },
+        h('b', null, '확인을 마쳤으니 녹음을 압축할까요?'),
+        h('span', null, `${sizeLabel(r.audio.bytes)} → 약 ${sizeLabel(r.audio.estimate)} (AAC 96kbps) · 재생·구간 다시 받아쓰기·녹취부터 다시 만들기는 그대로 됩니다. 원본 WAV는 지웁니다.`)),
+      h('div', { class: 'compress-acts' },
+        h('button', { class: `btn small primary${compressBusy ? ' busy' : ''}`, disabled: compressBusy, onclick: () => runCompress(r) }, compressBusy ? '압축하는 중…' : '압축하기'),
+        h('button', { class: 'btn small ghost', disabled: compressBusy, onclick: async () => {
+          await api.declineCompress(r.dir, true);
+          toast('원본 그대로 둡니다', '… 메뉴에서 언제든 압축할 수 있습니다');
+          await loadHistory();
+        } }, '그대로 두기')));
+  }
+
   function meetingActions(r, doc) {
     const s = r.minutes?.status;
     const busy = BUSY.includes(s);
@@ -3362,6 +3410,7 @@ function pageMeeting(id) {
     wrap.append(h('button', { class: 'icon-btn', 'aria-label': '더 보기', onclick: () => openMenu([
       h('button', { onclick: () => { closeMenu(); api.reveal(`${r.dir}/${r.firstFile}`); } }, icon('i-folder'), 'Finder에서 보기'),
       doc.transcript && h('button', { onclick: () => { closeMenu(); api.copy(doc.transcript); toast('원본 스크립트를 복사했습니다'); } }, icon('i-copy'), '원본 스크립트 복사'),
+      canCompress(r) && h('button', { disabled: compressBusy, onclick: () => { closeMenu(); runCompress(r); } }, icon('i-folder'), `녹음 압축하기 (${sizeLabel(r.audio.bytes)} → 약 ${sizeLabel(r.audio.estimate)})`),
       h('hr'),
       h('button', { class: 'danger', disabled: busy, onclick: async () => {
         closeMenu();

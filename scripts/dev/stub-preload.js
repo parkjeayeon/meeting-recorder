@@ -142,6 +142,15 @@ const impl = {
       asrMs: 300, cleanup: [{ provider: 'claude-code', avgMs: 2500, count: dicts.length }],
     };
   },
+  compressMeeting: async (d) => {
+    calls.compress = [...(calls.compress ?? []), d];
+    compressedIds.add(d);
+    return { before: 689e6, after: 86e6 };
+  },
+  declineCompress: async (d, declined) => {
+    calls.decline = [...(calls.decline ?? []), [d, declined]];
+    declinedIds.add(d);
+  },
   askStart: async (question, scope) => {
     calls.askStart = [...(calls.askStart ?? []), { question, scope }];
     return stubAsk(question, scope);
@@ -185,6 +194,9 @@ const impl = {
   ],
 };
 const calls = {};
+// 회의 녹음 압축 흉내: 압축한 회의·그대로 두기를 고른 회의
+const compressedIds = new Set();
+const declinedIds = new Set();
 // STUB_DICTS=75: 받아쓰기 기록 (최신순, 다섯에 하나는 영어, 70번째에만 '배포' — 첫 묶음 밖의 기록도 찾는지)
 const dicts = Array.from({ length: Number(process.env.STUB_DICTS) || 0 }, (_, i) => {
   const text = i === 70 ? '오래된 배포 메모입니다' : `받아쓴 글 ${i}번입니다`;
@@ -237,6 +249,8 @@ function manyMeetings(n) {
       summary: status === 'done' ? `${topics[i % topics.length]}에서 일정과 담당을 정리했습니다. 다음 단계와 확인할 점을 남겼습니다.` : null,
       review: status === 'done' ? { open: i % 3, total: 3, finalized: i % 3 === 0 } : null,
     });
+    const d = out.at(-1).dir;
+    out.at(-1).audio = compressedIds.has(d) ? { bytes: 86e6, wav: false, supported: true, compressed: true, estimate: 86e6, declined: false } : { bytes: 689e6, wav: true, supported: true, compressed: false, estimate: 86e6, declined: declinedIds.has(d) };
   }
   return out;
 }
