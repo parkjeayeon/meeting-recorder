@@ -1,0 +1,52 @@
+{
+  "runId": "2026-11-07T12-41-49",
+  "label": "8차: 추리기에 '조건을 모두 갖춘 회의만', 캐시 끔, Claude Code",
+  "provider": "claude-code",
+  "scope": {
+    "count": null,
+    "from": null,
+    "to": null
+  },
+  "sizes": [
+    60,
+    300
+  ],
+  "methods": [
+    "M2"
+  ],
+  "queries": [
+    "q01",
+    "q02",
+    "q03",
+    "q04",
+    "q05",
+    "q06",
+    "q07",
+    "q08",
+    "q09",
+    "q10",
+    "q11",
+    "q12",
+    "q13",
+    "q14",
+    "q15",
+    "q16",
+    "q17",
+    "q18",
+    "q19",
+    "q20",
+    "q21",
+    "q22",
+    "r1",
+    "r2",
+    "r3",
+    "r4"
+  ],
+  "real": 5,
+  "candMax": 40,
+  "snippets": 3,
+  "codexOverheadInput": 563,
+  "codexLimitBefore": 2,
+  "today": "2026-11-06",
+  "node": "v26.7.0"
+}
