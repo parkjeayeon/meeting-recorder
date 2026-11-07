@@ -74,6 +74,10 @@ describe('stampFor', () => {
     expect(stampFor({ at: '01:00', heard: '하윤님', heardNote: null, note: '' }, t)).toBe('01:00');
     expect(stampFor({ at: null, heard: null, heardNote: '없는말', note: '내용이 끊김' }, t)).toBeNull();
   });
+  it('이미 고쳐 녹취에 고칠 말이 없으면 되돌리기 기록의 고친 줄 시각', () => {
+    const undo = { 'transcript.txt': { changed: [{ from: '[1:51:44] [화자 2] 하윤님도 비슷한 얘기', to: '[1:51:44] [화자 2] 대표님도 비슷한 얘기' }], inserted: [] } };
+    expect(stampFor({ at: null, heard: '하윤님', heardNote: '하윤님', note: "'하윤님'이 대표를 가리키는지 불분명함", undo }, '[1:51:44] [화자 2] 대표님도 비슷한 얘기\n')).toBe('1:51:44');
+  });
 });
 
 describe('locateHeard', () => {

@@ -929,7 +929,8 @@ function applyReview(dir, fixes) {
         undo['script-clean.txt'].inserted.push(line);
       }
     }
-    Object.assign(item, { status: 'applied', heard, applied: guess, count, undo });
+    // 시각이 비어 있던 항목은 고치기 전 녹취로 시각을 남긴다 (고친 뒤에는 고칠 말이 녹취에 없다)
+    Object.assign(item, { status: 'applied', at: item.at ?? stampFor(item, before['transcript.txt']), heard, applied: guess, count, undo });
   }
   // 내용 파일 먼저, 기록(review.json)은 마지막에: 그 사이에 끊기면 "고쳤는데 기록이 없음"이 남고, 다시 적용하면 이어서 기록한다 (아래 resumed).
   // 반대 순서면 "기록은 있는데 안 고쳐짐"이 되어 되돌리기가 엉뚱한 줄을 건드린다

@@ -63,8 +63,14 @@ export function noteVariants(note: string | null | undefined, transcript: string
 
 // 시각이 없는 항목의 시각: 고칠 말(없으면 메모에 따옴표로 적힌 말)이 녹취에 처음 나온 줄의 시각.
 // 회의록 메모에 시각이 안 적혀 있으면 LLM이 at을 비워 둔다 ("'하윤님'이 대표를 가리키는지 불분명함")
-export function stampFor(item: Pick<ReviewItem, 'at' | 'heard' | 'heardNote' | 'note'>, transcript: string): string | null {
+// 이미 고친 항목은 녹취에 고칠 말이 없다 ('하윤님' → '대표님'으로 적용한 뒤) — 되돌리기 기록에 남은 고친 줄의 시각을 쓴다
+export function stampFor(item: Pick<ReviewItem, 'at' | 'heard' | 'heardNote' | 'note'> & { undo?: unknown }, transcript: string): string | null {
   if (item.at) return item.at;
+  const changed = (item.undo as Record<string, { changed?: { from?: string }[] }> | undefined)?.['transcript.txt']?.changed ?? [];
+  for (const c of changed) {
+    const m = /^\[([\d:]+)\]/.exec(c.from ?? '');
+    if (m) return m[1]!;
+  }
   for (const key of searchKeys(item, transcript)) {
     for (const line of transcript.split('\n')) {
       const m = /^\[([\d:]+)\]\s*(?:\[[^\]]+\]\s*)?(.*)$/.exec(line);
