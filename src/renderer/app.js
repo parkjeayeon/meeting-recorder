@@ -678,43 +678,42 @@ function homeMeetRow(r) {
     rowState(r));
 }
 
-// 녹음 공간: 원본(WAV)·압축 개수와 크기, 원본 녹음마다 크기와 압축할 수 있는지
+// 녹음 공간: 전체 크기, 원본(WAV)·압축 개수와 크기, 그리고 압축할 수 있는 녹음만 (16kHz·그대로 두기·1MB 미만 짧은 녹음은 목록에 올리지 않는다)
 function storagePanel(meets) {
   const rec = meets.filter((r) => r.audio?.bytes > 0);
   if (!rec.length) return null;
-  const wav = rec.filter((r) => r.audio.wav).sort((a, b) => b.audio.bytes - a.audio.bytes);
+  const wav = rec.filter((r) => r.audio.wav);
   const packed = rec.filter((r) => !r.audio.wav);
   const sum = (list, k = 'bytes') => list.reduce((n, r) => n + (r.audio[k] ?? 0), 0);
   const total = sum(rec);
-  const save = wav.filter((r) => r.audio.supported).reduce((n, r) => n + Math.max(0, r.audio.bytes - r.audio.estimate), 0);
-  const note = (r) => {
-    if (canCompressNow(r)) return h('span', { class: 'snote ok' }, `압축하면 약 ${sizeLabel(r.audio.estimate)}`);
-    if (!r.audio.supported) return h('span', { class: 'snote' }, '16kHz · 압축 안 함');
-    if (r.audio.declined) return h('span', { class: 'snote' }, '그대로 두기로 함');
-    if (BUSY.includes(r.minutes?.status)) return h('span', { class: 'snote' }, '회의록 만드는 중');
-    return h('span', { class: 'snote' }, r.minutes?.status === 'done' ? '확인 마치면 압축' : '회의록 뒤 압축');
-  };
-  const shown = wav.filter((r) => r.audio.bytes >= 1e6).slice(0, 6);
-  const tiny = wav.length - wav.filter((r) => r.audio.bytes >= 1e6).length;
-  const more = wav.filter((r) => r.audio.bytes >= 1e6).length - shown.length;
+  // 압축 안내는 회의록이 있는 회의에만 뜬다 → 회의록을 만드는 중이거나 만든 회의만 (짧은 녹음·실패·녹음만은 빼고)
+  const todo = wav.filter((r) => r.audio.supported && !r.audio.declined && r.audio.bytes >= 1e6 && (r.minutes?.status === 'done' || BUSY.includes(r.minutes?.status))).sort((a, b) => b.audio.bytes - a.audio.bytes);
+  const save = todo.reduce((n, r) => n + Math.max(0, r.audio.bytes - r.audio.estimate), 0);
+  const keep = wav.length - todo.length; // 압축하지 않는 원본 (16kHz·그대로 두기·짧은 녹음)
+  const shown = todo.slice(0, 6);
   return homeSection('녹음 공간', null, h('div', { class: 'store' },
     h('div', { class: 'store-sum' },
       h('b', null, num(sizeLabel(total))),
       h('span', null, `원본 WAV ${wav.length}개 ${sizeLabel(sum(wav))} · 압축 ${packed.length}개${packed.length ? ` ${sizeLabel(sum(packed))}` : ''}`)),
-    // 막대: 압축한 것 · 원본 중 압축해도 남는 크기 · 압축하면 줄어드는 크기 (원본뿐이어도 무엇을 얻을 수 있는지 보이게)
-    h('div', { class: 'store-bar', role: 'img', 'aria-label': `압축 ${sizeLabel(sum(packed))}, 원본 중 남는 크기 ${sizeLabel(sum(wav) - save)}, 줄일 수 있는 크기 ${sizeLabel(save)}` },
+    // 막대: 압축한 것 · 원본 중 압축해도 남는 크기 · 압축하면 줄어드는 크기
+    h('div', { class: 'store-bar', role: 'img', 'aria-label': `압축 ${sizeLabel(sum(packed))}, 원본 ${sizeLabel(sum(wav) - save)}${save ? `, 압축하면 줄어드는 크기 ${sizeLabel(save)}` : ''}` },
       packed.length > 0 && h('i', { class: 'aac', style: `flex:${sum(packed)}` }),
-      h('i', { class: 'wav', style: `flex:${sum(wav) - save}` }),
+      wav.length > 0 && h('i', { class: 'wav', style: `flex:${sum(wav) - save}` }),
       save > 0 && h('i', { class: 'save', style: `flex:${save}` })),
     h('div', { class: 'store-legend' },
       packed.length > 0 && h('span', null, h('i', { class: 'aac' }), '압축함'),
-      h('span', null, h('i', { class: 'wav' }), '원본'),
-      save > 0 && h('span', { title: '확인을 마친 회의에서 AAC 96kbps로 압축할 수 있습니다 (16kHz 녹음 제외)' }, h('i', { class: 'save' }), `압축하면 약 ${sizeLabel(save)} 줄어듦`)),
-    shown.length > 0 && h('div', { class: 'store-list' }, shown.map((r) =>
-      h('a', { class: 'srow', href: `#meeting/${encodeURIComponent(r.id)}` },
-        h('span', { class: 'sname' }, h('b', null, meetTitle(r)), h('span', null, `${dayLabel(r.startedAt)} · ${clock(r.durationSec)}`)),
-        h('span', { class: 'ssize' }, num(sizeLabel(r.audio.bytes)), note(r))))),
-    (more > 0 || tiny > 0) && h('p', { class: 'store-foot' }, [more > 0 && `외 ${more}개`, tiny > 0 && `1MB 미만 짧은 녹음 ${tiny}개`].filter(Boolean).join(' · '))));
+      wav.length > 0 && h('span', null, h('i', { class: 'wav' }), '원본'),
+      save > 0 && h('span', null, h('i', { class: 'save' }), `압축하면 약 ${sizeLabel(save)} 줄어듦`)),
+    todo.length
+      ? h('div', { class: 'store-list' },
+        h('p', { class: 'store-cap' }, `압축할 수 있는 녹음 ${todo.length}개`),
+        shown.map((r) => h('a', { class: 'srow', href: `#meeting/${encodeURIComponent(r.id)}` },
+          h('span', { class: 'sname' }, h('b', null, meetTitle(r)), h('span', null, `${dayLabel(r.startedAt)} · ${clock(r.durationSec)}`)),
+          h('span', { class: 'ssize' }, num(sizeLabel(r.audio.bytes)),
+            h('span', { class: `snote${canCompressNow(r) ? ' ok' : ''}` }, canCompressNow(r) ? `지금 압축 → 약 ${sizeLabel(r.audio.estimate)}` : BUSY.includes(r.minutes?.status) ? '회의록 만드는 중' : `확인 마치면 → 약 ${sizeLabel(r.audio.estimate)}`)))),
+        todo.length > shown.length && h('p', { class: 'store-foot' }, `외 ${todo.length - shown.length}개`))
+      : h('div', { class: 'todo-empty' }, icon('i-check'), '압축할 녹음이 없습니다'),
+    keep > 0 && h('p', { class: 'store-foot' }, `원본 ${keep}개는 압축하지 않습니다 — 16kHz 녹음·그대로 두기로 고른 것·회의록이 없는 녹음`)));
 }
 
 function pageHome() {

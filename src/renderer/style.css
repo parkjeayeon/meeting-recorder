@@ -384,6 +384,7 @@ code { font: 12px var(--mono); padding: 1px 5px; border-radius: 5px; background:
 .ssize .num { font-size: 13px; font-weight: 600; color: var(--ink); }
 .snote { font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
 .snote.ok { color: var(--ok); }
+.store-cap { margin: 2px 0 0; font-size: 12px; font-weight: 600; color: var(--ink-2); }
 .store-foot { margin: 0; font-size: 12px; line-height: 1.5; color: var(--ink-3); }
 
 /* 회의 카드 */
