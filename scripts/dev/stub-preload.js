@@ -38,10 +38,11 @@ const noop = () => {};
 const impl = {
   info: async () => ({ recordingsDir: '/Users/me/Documents/MeetingRecorder', defaultRecordingsDir: '/Users/me/Documents/MeetingRecorder' }),
   history: async () => {
-    if (!meeting) return manyMeetings(Number(process.env.STUB_MANY) || 0);
+    const memos = process.env.STUB_HISTORY_DICTS ? dicts.slice(0, 30) : []; // 실제 본체처럼 최근 받아쓰기도 같이 (홈 캡처용)
+    if (!meeting) return [...manyMeetings(Number(process.env.STUB_MANY) || 0), ...memos];
     const items = JSON.parse(read('review.json') ?? '{"items":[]}').items;
     const first = { ...meeting, review: { open: items.filter((it) => it.status === 'open').length, total: items.length, finalized: false } };
-    return [first, ...manyMeetings(Number(process.env.STUB_MANY) || 0)];
+    return [first, ...manyMeetings(Number(process.env.STUB_MANY) || 0), ...memos];
   },
   // 확인 필요 채팅: 늘 같은 제안을 돌려주고, 적용하면 review.json의 상태를 바꾼다
   // '띄어쓰기'가 든 말에는 녹취에서 그대로 찾지 못한 제안(unmatched)을 돌려준다 — 예전에는 조용히 버려 적용 버튼이 없었다

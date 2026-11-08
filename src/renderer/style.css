@@ -314,7 +314,8 @@ code { font: 12px var(--mono); padding: 1px 5px; border-radius: 5px; background:
 .home-main, .home-side { display: flex; flex-direction: column; gap: 36px; min-width: 0; }
 .home-jobs .job:first-child { margin-top: 0; }
 .hsec .section-head { margin-bottom: 10px; }
-@media (max-width: 980px) { .home-grid { grid-template-columns: minmax(0, 1fr); } }
+.home-side { position: sticky; top: 24px; } /* 왼쪽(할 일)이 길어져도 녹음 공간이 따라와 아래가 비어 보이지 않게 */
+@media (max-width: 980px) { .home-grid { grid-template-columns: minmax(0, 1fr); } .home-side { position: static; } }
 
 /* 챙길 일: 줄마다 개수 → 무엇 → 어디로 */
 .todo { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }

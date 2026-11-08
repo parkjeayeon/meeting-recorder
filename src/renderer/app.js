@@ -709,13 +709,12 @@ function storagePanel(meets) {
     h('div', { class: 'store-legend' },
       packed.length > 0 && h('span', null, h('i', { class: 'aac' }), '압축함'),
       h('span', null, h('i', { class: 'wav' }), '원본'),
-      save > 0 && h('span', null, h('i', { class: 'save' }), `압축하면 줄어드는 크기 약 ${sizeLabel(save)}`)),
+      save > 0 && h('span', { title: '확인을 마친 회의에서 AAC 96kbps로 압축할 수 있습니다 (16kHz 녹음 제외)' }, h('i', { class: 'save' }), `압축하면 약 ${sizeLabel(save)} 줄어듦`)),
     shown.length > 0 && h('div', { class: 'store-list' }, shown.map((r) =>
       h('a', { class: 'srow', href: `#meeting/${encodeURIComponent(r.id)}` },
         h('span', { class: 'sname' }, h('b', null, meetTitle(r)), h('span', null, `${dayLabel(r.startedAt)} · ${clock(r.durationSec)}`)),
         h('span', { class: 'ssize' }, num(sizeLabel(r.audio.bytes)), note(r))))),
-    (more > 0 || tiny > 0) && h('p', { class: 'store-foot' }, [more > 0 && `외 ${more}개`, tiny > 0 && `1MB 미만 짧은 녹음 ${tiny}개`].filter(Boolean).join(' · ')),
-    save > 0 && h('p', { class: 'store-foot' }, '확인을 마친 회의에서 압축할 수 있습니다 (AAC 96kbps, 16kHz 녹음 제외)')));
+    (more > 0 || tiny > 0) && h('p', { class: 'store-foot' }, [more > 0 && `외 ${more}개`, tiny > 0 && `1MB 미만 짧은 녹음 ${tiny}개`].filter(Boolean).join(' · '))));
 }
 
 function pageHome() {
@@ -749,15 +748,16 @@ function pageHome() {
         h('div', { class: 'home-main' },
           busy.length > 0 && h('div', { class: 'home-jobs' }, busy.map(jobCard)),
           homeSection('챙길 일', null, homeTodo(meets)),
-          recentMeets.length > 0 && homeSection('최근 회의', ['#meetings', '모두 보기'], h('div', { class: 'hrows' }, recentMeets.map(homeMeetRow)))),
+          recentMeets.length > 0 && homeSection('최근 회의', ['#meetings', '모두 보기'], h('div', { class: 'hrows' }, recentMeets.map(homeMeetRow))),
+          // 받아쓰기는 글이 길어 넓은 왼쪽에 (오른쪽 좁은 칸에선 줄마다 두세 번 꺾였다)
+          recentDicts.length > 0 && homeSection('최근 받아쓰기', ['#dictations', '모두 보기'], h('div', { class: 'dlist' }, recentDicts.map((r) => dictItem(r, { compact: true }))))),
         h('aside', { class: 'home-side' },
           !steps.every((s) => s.done) && homeSection('시작하기', null, h('ol', { class: 'checklist' }, steps.map((s) =>
             h('li', { class: s.done ? 'done' : '' },
               h('span', { class: 'ck' }, s.done && icon('i-check')),
               h('span', { class: 'ck-text' }, h('b', null, s.title), h('span', null, s.text)),
               !s.done && h('button', { class: 'btn small', onclick: s.on }, s.action))))),
-          storagePanel(meets),
-          recentDicts.length > 0 && homeSection('최근 받아쓰기', ['#dictations', '모두 보기'], h('div', { class: 'dlist' }, recentDicts.map((r) => dictItem(r, { compact: true })))))),
+          storagePanel(meets))),
     );
   };
   update();
