@@ -649,6 +649,15 @@ function flowWithNames(d, names) {
 ipcMain.handle('flow:make', (_e, dir, focus) => flowMod.makeFlows(recordingDir(dir), { focus }));
 ipcMain.handle('flow:remake', (_e, dir, id, instruction) => flowMod.remakeFlow(recordingDir(dir), id, instruction));
 ipcMain.handle('flow:remove', (_e, dir, id) => flowMod.removeFlow(recordingDir(dir), id));
+// 흐름도를 SVG 파일로: 저장할 곳은 사용자가 고른다 (기본은 다운로드 폴더, 이름은 흐름도 제목). 고르지 않으면 null
+ipcMain.handle('flow:saveSvg', async (_e, name, svg) => {
+  if (typeof svg !== 'string' || !svg.startsWith('<?xml') || svg.length > 20 * 1024 * 1024) throw new Error('저장할 그림이 올바르지 않습니다');
+  const safe = String(name ?? '흐름도').replace(/[\\/:*?"<>|\n\r]+/g, ' ').trim().slice(0, 80) || '흐름도';
+  const { canceled, filePath } = await dialog.showSaveDialog(win, { defaultPath: path.join(app.getPath('downloads'), `${safe}.svg`), filters: [{ name: 'SVG 그림', extensions: ['svg'] }] });
+  if (canceled || !filePath) return null;
+  fs.writeFileSync(filePath, svg);
+  return filePath;
+});
 ipcMain.handle('flow:chat', (_e, dir, id, messages) => flowMod.chatFlow(recordingDir(dir), id, messages));
 ipcMain.handle('flow:apply', (_e, dir, id, revision) => flowMod.applyRevision(recordingDir(dir), id, revision));
 function glossaryWithNames(d, names) {

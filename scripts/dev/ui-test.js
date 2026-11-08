@@ -385,6 +385,22 @@ app.whenReady().then(async () => {
   const went = await js(`({ hash: location.hash, pressed: document.querySelector('.chips .chip[aria-pressed="true"]')?.textContent ?? null })`);
   results.push(['홈 챙길 일·녹음 공간', home.todo.some((t) => t.startsWith('확인할 회의')) && Boolean(home.sum?.startsWith('원본 WAV')) && home.sizes.includes('689MB') && went.hash === '#meetings' && Boolean(went.pressed?.startsWith('확인할 회의')),
     JSON.stringify({ home, went })]);
+  // 흐름도 SVG 저장: 색·글꼴을 요소마다 박고(클래스·CSS 변수 없이) 배경을 깐 한 장 (흐름도는 이 시험 동안만 둔다)
+  fs.writeFileSync(path.join(meeting, 'flow.json'), JSON.stringify({ flows: [{
+    id: 'f1', title: '배포 절차', summary: 'QA 뒤 배포', lanes: [],
+    steps: [{ id: 's1', title: 'QA', detail: '결제만 확인', at: '00:02', quote: '배포 일정' }, { id: 's2', title: '배포', detail: '화요일 오전', at: '00:06', quote: '화요일 오전' }],
+    edges: [{ from: 's1', to: 's2' }], notes: [], annotations: [],
+  }], handoff: null }));
+  await js(`location.hash='#meeting/${id}'`);
+  await wait(500);
+  await js(`window.stubMeetingChanged(${JSON.stringify(id)})`);
+  await wait(700);
+  await js(`[...document.querySelectorAll('.flow-acts button')].find(b=>b.textContent.includes('SVG'))?.click()`);
+  await wait(400);
+  const svgOut = await js(`(() => { const c = window.stubCalls().saveSvg; if (!c) return null; const d = new DOMParser().parseFromString(c.svg, 'image/svg+xml'); return { name: c.name, xml: c.svg.startsWith('<?xml'), ns: d.documentElement.namespaceURI, svgs: d.querySelectorAll('svg').length, cls: c.svg.includes('class='), vars: c.svg.includes('var(--'), bg: d.documentElement.firstElementChild?.tagName, fill: /fill:\\s*rgb/.test(c.svg), title: c.svg.includes('결제만 확인'), err: Boolean(d.querySelector('parsererror')) }; })()`);
+  fs.rmSync(path.join(meeting, 'flow.json'), { force: true });
+  await js(`window.stubMeetingChanged(${JSON.stringify(id)})`);
+  results.push(['흐름도 SVG 저장', Boolean(svgOut) && svgOut.name === '배포 절차' && svgOut.xml && svgOut.ns === 'http://www.w3.org/2000/svg' && svgOut.svgs === 1 && !svgOut.cls && !svgOut.vars && svgOut.bg === 'rect' && svgOut.fill && svgOut.title && !svgOut.err, JSON.stringify(svgOut)]);
   // 회의록 할 일 줄: 체크박스와 글이 한 줄, 테두리 없음 (홈 '챙길 일'의 클래스가 li.todo와 겹쳐 줄마다 상자가 됐던 것)
   await js(`location.hash='#meeting/${id}'`);
   await wait(700);

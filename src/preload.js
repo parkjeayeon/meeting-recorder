@@ -69,6 +69,7 @@ contextBridge.exposeInMainWorld('recorderApi', {
   makeFlow: (dir, focus) => ipcRenderer.invoke('flow:make', dir, focus),
   remakeFlow: (dir, id, instruction) => ipcRenderer.invoke('flow:remake', dir, id, instruction),
   removeFlow: (dir, id) => ipcRenderer.invoke('flow:remove', dir, id),
+  saveFlowSvg: (name, svg) => ipcRenderer.invoke('flow:saveSvg', name, svg),
   chatFlow: (dir, id, messages) => ipcRenderer.invoke('flow:chat', dir, id, messages),
   applyFlow: (dir, id, revision) => ipcRenderer.invoke('flow:apply', dir, id, revision),
   explainTerm: (dir, term) => ipcRenderer.invoke('glossary:explain', dir, term),

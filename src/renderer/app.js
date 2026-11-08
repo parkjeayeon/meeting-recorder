@@ -2624,6 +2624,29 @@ function pageMeeting(id) {
         col(`${hd.from ?? '넘기는 사람'}이 넘겨줄 것`, 'give', hd.give), col(`${hd.to ?? '받는 사람'}이 할 일`, 'todo', hd.todo), col('정해진 것', 'decided', hd.decided)));
   }
 
+  // 흐름도를 SVG 파일 내용으로: 화면은 색을 CSS 변수·클래스로 칠해서 그대로 저장하면 색이 빠진다 → 실제 색·글꼴을 요소마다 박고 배경을 깐다.
+  // 화면이 좁아 나눠 그린 흐름도도 저장은 한 장으로. 지금 테마(라이트·다크)의 색으로 저장한다
+  const SVG_PROPS = ['fill', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-dasharray', 'stroke-linecap', 'stroke-linejoin', 'opacity', 'font-family', 'font-size', 'font-weight', 'text-anchor', 'dominant-baseline'];
+  function flowSvgFile(r, f) {
+    const svg = flowSvgH(r, f);
+    const host = h('div', { style: 'position:fixed;left:-100000px;top:0;visibility:hidden', 'aria-hidden': 'true' }, svg);
+    document.body.append(host);
+    const out = svg.cloneNode(true);
+    const src = [svg, ...svg.querySelectorAll('*')];
+    const dst = [out, ...out.querySelectorAll('*')];
+    src.forEach((el, i) => {
+      const cs = getComputedStyle(el);
+      dst[i].removeAttribute('class');
+      dst[i].setAttribute('style', SVG_PROPS.map((p) => `${p}:${cs.getPropertyValue(p)}`).join(';'));
+    });
+    const bg = getComputedStyle(host.closest('body')).getPropertyValue('--panel').trim() || '#ffffff';
+    host.remove();
+    out.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    out.removeAttribute('role');
+    out.insertBefore(svgEl('rect', { width: '100%', height: '100%', fill: bg }), out.firstChild);
+    return `<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(out)}\n`;
+  }
+
   function flowCard(r, f) {
     const remakeKey = `${r.dir}|흐름도 다시|${f.id}`;
     const remake = markBusy(h('button', { class: 'btn small ghost', onclick: async () => {
@@ -2644,6 +2667,14 @@ function pageMeeting(id) {
         h('span', { class: 'tc-badge guess', title: '단계·메모는 LLM이 정리했고, 각 항목의 녹취 인용이 실제로 있는지 앱이 확인했습니다' }, 'LLM 정리 · 녹취로 확인'),
         h('div', { class: 'flow-acts' },
           h('button', { class: 'btn small ghost', onclick: () => openFlowChat(f.id) }, icon('i-chat'), '채팅'),
+          h('button', { class: 'btn small ghost', title: '흐름도를 SVG 그림 파일로 저장', onclick: async () => {
+            try {
+              const saved = await api.saveFlowSvg(f.title, flowSvgFile(r, f));
+              if (saved) toast('SVG로 저장했습니다', saved.split('/').pop(), { action: 'Finder에서 보기', onAction: () => api.reveal(saved) });
+            } catch (err) {
+              toast('저장하지 못했습니다', err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { bad: true });
+            }
+          } }, icon('i-download'), 'SVG'),
           remake,
           h('button', { class: 'btn small ghost', onclick: async () => {
             await api.removeFlow(r.dir, f.id);

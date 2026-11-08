@@ -35,6 +35,7 @@ const stubSpeech = () => {
   return { turns, missing: [{ start: 600, end: 680 }, { start: 1340, end: 1360 }] };
 };
 const noop = () => {};
+let meetingChangedCb = noop;
 const impl = {
   info: async () => ({ recordingsDir: '/Users/me/Documents/MeetingRecorder', defaultRecordingsDir: '/Users/me/Documents/MeetingRecorder' }),
   history: async () => {
@@ -104,6 +105,13 @@ const impl = {
     if (patch.remove) g.terms = g.terms.filter((t) => t.id !== id);
     fs.writeFileSync(path.join(dir, 'glossary.json'), JSON.stringify(g));
     return g;
+  },
+  // 회의 파일이 바뀐 소식 (화면 시험이 window.stubMeetingChanged(id)로 보낸다 — 시험 중에 파일을 바꾼 뒤 다시 읽게)
+  onMeetingChanged: (cb) => (meetingChangedCb = cb),
+  // 흐름도 SVG 저장: 저장 창 없이 받은 내용을 기록한다
+  saveFlowSvg: async (name, svg) => {
+    calls.saveSvg = { name, svg };
+    return `/tmp/stub/${name}.svg`;
   },
   // 오래 걸리는 LLM 작업 흉내 (화면 테스트가 진행 중 표시·중복 실행을 본다)
   makeActions: async () => {
@@ -272,3 +280,4 @@ const api = {};
 for (const k of keys) api[k] = impl[k] ?? (k.startsWith('on') ? noop : async () => null);
 contextBridge.exposeInMainWorld('recorderApi', api);
 contextBridge.exposeInMainWorld('stubCalls', () => ({ ...calls }));
+contextBridge.exposeInMainWorld('stubMeetingChanged', (id) => meetingChangedCb({ id }));
