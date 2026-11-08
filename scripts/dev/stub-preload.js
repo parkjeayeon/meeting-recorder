@@ -252,7 +252,12 @@ function manyMeetings(n) {
       review: status === 'done' ? { open: i % 3, total: 3, finalized: i % 3 === 0 } : null,
     });
     const d = out.at(-1).dir;
-    out.at(-1).audio = compressedIds.has(d) ? { bytes: 86e6, wav: false, supported: true, compressed: true, estimate: 86e6, declined: false } : { bytes: 689e6, wav: true, supported: true, compressed: false, estimate: 86e6, declined: declinedIds.has(d) };
+    // 녹음 크기는 길이에 맞게 (48kHz WAV 초당 96KB, 넷째마다 16kHz 가져온 녹음 — 압축 안 함). 첫 회의는 화면 시험이 보는 689MB
+    const sec = out.at(-1).durationSec;
+    const low = i % 4 === 3;
+    out.at(-1).audio = compressedIds.has(d) ? { bytes: i === 0 ? 86e6 : sec * 12e3, wav: false, supported: true, compressed: true, estimate: 86e6, declined: false }
+      : i === 0 ? { bytes: 689e6, wav: true, supported: true, compressed: false, estimate: 86e6, declined: declinedIds.has(d) }
+      : { bytes: sec * (low ? 32e3 : 96e3), wav: true, supported: !low, compressed: false, estimate: sec * 12e3, declined: declinedIds.has(d) };
   }
   return out;
 }

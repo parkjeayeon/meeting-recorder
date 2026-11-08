@@ -632,8 +632,94 @@ function dictStats(items = dictations(), { local = false } = {}) {
   };
 }
 
+// 홈: 왼쪽은 할 일(만드는 중 → 챙길 일 → 최근 회의), 오른쪽은 살펴볼 것(시작하기 → 녹음 공간 → 최근 받아쓰기).
+// 처음 만들 땐 회의가 없어 안내 카드뿐이었다 — 이제는 쌓인 회의에서 손이 갈 곳을 먼저 보인다
+let meetFilterPending = null; // 홈에서 회의 화면으로 가면서 고를 갈래
+function openMeetings(filter) {
+  meetFilterPending = filter;
+  location.hash = '#meetings';
+}
+const canCompressNow = (r) => r.minutes?.status === 'done' && r.review?.finalized && r.audio?.wav && r.audio.supported && !r.audio.declined;
+
+function homeSection(title, more, body) {
+  return h('section', { class: 'hsec' },
+    h('div', { class: 'section-head' }, h('h2', null, title), more && h('a', { href: more[0] }, more[1])),
+    body);
+}
+
+function homeTodo(meets) {
+  const rows = [];
+  const hand = meets.filter((r) => ['open', 'draft'].includes(meetState(r)));
+  if (hand.length) {
+    const names = hand.slice(0, 2).map(meetTitle).join(' · ') + (hand.length > 2 ? ` 외 ${hand.length - 2}개` : '');
+    rows.push({ mark: 'open', n: hand.length, title: '확인할 회의', sub: names, on: () => openMeetings('hand') });
+  }
+  const rest = meets.filter((r) => ['fail', 'none'].includes(meetState(r)));
+  if (rest.length) rows.push({ mark: 'fail', n: rest.length, title: '회의록이 없는 녹음', sub: '실패했거나 녹음만 저장된 회의 — 다시 만들 수 있습니다', on: () => openMeetings('rest') });
+  const ready = meets.filter(canCompressNow);
+  if (ready.length) {
+    const sum = (k) => ready.reduce((n, r) => n + (r.audio[k] ?? 0), 0);
+    rows.push({ mark: 'ok', n: ready.length, title: '압축할 수 있는 녹음', sub: `확인을 마친 회의 · ${sizeLabel(sum('bytes'))} → 약 ${sizeLabel(sum('estimate'))}`, on: () => (location.hash = `#meeting/${encodeURIComponent(ready[0].id)}`) });
+  }
+  if (strays.length) rows.push({ mark: 'plain', n: strays.length, title: '목록에 없는 폴더', sub: '녹음 폴더에 회의로 열리지 않는 폴더가 있습니다 — 지울지 골라 주세요', on: () => openMeetings('all') });
+  if (!rows.length) return h('div', { class: 'todo-empty' }, icon('i-check'), '챙길 일이 없습니다');
+  return h('div', { class: 'todo' }, rows.map((t) =>
+    h('button', { class: `todo-row ${t.mark}`, onclick: t.on },
+      h('span', { class: 'todo-n' }, num(t.n)),
+      h('span', { class: 'todo-text' }, h('b', null, t.title), h('span', null, t.sub)),
+      icon('i-right'))));
+}
+
+function homeMeetRow(r) {
+  const d = new Date(r.startedAt);
+  return h('a', { class: 'hrow', href: `#meeting/${encodeURIComponent(r.id)}` },
+    h('span', { class: 'hrow-day' }, h('b', null, num(`${d.getMonth() + 1}.${String(d.getDate()).padStart(2, '0')}`)), h('span', null, WEEKDAY[d.getDay()])),
+    h('span', { class: 'hrow-text' }, h('b', null, meetTitle(r)), h('span', null, `${TIME.format(d)} · ${clock(r.durationSec)}${r.minutes?.speakers ? ` · 화자 ${r.minutes.speakers}명` : ''}`)),
+    rowState(r));
+}
+
+// 녹음 공간: 원본(WAV)·압축 개수와 크기, 원본 녹음마다 크기와 압축할 수 있는지
+function storagePanel(meets) {
+  const rec = meets.filter((r) => r.audio?.bytes > 0);
+  if (!rec.length) return null;
+  const wav = rec.filter((r) => r.audio.wav).sort((a, b) => b.audio.bytes - a.audio.bytes);
+  const packed = rec.filter((r) => !r.audio.wav);
+  const sum = (list, k = 'bytes') => list.reduce((n, r) => n + (r.audio[k] ?? 0), 0);
+  const total = sum(rec);
+  const save = wav.filter((r) => r.audio.supported).reduce((n, r) => n + Math.max(0, r.audio.bytes - r.audio.estimate), 0);
+  const note = (r) => {
+    if (canCompressNow(r)) return h('span', { class: 'snote ok' }, `압축하면 약 ${sizeLabel(r.audio.estimate)}`);
+    if (!r.audio.supported) return h('span', { class: 'snote' }, '16kHz · 압축 안 함');
+    if (r.audio.declined) return h('span', { class: 'snote' }, '그대로 두기로 함');
+    if (BUSY.includes(r.minutes?.status)) return h('span', { class: 'snote' }, '회의록 만드는 중');
+    return h('span', { class: 'snote' }, r.minutes?.status === 'done' ? '확인 마치면 압축' : '회의록 뒤 압축');
+  };
+  const shown = wav.filter((r) => r.audio.bytes >= 1e6).slice(0, 6);
+  const tiny = wav.length - wav.filter((r) => r.audio.bytes >= 1e6).length;
+  const more = wav.filter((r) => r.audio.bytes >= 1e6).length - shown.length;
+  return homeSection('녹음 공간', null, h('div', { class: 'store' },
+    h('div', { class: 'store-sum' },
+      h('b', null, num(sizeLabel(total))),
+      h('span', null, `원본 WAV ${wav.length}개 ${sizeLabel(sum(wav))} · 압축 ${packed.length}개${packed.length ? ` ${sizeLabel(sum(packed))}` : ''}`)),
+    // 막대: 압축한 것 · 원본 중 압축해도 남는 크기 · 압축하면 줄어드는 크기 (원본뿐이어도 무엇을 얻을 수 있는지 보이게)
+    h('div', { class: 'store-bar', role: 'img', 'aria-label': `압축 ${sizeLabel(sum(packed))}, 원본 중 남는 크기 ${sizeLabel(sum(wav) - save)}, 줄일 수 있는 크기 ${sizeLabel(save)}` },
+      packed.length > 0 && h('i', { class: 'aac', style: `flex:${sum(packed)}` }),
+      h('i', { class: 'wav', style: `flex:${sum(wav) - save}` }),
+      save > 0 && h('i', { class: 'save', style: `flex:${save}` })),
+    h('div', { class: 'store-legend' },
+      packed.length > 0 && h('span', null, h('i', { class: 'aac' }), '압축함'),
+      h('span', null, h('i', { class: 'wav' }), '원본'),
+      save > 0 && h('span', null, h('i', { class: 'save' }), `압축하면 줄어드는 크기 약 ${sizeLabel(save)}`)),
+    shown.length > 0 && h('div', { class: 'store-list' }, shown.map((r) =>
+      h('a', { class: 'srow', href: `#meeting/${encodeURIComponent(r.id)}` },
+        h('span', { class: 'sname' }, h('b', null, meetTitle(r)), h('span', null, `${dayLabel(r.startedAt)} · ${clock(r.durationSec)}`)),
+        h('span', { class: 'ssize' }, num(sizeLabel(r.audio.bytes)), note(r))))),
+    (more > 0 || tiny > 0) && h('p', { class: 'store-foot' }, [more > 0 && `외 ${more}개`, tiny > 0 && `1MB 미만 짧은 녹음 ${tiny}개`].filter(Boolean).join(' · ')),
+    save > 0 && h('p', { class: 'store-foot' }, '확인을 마친 회의에서 압축할 수 있습니다 (AAC 96kbps, 16kHz 녹음 제외)')));
+}
+
 function pageHome() {
-  const el = h('div', { class: 'page' });
+  const el = h('div', { class: 'page home' });
   const update = () => {
     const st = dictStats();
     const meets = meetings();
@@ -647,31 +733,31 @@ function pageHome() {
     if (todayMeets.length) line.append(' · 오늘 회의 ', h('b', null, num(todayMeets.length), '건'));
 
     const busy = meets.filter((m) => BUSY.includes(m.minutes?.status));
-    const recentMeets = meets.filter((m) => BUSY.includes(m.minutes?.status) || (m.minutes?.status === 'done' && m.durationSec >= 60)).slice(0, 4); // 몇 초짜리 시험 녹음은 홈에 올리지 않는다
-    const recentDicts = dictations().slice(0, 5);
-    const doneMeeting = meets.some((m) => m.minutes?.status === 'done');
+    const recentMeets = meets.filter((m) => !['short', 'empty', 'busy'].includes(meetState(m))).slice(0, 5); // 몇 초짜리 시험 녹음은 홈에 올리지 않는다
+    const recentDicts = dictations().slice(0, 4);
     const permsOk = ![...issues.values()].some((i) => i.sec === 'perms');
     const steps = [
-      { done: permsOk, title: '권한 허용', text: '마이크, 입력 모니터링, 손쉬운 사용 권한이 있어야 fn 받아쓰기가 됩니다.', action: '권한 보기', on: () => openSettings('perms') },
-      { done: dictations().length > 0, title: 'fn으로 받아쓰기', text: '아무 입력칸에 커서를 두고 fn을 꾹 누른 채 말한 뒤 떼세요.', action: '설정 보기', on: () => openSettings('general') },
-      { done: doneMeeting, title: '회의 녹음', text: '회의를 시작할 때 위쪽 회의 녹음을 누르면, 끝난 뒤 회의록이 만들어집니다.', action: '지금 녹음 시작', on: openMeetingStart },
+      { done: permsOk, title: '권한 허용', text: '마이크·입력 모니터링·손쉬운 사용', action: '권한 보기', on: () => openSettings('perms') },
+      { done: dictations().length > 0, title: 'fn으로 받아쓰기', text: '입력칸에서 fn을 꾹 누른 채 말하고 떼기', action: '설정 보기', on: () => openSettings('general') },
+      { done: meets.some((m) => m.minutes?.status === 'done'), title: '회의 녹음', text: '위쪽 회의 녹음 → 끝나면 회의록', action: '녹음 시작', on: openMeetingStart },
     ];
 
-    fill(el, 
+    fill(el,
       h('header', { class: 'hello' }, h('h1', null, greeting()), line),
       issueList(),
-      busy.length > 0 && h('div', { class: 'section' }, busy.map(jobCard)),
-      !steps.every((s) => s.done) && h('div', { class: 'start' }, steps.map((s, i) =>
-        h('div', { class: `step${s.done ? ' done' : ''}` },
-          h('span', { class: 'step-n' }, s.done ? icon('i-check') : String(i + 1)),
-          h('b', null, s.title), h('p', null, s.text),
-          !s.done && h('button', { class: 'btn small', onclick: s.on }, s.action)))),
-      recentMeets.length > 0 && h('section', { class: 'section' },
-        h('div', { class: 'section-head' }, h('h2', null, '최근 회의'), h('a', { href: '#meetings' }, '모두 보기')),
-        h('div', { class: 'mgrid' }, recentMeets.map(meetingCard))),
-      recentDicts.length > 0 && h('section', { class: 'section' },
-        h('div', { class: 'section-head' }, h('h2', null, '최근 받아쓰기'), h('a', { href: '#dictations' }, '모두 보기')),
-        h('div', { class: 'dlist' }, recentDicts.map((r) => dictItem(r, { compact: true })))),
+      h('div', { class: 'home-grid' },
+        h('div', { class: 'home-main' },
+          busy.length > 0 && h('div', { class: 'home-jobs' }, busy.map(jobCard)),
+          homeSection('챙길 일', null, homeTodo(meets)),
+          recentMeets.length > 0 && homeSection('최근 회의', ['#meetings', '모두 보기'], h('div', { class: 'hrows' }, recentMeets.map(homeMeetRow)))),
+        h('aside', { class: 'home-side' },
+          !steps.every((s) => s.done) && homeSection('시작하기', null, h('ol', { class: 'checklist' }, steps.map((s) =>
+            h('li', { class: s.done ? 'done' : '' },
+              h('span', { class: 'ck' }, s.done && icon('i-check')),
+              h('span', { class: 'ck-text' }, h('b', null, s.title), h('span', null, s.text)),
+              !s.done && h('button', { class: 'btn small', onclick: s.on }, s.action))))),
+          storagePanel(meets),
+          recentDicts.length > 0 && homeSection('최근 받아쓰기', ['#dictations', '모두 보기'], h('div', { class: 'dlist' }, recentDicts.map((r) => dictItem(r, { compact: true })))))),
     );
   };
   update();
@@ -1182,8 +1268,9 @@ function scrollSpy(root, nav) {
 
 function pageMeetings() {
   let q = '';
-  let filter = askPending ? `ask:${askPending}` : 'all'; // 둥근 버튼의 알림·채팅에서 '보기'로 들어오면 그 질문 탭
+  let filter = askPending ? `ask:${askPending}` : meetFilterPending ?? 'all'; // 둥근 버튼의 알림·채팅에서 '보기'로 들어오면 그 질문 탭, 홈의 챙길 일에서 오면 그 갈래
   askPending = null;
+  meetFilterPending = null;
   const FILTERS = [
     ['all', '전체', () => true],
     ['final', '확인 완료', (r) => ['done', 'plain'].includes(meetState(r))],

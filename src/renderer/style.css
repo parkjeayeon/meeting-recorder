@@ -308,6 +308,83 @@ code { font: 12px var(--mono); padding: 1px 5px; border-radius: 5px; background:
 .step b { display: block; margin: 12px 0 4px; font-weight: 650; }
 .step p { margin: 0 0 12px; color: var(--ink-2); font-size: 13px; }
 
+/* 홈 그리드: 왼쪽 할 일, 오른쪽 살펴볼 것. 좁으면 한 줄 */
+.page.home { max-width: 1180px; }
+.home-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(280px, 1fr); gap: 20px 48px; margin-top: 32px; align-items: start; }
+.home-main, .home-side { display: flex; flex-direction: column; gap: 36px; min-width: 0; }
+.home-jobs .job:first-child { margin-top: 0; }
+.hsec .section-head { margin-bottom: 10px; }
+@media (max-width: 980px) { .home-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* 챙길 일: 줄마다 개수 → 무엇 → 어디로 */
+.todo { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.todo-row { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 14px; padding: 14px 16px; border: 0; background: var(--panel); color: inherit; text-align: left; font: inherit; cursor: pointer; transition: background .15s ease-out; }
+.todo-row + .todo-row { border-top: 1px solid var(--line); }
+.todo-row:hover { background: var(--panel-2); }
+.todo-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.todo-row > svg { width: 15px; height: 15px; color: var(--ink-3); transition: transform .15s ease-out; }
+.todo-row:hover > svg { transform: translateX(2px); color: var(--ink); }
+.todo-n { display: grid; place-items: center; height: 32px; border-radius: 9px; background: var(--panel-3); font-weight: 700; font-size: 15px; color: var(--ink); }
+.todo-n .num { font-size: 15px; }
+.todo-row.open .todo-n { background: var(--accent-wash); color: var(--accent); }
+.todo-row.open .todo-n .num { color: var(--accent); }
+.todo-row.ok .todo-n { background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.todo-row.ok .todo-n .num { color: var(--ok); }
+.todo-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.todo-text b { font-size: 14px; font-weight: 650; }
+.todo-text span { font-size: 12.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.todo-empty { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border: 1px dashed var(--line-2); border-radius: 14px; color: var(--ink-3); font-size: 13px; }
+.todo-empty svg { width: 15px; height: 15px; color: var(--ok); }
+
+/* 최근 회의: 날짜 기둥 + 제목 + 상태 */
+.hrows { display: flex; flex-direction: column; }
+.hrow { display: grid; grid-template-columns: 52px 1fr auto; align-items: center; gap: 14px; padding: 11px 4px; text-decoration: none; color: inherit; }
+.hrow + .hrow { border-top: 1px solid var(--line); }
+.hrow:hover .hrow-text b, .srow:hover .sname b { color: var(--accent); }
+.hrow-day { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2; }
+.hrow-day b .num { font-size: 13px; font-weight: 650; color: var(--ink); }
+.hrow-day span { font-size: 11.5px; color: var(--ink-3); }
+.hrow-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.hrow-text b { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hrow-text span { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+/* 시작하기 (남은 단계가 있을 때만) */
+.checklist { list-style: none; margin: 0; padding: 4px 0; border: 1px solid var(--line); border-radius: 14px; }
+.checklist li { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 12px; padding: 10px 14px; }
+.ck { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--line-2); }
+.checklist li.done .ck { background: var(--ok); border-color: var(--ok); color: #fff; }
+.ck svg { width: 12px; height: 12px; stroke-width: 2.6; }
+.ck-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ck-text b { font-size: 13.5px; font-weight: 600; }
+.ck-text span { font-size: 12px; color: var(--ink-3); }
+.checklist li.done .ck-text b { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line-2); }
+
+/* 녹음 공간 */
+.store { display: flex; flex-direction: column; gap: 10px; }
+.store-sum { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.store-sum b .num { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; color: var(--ink); }
+.store-sum span { font-size: 12.5px; color: var(--ink-3); }
+.page.home .num { font-family: var(--sans); }
+.store-bar { display: flex; gap: 2px; height: 8px; border-radius: 4px; overflow: hidden; background: var(--panel-3); }
+.store-bar i { min-width: 3px; }
+.store-bar .wav, .store-legend .wav { background: var(--ink-2); }
+.store-bar .aac, .store-legend .aac { background: var(--ok); }
+.store-bar .save, .store-legend .save { background: repeating-linear-gradient(135deg, var(--line-2) 0 3px, transparent 3px 6px); box-shadow: inset 0 0 0 1px var(--line-2); }
+.store-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11.5px; color: var(--ink-3); }
+.store-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.store-legend i { width: 10px; height: 8px; border-radius: 2px; }
+.store-list { display: flex; flex-direction: column; margin-top: 4px; }
+.srow { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; padding: 9px 0; text-decoration: none; color: inherit; }
+.srow + .srow { border-top: 1px solid var(--line); }
+.sname { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.sname b { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sname span { font-size: 11.5px; color: var(--ink-3); }
+.ssize { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+.ssize .num { font-size: 13px; font-weight: 600; color: var(--ink); }
+.snote { font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
+.snote.ok { color: var(--ok); }
+.store-foot { margin: 0; font-size: 12px; line-height: 1.5; color: var(--ink-3); }
+
 /* 회의 카드 */
 .mgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
 .mcard {

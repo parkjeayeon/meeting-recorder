@@ -376,6 +376,18 @@ app.whenReady().then(async () => {
   results.push(['아이콘 버튼 설명', !early.show && back.show && back.text === '뒤로 (⌘[)' && titleWhile === null && titleAfter === '뒤로 (⌘[)' && !textBtn.show && inDialog.show && inDialog.text === '닫기' && inDialog.host === 'DIALOG',
     `0.15초 ${early.show} · 0.55초 ${JSON.stringify(back)} · title ${titleWhile}→${titleAfter} · 글자 버튼 ${textBtn.show} · 설정 ${JSON.stringify(inDialog)}`]);
 
+  // 홈: 챙길 일(개수·갈래로 이동), 녹음 공간(원본·압축 개수와 회의마다 크기)
+  await js(`location.hash='#home'`);
+  await wait(500);
+  const home = await js(`({ todo: [...document.querySelectorAll('.todo-row')].map(r=>r.querySelector('b').textContent + ' ' + r.querySelector('.todo-n').textContent), sum: document.querySelector('.store-sum > span')?.textContent ?? null, sizes: [...document.querySelectorAll('.srow .ssize .num')].map(x=>x.textContent) })`);
+  await js(`[...document.querySelectorAll('.todo-row')].find(r=>r.textContent.includes('확인할 회의'))?.click()`);
+  await wait(500);
+  const went = await js(`({ hash: location.hash, pressed: document.querySelector('.chips .chip[aria-pressed="true"]')?.textContent ?? null })`);
+  results.push(['홈 챙길 일·녹음 공간', home.todo.some((t) => t.startsWith('확인할 회의')) && Boolean(home.sum?.startsWith('원본 WAV')) && home.sizes.includes('689MB') && went.hash === '#meetings' && Boolean(went.pressed?.startsWith('확인할 회의')),
+    JSON.stringify({ home, went })]);
+  await js(`location.hash='#home'`); // 아래 시험은 회의 화면을 '전체'로 새로 연다
+  await wait(400);
+
   // 녹음 압축: 확인을 마친 회의에 안내(모달 아님) → 그대로 두기면 숨김 → … 메뉴에서 압축 → '압축함'
   await js(`location.hash='#meetings'`);
   await wait(600);
