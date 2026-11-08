@@ -385,6 +385,11 @@ app.whenReady().then(async () => {
   const went = await js(`({ hash: location.hash, pressed: document.querySelector('.chips .chip[aria-pressed="true"]')?.textContent ?? null })`);
   results.push(['홈 챙길 일·녹음 공간', home.todo.some((t) => t.startsWith('확인할 회의')) && Boolean(home.sum?.startsWith('원본 WAV')) && home.sizes.includes('689MB') && went.hash === '#meetings' && Boolean(went.pressed?.startsWith('확인할 회의')),
     JSON.stringify({ home, went })]);
+  // 회의록 할 일 줄: 체크박스와 글이 한 줄, 테두리 없음 (홈 '챙길 일'의 클래스가 li.todo와 겹쳐 줄마다 상자가 됐던 것)
+  await js(`location.hash='#meeting/${id}'`);
+  await wait(700);
+  const todoLi = await js(`(() => { const li = document.querySelector('.doc li.todo'); if (!li) return null; const cs = getComputedStyle(li); const [a, b] = [li.querySelector('input'), li.querySelector('span')].map(e => e.getBoundingClientRect()); return { dir: cs.flexDirection, border: cs.borderTopWidth, sameLine: Math.abs(a.top - b.top) < 12 }; })()`);
+  results.push(['회의록 할 일 줄', Boolean(todoLi) && todoLi.dir === 'row' && todoLi.border === '0px' && todoLi.sameLine, JSON.stringify(todoLi)]);
   await js(`location.hash='#home'`); // 아래 시험은 회의 화면을 '전체'로 새로 연다
   await wait(400);
 

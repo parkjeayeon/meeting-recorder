@@ -318,7 +318,7 @@ code { font: 12px var(--mono); padding: 1px 5px; border-radius: 5px; background:
 @media (max-width: 980px) { .home-grid { grid-template-columns: minmax(0, 1fr); } .home-side { position: static; } }
 
 /* 챙길 일: 줄마다 개수 → 무엇 → 어디로 */
-.todo { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.todo-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
 .todo-row { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 14px; padding: 14px 16px; border: 0; background: var(--panel); color: inherit; text-align: left; font: inherit; cursor: pointer; transition: background .15s ease-out; }
 .todo-row + .todo-row { border-top: 1px solid var(--line); }
 .todo-row:hover { background: var(--panel-2); }

@@ -663,7 +663,7 @@ function homeTodo(meets) {
   }
   if (strays.length) rows.push({ mark: 'plain', n: strays.length, title: '목록에 없는 폴더', sub: '녹음 폴더에 회의로 열리지 않는 폴더가 있습니다 — 지울지 골라 주세요', on: () => openMeetings('all') });
   if (!rows.length) return h('div', { class: 'todo-empty' }, icon('i-check'), '챙길 일이 없습니다');
-  return h('div', { class: 'todo' }, rows.map((t) =>
+  return h('div', { class: 'todo-list' }, rows.map((t) => // 'todo'는 회의록 할 일 줄(li.todo)이 쓰는 이름이라 겹치지 않게
     h('button', { class: `todo-row ${t.mark}`, onclick: t.on },
       h('span', { class: 'todo-n' }, num(t.n)),
       h('span', { class: 'todo-text' }, h('b', null, t.title), h('span', null, t.sub)),
