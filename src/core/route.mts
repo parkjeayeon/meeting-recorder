@@ -21,6 +21,20 @@ const LIMIT_RE = /usage limit|limit reached|hit your (?:usage |weekly |session |
 export function isLimitText(text: string): boolean {
   return text.length < 400 && LIMIT_RE.test(text);
 }
+// CLI(claude -p·codex exec)가 실패했을 때 화면에 보일 이유. Node의 기본 메시지("Command failed: <명령줄 전체>")에는
+// 지시문까지 들어가고 정작 이유(CLI가 stdout·stderr에 낸 글)는 없다 → 출력에서 이유를 꺼내 종류로 나눈다
+export type CliErrorKind = 'timeout' | 'limit' | 'login' | 'other';
+const LOGIN_RE = /not logged in|please (?:run )?\/?login|log ?in again|invalid api key|authenticat|unauthori[sz]ed|\b401\b|oauth token|expired/i;
+export function cliError(e: { killed?: boolean; signal?: string | null; code?: number | string | null; stdout?: string; stderr?: string }): { kind: CliErrorKind; message: string } {
+  const text = `${e.stderr ?? ''}\n${e.stdout ?? ''}`.trim();
+  if (e.killed || e.signal === 'SIGTERM') return { kind: 'timeout', message: '시간 초과' };
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  const pick = (re: RegExp) => lines.find((l) => re.test(l));
+  if (LIMIT_RE.test(text)) return { kind: 'limit', message: (pick(LIMIT_RE) ?? '사용 한도에 걸렸습니다').slice(0, 200) };
+  if (LOGIN_RE.test(text)) return { kind: 'login', message: (pick(LOGIN_RE) ?? '로그인이 필요합니다').slice(0, 200) };
+  const last = lines.at(-1);
+  return { kind: 'other', message: last ? last.slice(0, 200) : `종료 코드 ${e.code ?? '알 수 없음'} (이유를 출력하지 않았습니다)` };
+}
 export function isLimitError(err: unknown): boolean {
   const e = err as { limit?: boolean; message?: string; stderr?: string } | null;
   return Boolean(e?.limit) || LIMIT_RE.test(`${e?.message ?? ''} ${e?.stderr ?? ''}`);

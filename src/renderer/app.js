@@ -1567,7 +1567,7 @@ function askBubbles(t) {
       const n = await startAsk(t.q, t.scope);
       if (n && route.name === 'meetings') goAsk(n);
     } }, icon('i-redo'), '다시 찾기'))];
-  if (t.status === 'error') return [me, h('div', { class: 'bubble ai warn' }, h('span', { class: 'warn-line' }, icon('i-alert'), h('b', null, '찾지 못했습니다')), h('span', null, t.error ?? ''),
+  if (t.status === 'error') return [me, h('div', { class: 'bubble ai warn' }, h('span', { class: 'warn-line' }, icon('i-alert'), h('b', null, askError(t).title)), h('span', null, askError(t).hint),
     h('div', { class: 'warn-acts' }, h('button', { class: 'btn small', onclick: async () => {
       await removeAsk(t);
       startAsk(t.q, t.scope);
@@ -1650,6 +1650,20 @@ function askChips(filter, setFilter) {
     } }, icon('i-x'))));
 }
 
+// 질문이 실패했을 때 보일 말: 무엇이 문제인지(제목) → 어떻게 하면 되는지 → CLI가 낸 이유(작게).
+// 예전 기록에는 "Command failed: <명령줄>"이 저장돼 있어 이유로 보이지 않는다
+function askError(t) {
+  const who = PROVIDER_NAME[t.provider] ?? '다듬기 계정';
+  const raw = /^Command failed:/.test(t.error ?? '') ? null : t.error;
+  const kind = t.errorKind ?? (raw === '시간 초과' ? 'timeout' : 'other');
+  const [title, hint] = {
+    login: [`${who} 로그인이 풀렸습니다`, t.provider === 'codex' ? '터미널에서 codex login으로 다시 로그인한 뒤 다시 찾기를 누르세요.' : '터미널에서 claude를 실행해 /login으로 다시 로그인한 뒤 다시 찾기를 누르세요.'],
+    limit: [`${who} 사용 한도에 걸렸습니다`, '한도가 풀린 뒤 다시 찾기를 누르세요. 남은 사용량은 설정 › 다듬기에서 볼 수 있습니다.'],
+    timeout: ['답이 너무 늦어 멈췄습니다', '다시 찾기를 눌러 보세요. 계속 늦으면 최근 몇 개·기간으로 범위를 좁혀 보세요.'],
+  }[kind] ?? ['찾지 못했습니다', '다시 찾기를 눌러 보세요. 같은 문제가 계속되면 아래 이유를 확인하세요.'];
+  return { title, hint, detail: kind === 'timeout' ? null : raw ?? `${who}가 이유를 남기지 않고 끝났습니다` };
+}
+
 function askHead(t) {
   const c = t.conds;
   const conds = [h('span', { class: 'cond' }, `범위 ${scopeText(t.scope)}`)];
@@ -1671,11 +1685,15 @@ function askHead(t) {
         const n = await startAsk(t.q, t.scope);
         if (n) goAsk(n);
       } }, icon('i-redo'), '다시 찾기')),
-    h('div', { class: 'conds' }, c ? conds : h('span', null, '조건을 푸는 중…')),
+    (c || t.status === 'running') && h('div', { class: 'conds' }, c ? conds : h('span', null, '조건을 푸는 중…')), // 실패했으면 '푸는 중'을 남기지 않는다
     t.status === 'running'
       ? h('div', { class: 'steps' }, steps.map(([, label], i) => h('span', { class: i < at ? 'ok' : i === at ? 'now' : '' }, i < at ? icon('i-check') : i === at ? h('span', { class: 'spin' }) : h('span', { style: 'width:11px' }), label)),
         h('span', { class: 'later' }, h('span', { 'data-ask-time': t.id }, askSecs(t)), '· 다른 화면으로 가도 계속 찾습니다'))
-      : t.status === 'error' ? h('div', { class: 'err' }, `찾지 못했습니다 · ${t.error ?? ''}`)
+      : t.status === 'error' ? (() => {
+        const e = askError(t);
+        return h('div', { class: 'ask-error', role: 'alert' }, icon('i-alert'),
+          h('div', null, h('b', null, e.title), h('p', null, e.hint), e.detail && h('p', { class: 'why' }, e.detail)));
+      })()
         : t.status === 'stopped' ? h('div', { class: 'conds' }, `${askSecs(t)} 만에 멈췄습니다 · 다시 찾기로 처음부터 찾습니다`)
         : h('div', { class: 'conds' }, `${t.results.length}건 · ${t.candidates ? `후보 ${t.candidates}개 중 추림 · ` : ''}${askSecs(t)} 걸림`));
 }

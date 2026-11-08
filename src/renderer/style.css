@@ -1119,6 +1119,11 @@ dialog[open] { animation: pop .22s cubic-bezier(.16, 1, .3, 1); }
 .askhead .qline b { flex: 1; font-size: 16px; font-weight: 700; letter-spacing: -0.015em; overflow-wrap: anywhere; }
 .askhead .conds { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--ink-3); }
 .askhead .err { color: var(--accent); font-size: 12.5px; }
+.ask-error { display: flex; gap: 10px; align-items: flex-start; margin-top: 4px; padding: 12px 14px; border-radius: 10px; background: var(--accent-wash); }
+.ask-error > svg { width: 16px; height: 16px; flex: none; margin-top: 2px; color: var(--accent); }
+.ask-error b { display: block; font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.ask-error p { margin: 2px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--ink-2); }
+.ask-error .why { margin-top: 6px; font-size: 12px; color: var(--ink-3); overflow-wrap: anywhere; user-select: text; }
 .cond { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 6px; background: var(--panel); border: 1px solid var(--line); color: var(--ink-2); font-size: 11.5px; font-weight: 550; }
 .askhead .steps { display: flex; flex-wrap: wrap; gap: 18px; margin: 0; padding: 0; font-size: 12.5px; color: var(--ink-3); }
 .askhead .steps span { display: inline-flex; align-items: center; gap: 6px; }

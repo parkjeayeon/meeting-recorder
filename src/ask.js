@@ -8,7 +8,7 @@ const { app } = require('electron');
 const { DatabaseSync } = require('node:sqlite');
 const { complete, parseJson, providerStatus } = require('./cleanup');
 const dictation = require('./dictation');
-const { writeJsonAtomic } = require('../lib/core/index.mjs');
+const { writeJsonAtomic, isLimitError } = require('../lib/core/index.mjs');
 
 const CAND_MAX = 40; // 추리기 한 번에 넘기는 후보 (넘치면 나눠서 동시에)
 const SNIPS = 3; // 후보마다 걸린 곳
@@ -154,7 +154,7 @@ function start(question, scope = {}) {
   run(job, ac.signal)
     .catch((err) => {
       if (job.status !== 'running') return; // 멈춘 질문: 끊긴 호출의 오류는 버린다
-      Object.assign(job, { status: 'error', stage: 'error', error: err.killed ? '시간 초과' : err.message.split('\n')[0], ms: Date.now() - job.t0 });
+      Object.assign(job, { status: 'error', stage: 'error', error: err.killed ? '시간 초과' : err.message.split('\n')[0], errorKind: err.killed ? 'timeout' : err.kind ?? (isLimitError(err) ? 'limit' : 'other'), ms: Date.now() - job.t0 });
       changed(job, true);
     })
     .finally(() => aborts.delete(job.id));

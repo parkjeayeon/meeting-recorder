@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isLimitError, isLimitText, orderProviders, withFallback } from './route.mjs';
+import { cliError, isLimitError, isLimitText, orderProviders, withFallback } from './route.mjs';
 
 describe('orderProviders', () => {
   const both = ['claude-code', 'codex'];
@@ -47,5 +47,15 @@ describe('withFallback', () => {
   it('다른 오류나 마지막 계정의 오류는 그대로', async () => {
     await expect(withFallback(['claude-code', 'codex'], async () => { throw new Error('시간 초과'); })).rejects.toThrow('시간 초과');
     await expect(withFallback(['codex'], async () => { throw new Error('usage limit'); })).rejects.toThrow('usage limit');
+  });
+});
+
+describe('cliError', () => {
+  it('명령줄 대신 CLI가 낸 이유를 종류로 나눔', () => {
+    expect(cliError({ code: 1, stdout: 'Invalid API key · Please run /login\n', stderr: '' })).toEqual({ kind: 'login', message: 'Invalid API key · Please run /login' });
+    expect(cliError({ code: 1, stdout: '', stderr: "You've hit your session limit · resets 5:50pm" }).kind).toBe('limit');
+    expect(cliError({ killed: true, signal: 'SIGTERM', stdout: '', stderr: '' })).toEqual({ kind: 'timeout', message: '시간 초과' });
+    expect(cliError({ code: 2, stdout: '', stderr: 'warn: x\nError: something broke\n' })).toEqual({ kind: 'other', message: 'Error: something broke' });
+    expect(cliError({ code: 1, stdout: '', stderr: '' }).message).toContain('종료 코드 1');
   });
 });

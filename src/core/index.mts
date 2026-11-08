@@ -7,6 +7,6 @@ export * as schema from './schema.mjs';
 export { findStrayFolders, type StrayFolder, type StrayReason } from './stray.mjs';
 export { cleanGuess, inlineGuesses, toReviewItems, noteVariants, stampFor, stampFromNote, locateHeard, searchKeys, type ReviewItem } from './review.mjs';
 export { UsageWindow, UsageWindows, parseResets, parseClaudeUsage, verifyWindows, codexUsage } from './usage.mjs';
-export { orderProviders, isLimitText, isLimitError, withFallback, HIGH_PERCENT } from './route.mjs';
+export { orderProviders, isLimitText, isLimitError, cliError, type CliErrorKind, withFallback, HIGH_PERCENT } from './route.mjs';
 export { chooseLanguage, AUTO_LANGUAGES, SHORT_VOICED_MS, type LanguageChoice } from './language.mjs';
 export { parseDictationLog, pageDictations, dictationStats, type DictRecord, type DictationStats } from './dictlog.mjs';

@@ -217,6 +217,8 @@ function stubAsk(question, scope) {
   const slow = /느린/.test(question) ? 10 : 1;
   const step = (fn, ms) => setTimeout(() => { if (askJobs.has(job.id) && job.status === 'running') { fn(); if (!(quiet && job.status !== 'running')) askCb({ ...job }); } }, ms * slow);
   const lastYear = /작년/.test(question);
+  // '로그인'이 든 질문은 조건 풀기에서 로그인 오류로 끝난다 (CLI가 낸 이유가 화면에 그대로 가는지)
+  if (/로그인/.test(question)) return step(() => Object.assign(job, { status: 'error', stage: 'error', provider: 'claude-code', error: 'Invalid API key · Please run /login', errorKind: 'login', ms: Date.now() - job.t0 }), ASK_MS), { ...job };
   step(() => {
     job.conds = { from: lastYear ? `${y - 1}-01-01` : null, to: lastYear ? `${y - 1}-12-31` : null, status: null, focus: 'any', topic: '배포', terms: ['배포', '릴리스'] };
     if (lastYear && scope.from && scope.from > `${y - 1}-12-31`) Object.assign(job, { status: 'blocked', stage: 'blocked', ms: Date.now() - job.t0 });

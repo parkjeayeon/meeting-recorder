@@ -6,7 +6,7 @@ const fs = require('fs');
 const os = require('os');
 const { execFile } = require('child_process');
 const Anthropic = require('@anthropic-ai/sdk').default;
-const { orderProviders, isLimitText, withFallback: tryInOrder } = require('../lib/core/index.mjs');
+const { orderProviders, isLimitText, cliError, withFallback: tryInOrder } = require('../lib/core/index.mjs');
 
 const API_MODEL = 'claude-opus-5-5';
 const CHUNK_CHARS = 600; // 이보다 길면 나눠서 다듬는다
@@ -49,7 +49,11 @@ function workDir() {
 function run(bin, args, { timeout, input, env, signal } = {}) {
   return new Promise((resolve, reject) => {
     const child = execFile(bin, args, { cwd: workDir(), timeout, signal, maxBuffer: 4 * 1024 * 1024, ...(env ? { env: { ...process.env, ...env } } : {}) }, (err, stdout, stderr) => {
-      if (err) reject(Object.assign(err, { stderr }));
+      if (err && err.code !== 'ABORT_ERR' && err.name !== 'AbortError') {
+        // 기본 메시지는 명령줄 전체(지시문 포함)라 쓰지 않고 CLI가 낸 이유로 바꾼다
+        const why = cliError({ killed: err.killed, signal: err.signal, code: err.code, stdout, stderr });
+        reject(Object.assign(err, { message: why.message, kind: why.kind, stdout, stderr, limit: why.kind === 'limit' || undefined }));
+      } else if (err) reject(Object.assign(err, { stderr }));
       else resolve({ stdout, stderr });
     });
     if (input !== undefined) child.stdin.end(input);

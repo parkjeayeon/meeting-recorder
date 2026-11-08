@@ -274,11 +274,21 @@ app.whenReady().then(async () => {
   await ask('실패하는 질문');
   await wait(1200);
   const bad = await js(`({ chip: Boolean(document.querySelector('.chip.ask.bad')), bubble: document.querySelector('.askpanel .bubble.warn')?.textContent ?? null })`);
-  results.push(['찾기 실패 표시', bad.chip && Boolean(bad.bubble?.includes('시간 초과')), JSON.stringify(bad)]);
+  // 로그인이 풀린 경우: 명령줄 대신 무엇이 문제이고 어떻게 하면 되는지, CLI가 낸 이유는 질문 탭에 작게
+  await ask('성능평가 로그인');
+  await wait(900);
+  const login = await js(`({ bubble: [...document.querySelectorAll('.askpanel .bubble.warn')].at(-1)?.textContent ?? null })`);
+  await js(`[...document.querySelectorAll('.chip.ask')].find(c=>c.textContent.includes('로그인'))?.click()`);
+  await wait(400);
+  const loginTab = await js(`({ title: document.querySelector('.ask-error b')?.textContent ?? null, why: document.querySelector('.ask-error .why')?.textContent ?? null, stale: Boolean([...document.querySelectorAll('.askhead .conds')].find(x=>x.textContent.includes('푸는 중'))) })`);
+  results.push(['찾기 실패 표시', bad.chip && Boolean(bad.bubble?.includes('답이 너무 늦어')) && Boolean(login.bubble?.includes('Claude Code 로그인이 풀렸습니다')) && !login.bubble.includes('Command failed') && loginTab.title === 'Claude Code 로그인이 풀렸습니다' && loginTab.why === 'Invalid API key · Please run /login' && !loginTab.stale,
+    JSON.stringify({ bad, login, loginTab })]);
   await js(`document.querySelector('.askpanel header .icon-btn')?.click(); document.querySelector('.chip.ask.bad .x')?.click()`);
   await wait(300);
+  await js(`document.querySelector('.chip.ask.bad .x')?.click()`); // 로그인 시험 질문도
+  await wait(300);
   const removed = await js(`({ calls: window.stubCalls().askRemove ?? [], left: document.querySelectorAll('.chip.ask').length })`);
-  results.push(['질문 탭 닫기', removed.calls.length >= 2 && removed.left === 2, JSON.stringify(removed)]);
+  results.push(['질문 탭 닫기', removed.calls.length >= 3 && removed.left === 2, JSON.stringify(removed)]);
 
   // 확인 필요 채팅: 녹취에서 그대로 찾지 못한 제안도 버리지 않고 보여 주고, 고칠 대상을 녹취 글자로 고쳐 적용할 수 있다
   await js(`location.hash='#meeting/${id}'`);
