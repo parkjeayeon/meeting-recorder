@@ -72,7 +72,7 @@ export function checkMinutes(md: string, transcript: string, { durationSec = nul
       for (const t of stamps) {
         if (durationSec !== null && sec(t) > durationSec + 5) issues.push({ code: 'time-range', at: t, text: line, note: `회의록에 적힌 시각 ${t}가 녹음 길이를 넘습니다` });
       }
-      // 시각 근처 녹취에 이 줄의 낱말이 하나도 없다 (낱말이 셋 이상인 줄만 — 짧은 줄은 판단하지 않는다)
+      // 시각 근처 녹취에 이 줄의 근거가 없다 (grounded 기준, 낱말이 셋 이상인 줄만 — 짧은 줄은 판단하지 않는다)
       const ws = words(line.replace(/—\s*담당:.*$/, ''), names);
       for (const t of stamps.filter((x) => durationSec === null || sec(x) <= durationSec + 5)) {
         if (ws.length < 3) break;
