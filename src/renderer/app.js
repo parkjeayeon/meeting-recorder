@@ -3364,13 +3364,18 @@ function pageMeeting(id) {
   }
   function compressNote(r) {
     if (!canCompress(r) || r.audio.declined) return null;
-    return h('div', { class: 'compress-note' },
-      h('span', { class: 'compress-mark' }, icon('i-folder')),
+    // 녹음에 딸린 안내라 재생 막대 바로 아래 한 줄로 (카드로 띄우면 회의 내용보다 눈에 띈다). 줄어드는 크기를 막대 길이로 보여 준다
+    const ratio = Math.max(0.04, Math.min(1, r.audio.estimate / r.audio.bytes));
+    return h('div', { class: 'compress-note', role: 'region', 'aria-label': '녹음 압축' },
       h('div', { class: 'compress-text' },
-        h('b', null, '확인을 마쳤으니 녹음을 압축할까요?'),
-        h('span', null, `${sizeLabel(r.audio.bytes)} → 약 ${sizeLabel(r.audio.estimate)} (AAC 96kbps) · 재생·구간 다시 받아쓰기·녹취부터 다시 만들기는 그대로 됩니다. 원본 WAV는 지웁니다.`)),
+        h('div', { class: 'compress-head' },
+          h('b', null, '확인을 마쳤으니 녹음을 압축할까요?'),
+          h('span', { class: 'compress-size' },
+            h('span', { class: 'compress-bar', 'aria-hidden': 'true' }, h('i', { style: `width:${(ratio * 100).toFixed(1)}%` })),
+            `${sizeLabel(r.audio.bytes)} → 약 ${sizeLabel(r.audio.estimate)}`)),
+        h('span', { class: 'compress-detail' }, 'AAC 96kbps · 재생·구간 다시 받아쓰기·녹취부터 다시 만들기는 그대로 됩니다. 원본 WAV는 지웁니다.')),
       h('div', { class: 'compress-acts' },
-        h('button', { class: `btn small primary${compressBusy ? ' busy' : ''}`, disabled: compressBusy, onclick: () => runCompress(r) }, compressBusy ? '압축하는 중…' : '압축하기'),
+        h('button', { class: `btn small${compressBusy ? ' busy' : ''}`, disabled: compressBusy, onclick: () => runCompress(r) }, compressBusy ? '압축하는 중…' : '압축하기'),
         h('button', { class: 'btn small ghost', disabled: compressBusy, onclick: async () => {
           await api.declineCompress(r.dir, true);
           toast('원본 그대로 둡니다', '… 메뉴에서 언제든 압축할 수 있습니다');
