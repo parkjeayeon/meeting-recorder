@@ -10,3 +10,4 @@ export { UsageWindow, UsageWindows, parseResets, parseClaudeUsage, verifyWindows
 export { orderProviders, isLimitText, isLimitError, cliError, type CliErrorKind, withFallback, HIGH_PERCENT } from './route.mjs';
 export { chooseLanguage, AUTO_LANGUAGES, SHORT_VOICED_MS, type LanguageChoice } from './language.mjs';
 export { parseDictationLog, pageDictations, dictationStats, type DictRecord, type DictationStats } from './dictlog.mjs';
+export { checkMinutes, type CheckIssue, type CheckCode } from './check.mjs';

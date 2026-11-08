@@ -9,7 +9,7 @@ const dictation = require('./dictation');
 const { complete, parseJson } = require('./cleanup');
 const sandbox = require('./sandbox');
 const glossary = require('./glossary');
-const { nameSpeakers, writeFileAtomic, writeJsonAtomic, copyFileAtomic, cleanGuess, inlineGuesses, toReviewItems, noteVariants, stampFor, locateHeard, searchKeys } = require('../lib/core/index.mjs'); // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
+const { nameSpeakers, writeFileAtomic, writeJsonAtomic, copyFileAtomic, cleanGuess, inlineGuesses, toReviewItems, noteVariants, stampFor, locateHeard, searchKeys, checkMinutes } = require('../lib/core/index.mjs'); // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
 
 const LONG_TIMEOUT_MS = 10 * 60 * 1000; // 1시간짜리 회의도 여유 있게
 const SPEAKER = { mic: '나', system: '상대방' };
@@ -543,6 +543,7 @@ async function run(dir, onStage, { speakers = null, prev = null } = {}) {
     await scriptJob.catch(() => {});
     // 확인 필요 항목 목록과 용어 설명을 함께 만든다 (어느 쪽이 실패해도 회의록은 그대로). 흐름도·액션은 사용자가 요청할 때만 (flow.js, actions.js)
     await Promise.all([makeReview(dir).catch(() => {}), glossary.makeGlossary(dir).catch(() => {})]);
+    addCheckItems(dir, durationSec); // 형식 검사: LLM 없이 틀·시각·담당·기한의 근거를 보고 걸린 것을 확인 필요에
     const title = text.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? null;
     report('done', { provider, title, ...diarizeInfo });
   } catch (err) {
@@ -719,6 +720,27 @@ async function makeReview(dir) {
     return { id: `r${i + 1}`, kind: it.kind ?? 'meaning', at, heard, heardNote: it.heard ?? null, guess: cleanGuess(it.guess), note: it.note ?? '', status: 'open', ...(inlined ? { source: 'inline' } : {}) };
   });
   return writeReview(dir, { items, provider: out.provider });
+}
+
+// 회의록 형식 검사(core/check.mts)에 걸린 것을 확인 필요 항목으로 (고칠 말이 없는 '근거 확인' 항목 — 확인됨·그대로 두기로 닫는다)
+function addCheckItems(dir, durationSec) {
+  try {
+    const md = readText(dir, 'minutes.md');
+    const transcript = readText(dir, 'transcript.txt');
+    const names = Object.values(readJsonFile(path.join(dir, 'meta.json'))?.speakerNames ?? {});
+    const issues = checkMinutes(md, transcript, { durationSec, names });
+    const review = readReview(dir) ?? { items: [] };
+    review.check = { at: new Date().toISOString(), issues: issues.length };
+    if (issues.length) {
+      let n = Math.max(0, ...review.items.map((it) => Number(/^r(\d+)$/.exec(it.id)?.[1] ?? 0)));
+      for (const is of issues) {
+        const note = `${is.note}: "${is.text.slice(0, 120)}"`;
+        if (review.items.some((it) => it.source === 'check' && it.note === note)) continue;
+        review.items.push({ id: `r${++n}`, kind: 'meaning', at: is.at, heard: null, heardNote: null, guess: null, note, status: 'open', source: 'check', check: is.code });
+      }
+    }
+    writeReview(dir, review);
+  } catch {} // 검사는 덤: 실패해도 회의록은 그대로
 }
 
 // ── 확인 필요 › 직접 추가: 목록이 놓친 것을 사용자가 말로 짚으면("통신 한정성은 안정성이야") 녹취에서 찾아 항목으로 만든다 ──
@@ -1312,4 +1334,4 @@ function makeCleanScript(dir) {
 
 module.exports = {
   decodeTo16k,
-  findLoops, nameSpeakers, makeMinutes, canResume, makeCleanScript, renameSpeaker, diarizeAvailable, readReview, makeReview, addReview, applyReview, setReviewStatus, chatReview, finalizeReview, retranscribeRange, applyRetranscribe, speakerTurns, revertReview, markReviewItems };
+  findLoops, nameSpeakers, makeMinutes, canResume, addCheckItems, makeCleanScript, renameSpeaker, diarizeAvailable, readReview, makeReview, addReview, applyReview, setReviewStatus, chatReview, finalizeReview, retranscribeRange, applyRetranscribe, speakerTurns, revertReview, markReviewItems };

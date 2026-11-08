@@ -3125,7 +3125,7 @@ function pageMeeting(id) {
       const card = h('div', { class: `ritem${reviewSel.has(it.id) ? ' on' : ''} ${it.status}` });
       const head = h('div', { class: 'ritem-head' },
         it.status === 'open' && h('input', { type: 'checkbox', checked: reviewSel.has(it.id), 'aria-label': '고르기', onchange: (e) => { e.target.checked ? reviewSel.add(it.id) : reviewSel.delete(it.id); draw(); } }),
-        h('span', { class: `tag kind-${it.kind}` }, REVIEW_KIND[it.kind] ?? '확인'),
+        h('span', { class: `tag kind-${it.kind}` }, it.source === 'check' ? '근거 확인' : REVIEW_KIND[it.kind] ?? '확인'), // 형식 검사가 올린 항목 (core/check.mts)
         atBtn,
         h('span', { class: 'ritem-note' }, it.note));
       card.append(head);
