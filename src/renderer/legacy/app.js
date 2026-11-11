@@ -1,7 +1,7 @@
 import { Recorder } from './recorder.js';
 import { startOnboarding } from './onboarding.js';
-import { scriptMarkdown } from '../../lib/core/script.mjs';
-import { noteVariants } from '../../lib/core/review.mjs';
+import { scriptMarkdown } from '../../core/script.mts'; // 화면은 코어를 원본(.mts)에서 바로 가져다 쓴다 (Vite가 묶음)
+import { noteVariants } from '../../core/review.mts';
 
 const api = window.recorderApi;
 const $ = (id) => document.getElementById(id);

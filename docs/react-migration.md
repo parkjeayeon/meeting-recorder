@@ -12,14 +12,15 @@
 - `npm run verify:journeys` (검증 스킬의 흐름 7개, `.claude/skills/verify-meeting-recorder/`)
 - `npm test`, `npm run typecheck`, 화면 오류 0, 설치해서 하루 써 보기
 
-시험을 고쳐야 통과한다면 동작이 바뀐 것이다. 이 시험들이 클래스 이름이 아니라 글자·역할·aria로 찾는 이유다.
+시험을 고쳐야 통과한다면 동작이 바뀐 것이다. 기능 시험·흐름은 글자·역할·aria로 찾지만, 화면 시험(`ui-test.js`)은 클래스 이름도 약 70개(`.add-row input` 등) 쓴다 — 옮긴 화면도 그 클래스를 그대로 둔다(Playwright로 바꿀 때까지).
 
 ## 순서
 0. **안전망** (끝남, 2026-11-11): 기능 시험 45건, 검증 스킬과 흐름 7개(처음 설정·가져오기처럼 시험이 없던 곳 포함).
-1. **도구**: 화면만 Vite + React + TypeScript로 빌드(개발은 Vite 서버, 설치본은 빌드 파일, electron-builder에 포함). preload `api.*`에 타입. 화면이 `src/core`를 직접 가져다 써 `app.js`의 복사본(스크립트 해석 규칙 등)을 없앤다.
+1. **도구와 이음새** (끝남, 2026-11-12, [renderer-architecture.md](renderer-architecture.md)): 화면을 Vite + React + TypeScript로 묶는다(`lib/renderer/`, 문서는 그대로 `src/renderer/index.html`). 개발 서버는 쓰지 않고 지켜보며 묶기 + 창 새로 고침(`npm run dev`) — 처음 계획의 "개발은 Vite 서버"를 바꿨다(출처가 둘이 되고 시험이 안 도는 경로가 생겨서). preload 객체에서 API 타입을 끌어냄, 화면이 `src/core` 원본을 가져다 씀, 옛 코드는 `legacy/`에 격리, 이음새 `reactPage`, 경계 검사. 시험 고치지 않고 통과, 화면 캡처 40장 픽셀까지 같음.
 2. **공통 부품**: 버튼·알림·툴팁·확인 창·아이콘, 전역 상태(회의 목록·진행 중 작업·질문 작업·문서 캐시)를 한곳에, IPC 소식도 한곳에서. CSS는 조각마다(CSS Modules) — 클래스 이름이 겹쳐 모양이 깨진 일(`.ghost`, `.todo`)을 구조로 막는다. 색·간격 변수는 공용.
 3. **화면을 작은 것부터**: 사전·통계 → 홈 → 받아쓰기 → 회의 목록 → 질문으로 찾기(전역) → **회의 페이지**(재생 막대·탭·확인 필요·채팅·흐름도·용어·액션·⌘F를 조각으로) → 설정·처음 설정 → 옛 `app.js` 지우기.
-   - 지금 라우터가 화면마다 `{ el, update }`를 받으므로 React 화면을 그 자리에 끼운다(`createRoot(el).render(...)`). 화면 하나씩 바꿔도 앱은 계속 동작한다.
+   - 지금 라우터가 화면마다 `{ el, update }`를 받으므로 React 화면을 그 자리에 끼운다(`reactPage(Page, props)`, `src/renderer/shared/page-host`). 화면 하나씩 바꿔도 앱은 계속 동작한다.
+   - 옮기는 화면이 읽는 상태는 창구(읽기 스냅샷 + 명령)로 열고, 상태 한 칸을 옮길 땐 그 칸의 쓰기와 IPC 구독을 한 번에 옮긴다. 입력칸은 uncontrolled, 시험이 찾는 클래스는 그대로.
    - 녹음 처리(`recorder.js`, worklet)는 React와 상관없는 오디오 코드라 그대로.
 
 ## 시험 도구 전환

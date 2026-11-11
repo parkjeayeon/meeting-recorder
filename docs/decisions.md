@@ -401,3 +401,9 @@
 - **한 일:** 계획 문서 [react-migration.md](react-migration.md). 안전망으로 기능 시험 45건(글자·역할·aria로 찾음)과 검증 스킬(`.claude/skills/verify-meeting-recorder/`, 흐름 7개)을 먼저 만들었다.
 - **이유:** 옮기는 일의 위험은 "모르게 동작이 바뀌는 것"이다. 클래스가 아니라 사용자가 보는 것으로 찾는 시험이 옮긴 뒤에도 그대로 통과하면 동작이 같다는 증거가 된다. 시험 도구(Playwright·Testing Library)는 옮기기가 끝난 뒤 바꾼다 — 시험과 코드를 동시에 바꾸면 무엇이 틀렸는지 알 수 없다.
 - **트레이드오프:** 빌드 전 검사가 약 2분 길어졌다(기능 시험 약 100초, 흐름 약 20초). 옮기는 동안 직접 만든 시험 도구를 계속 관리해야 한다.
+
+## 61. 화면 묶기: 개발 서버 없이 지켜보며 묶기, 문서는 그대로, API 타입은 preload에서 (2026-11-12)
+- **누가:** 사용자 요청(React 전환 1단계, `/pstack:architect`). Opus·Codex 두 설계를 Codex가 채점하고 합쳤다 — [renderer-architecture.md](renderer-architecture.md).
+- **한 일:** Vite(`vite.renderer.config.mts`)로 `src/renderer/main.ts` → `lib/renderer/main.js·main.css`. `src/renderer/index.html`이 그 두 파일을 불러온다(시험·`main.js` 그대로). 옛 코드는 `src/renderer/legacy/`로 `git mv`. API 타입은 `src/preload.js`의 `recorderApi` 객체에서 JSDoc `@typedef`로 끌어냄. 이음새 `reactPage`, 경계 검사 `check-boundaries.js`, `npm run dev`(지켜보며 묶기 + 앱).
+- **이유:** 개발 서버를 쓰면 창이 코드를 받는 길이 둘(출처·`localStorage`·CSP가 다름)이 되고 시험이 안 도는 길이 생긴다. 문서 주소를 그대로 두면 `localStorage`·워크릿 경로·시험이 그대로다. 두 번째 API 목록은 어긋난다.
+- **트레이드오프:** 고친 뒤 바로 반영(HMR) 없음 — ⌘R. 시험 전에 묶어야 한다. API 인자·결과 타입은 쓰는 곳이 생길 때 적는다.

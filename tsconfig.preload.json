@@ -1,0 +1,16 @@
+{
+  // preload 다리(src/preload.js)만 JS 그대로 타입 검사한다 (실행 파일은 바뀌지 않음, 내보내지 않음)
+  "compilerOptions": {
+    "target": "es2024",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": true,
+    "noImplicitAny": false,
+    "types": ["node"],
+    "skipLibCheck": true
+  },
+  "files": ["src/preload.js"]
+}

@@ -1,6 +1,10 @@
+// 화면(window.recorderApi)과 본체를 잇는 다리. 화면 TypeScript의 API 타입은 이 객체에서 끌어낸다 (RecorderApi) —
+// 99개 함수를 따로 적은 두 번째 목록을 두지 않는다. 함수를 더하거나 바꾸면 여기만 고친다 (npm run typecheck가 화면 쪽 사용을 확인).
+// 받은 값은 아직 unknown/any: 화면에서 처음 쓰는 곳이 생길 때 그 함수에 JSDoc으로 모양을 적는다.
+// 가짜 API(scripts/dev/stub-preload.js)·점검(verify/doctor.js)이 이 파일의 두 칸 들여쓴 `이름:` 줄을 읽어 함수 목록을 만든다 — 모양을 지킨다.
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
-contextBridge.exposeInMainWorld('recorderApi', {
+const recorderApi = {
   info: () => ipcRenderer.invoke('app:info'),
   start: (opts) => ipcRenderer.invoke('rec:start', opts),
   chunk: (track, samples) => ipcRenderer.send('rec:chunk', { track, samples }),
@@ -101,4 +105,8 @@ contextBridge.exposeInMainWorld('recorderApi', {
   watchMeeting: (dir) => ipcRenderer.invoke('meeting:watch', dir),
   onMeetingChanged: (cb) => ipcRenderer.on('meeting:changed', (_e, s) => cb(s)),
   onRecordingsChanged: (cb) => ipcRenderer.on('recordings:changed', () => cb()),
-});
+};
+
+/** @typedef {typeof recorderApi} RecorderApi */
+
+contextBridge.exposeInMainWorld('recorderApi', recorderApi);
