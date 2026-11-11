@@ -1,0 +1,49 @@
+{
+  "about": "사전(React 화면): 쉼표로 여러 개 추가·지우기가 설정 저장으로 가고, 단어 목록과 사이드바 단어 수가 바로 바뀐다",
+  "noMeeting": true,
+  "steps": [
+    {
+      "go": "#dictionary"
+    },
+    {
+      "snapshot": "before"
+    },
+    {
+      "fill": "단어나 이름",
+      "value": "메모리캐시, Whisper",
+      "enter": true
+    },
+    {
+      "expect": {
+        "called": "dictSaveSettings",
+        "args": [
+          {
+            "vocabulary": "PJY, Whisper, 메모리캐시"
+          }
+        ]
+      }
+    },
+    {
+      "expect": {
+        "text": "메모리캐시"
+      }
+    },
+    {
+      "click": "PJY 지우기",
+      "role": "button"
+    },
+    {
+      "expect": {
+        "called": "dictSaveSettings",
+        "args": [
+          {
+            "vocabulary": "Whisper, 메모리캐시"
+          }
+        ]
+      }
+    },
+    {
+      "snapshot": "after"
+    }
+  ]
+}
