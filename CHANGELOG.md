@@ -13,6 +13,7 @@
 ### 기능
 - **기능 시험** (`npm run test:feature`, `npm run dist`가 돌림): 사용자가 하는 일 45가지를 가짜 데이터로 해 보고 화면 결과와 본체로 간 호출을 본다 — 회의 페이지(탭·할 일·화자 이름·⌘F·용어·… 메뉴·다시 만들기·액션), 확인 필요(적용·확인됨·그대로 두기·여러 개·되돌리기·다시 열기·확인 마치기), 회의 목록(갈래·검색·넘침·묶음), 받아쓰기·사전·설정, 이동(사이드바·뒤로·⌘K), 홈, 멈춘·막힌 상태. React로 옮기기 전 안전망이라 클래스 이름이 아니라 글자·역할·aria로 찾는다. 앱을 일부러 두 군데 망가뜨려 그 시험이 실패하는 것까지 확인. 가짜 API는 이제 모든 호출을 순서대로 남기고(`window.stubLog()`), 확인 필요 상태 바꾸기·되돌리기·확인 마치기·할 일·용어·받아쓰기 지우기를 실제처럼 흉내 낸다 ([docs/testing.md](docs/testing.md)).
 - **검증 스킬 `verify-meeting-recorder`** (pstack `create-verification-skill`): 에이전트가 화면을 고친 뒤 가짜 API로 앱을 띄워 사용자처럼 조작하고 증거(접근성 스냅샷·캡처·본체 호출·바뀐 파일)를 남긴다 — 점검(`doctor.js`)·조작(`drive.js`, 단계 목록 JSON, 진짜 키)·정리(`cleanup.js`)·한꺼번에(`npm run verify:journeys`, dist가 돌림). 기능 지도 7가지와 흐름 7개(처음 설정·파일 가져오기 전체 흐름은 새로 덮음). 실제 녹음 폴더·설정·설치된 앱은 건드리지 않는다.
+- **되돌리기 성질 검증** (pstack `create-formal-verification-skill`, `npm run verify:undo`, 스킬 `verify-review-undo`): 실제 `applyReview`·`revertReview`에 fast-check로 만든 입력 수천 개를 넣어 "전부 되돌리면 처음과 같다"를 본다. 서로 독립인 항목을 나중에 적용한 것부터 되돌리면 지켜지고(dist가 회귀 검사로 돌림), 그 밖에서 깨지는 경우 셋을 찾았다(알려진 한계 F1~F3, 아직 안 고침).
 - **React 전환 계획** ([docs/react-migration.md](docs/react-migration.md)): 동작은 그대로·안쪽만 TypeScript+React·Electron 유지, 합격 기준은 지금 시험을 고치지 않고 통과, 시험 도구는 옮긴 뒤 Playwright·Testing Library로(시험과 코드를 동시에 바꾸지 않음).
 - **`.env.example`**: 앱이 읽는 환경 변수 예시(값은 비움), `.env*`는 커밋에서 뺌.
 

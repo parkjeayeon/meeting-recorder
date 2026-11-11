@@ -17,8 +17,9 @@
     "test:ui": "electron scripts/dev/ui-test.js && electron scripts/dev/overlay-check.js",
     "test:feature": "electron scripts/dev/feature-test.js",
     "verify:journeys": "node scripts/dev/verify/run-all.js",
+    "verify:undo": "npm run build:ts && electron scripts/dev/formal/review-undo.js --lifo --independent --runs 300",
     "lab:meetings": "electron scripts/dev/lab/open.js meetings",
-    "test:crash": "npm run build:ts && electron scripts/dev/review-crash-check.js && electron scripts/dev/review-unify-check.js && electron scripts/dev/ask-engine-check.js && electron scripts/dev/compress-check.js",
+    "test:crash": "npm run build:ts && electron scripts/dev/review-crash-check.js && electron scripts/dev/review-unify-check.js && electron scripts/dev/formal/review-undo.js --lifo --independent --runs 200 && electron scripts/dev/ask-engine-check.js && electron scripts/dev/compress-check.js",
     "test:diskfull": "npm run build:ts && node scripts/dev/disk-full-check.js",
     "mr": "npm run build:ts --silent && ELECTRON_RUN_AS_NODE=1 electron lib/cli/bin.mjs",
     "dist": "npm run typecheck && npm test && node scripts/dev/check-handlers.js && electron scripts/dev/ui-test.js && electron scripts/dev/feature-test.js && node scripts/dev/verify/run-all.js && electron scripts/dev/overlay-check.js && electron scripts/dev/review-crash-check.js && electron scripts/dev/review-unify-check.js && electron scripts/dev/ask-engine-check.js && electron scripts/dev/compress-check.js && npm run build:fn && electron-builder --mac dir && sh scripts/sign-app.sh \"dist/mac-arm64/Meeting Recorder.app\"",
@@ -28,6 +29,7 @@
     "@types/node": "^24.19.2",
     "electron": "45.2.1",
     "electron-builder": "^26.0.12",
+    "fast-check": "^4.10.2",
     "marked": "^18.1.1",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
