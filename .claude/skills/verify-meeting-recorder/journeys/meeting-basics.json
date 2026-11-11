@@ -1,0 +1,24 @@
+{
+  "about": "회의 페이지: 탭 옮기기, ⌘F 찾기(진짜 키), 화자 이름 바꾸기, 할 일 체크가 파일까지",
+  "steps": [
+    { "go": "#meeting/{id}" },
+    { "expect": { "tab": "회의록" } },
+    { "expect": { "text": "배포 일정과 QA 범위를 정리함" } },
+    { "click": "원본", "role": "tab" },
+    { "expect": { "text": "랩캐시도 쪽 확인만" } },
+    { "click": "회의록", "role": "tab" },
+    { "key": "f", "mods": ["meta"] },
+    { "fill": "이 탭 본문에서 찾기", "value": "배포" },
+    { "expect": { "text": "1/" } },
+    { "key": "Escape" },
+    { "click": "화자 1", "role": "button" },
+    { "js": "(() => { const i = document.activeElement; i.value = '민준'; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); return i.tagName; })()" },
+    { "wait": 400 },
+    { "expect": { "called": "renameSpeaker", "args": ["{dir}", "화자 1", "민준"] } },
+    { "expect": { "toast": "민준" } },
+    { "js": "(() => { const c = document.querySelectorAll('input[type=checkbox][aria-label=\"할 일 완료\"]')[0]; c.click(); return c.checked; })()" },
+    { "wait": 400 },
+    { "expect": { "file": "minutes.md", "includes": ["- [x] QA 마치기"] } },
+    { "snapshot": "end" }
+  ]
+}

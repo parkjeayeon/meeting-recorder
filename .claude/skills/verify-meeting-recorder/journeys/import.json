@@ -1,0 +1,16 @@
+{
+  "about": "녹음 파일 가져오기: 파일 고르기(가짜: 이름에 시각이 든 m4a 둘) → 확인 창(이름 순서·짐작한 날짜·참석 인원·녹음 외 메모) → 가져오기 호출",
+  "noMeeting": true,
+  "steps": [
+    { "go": "#meetings" },
+    { "click": "파일 가져오기", "role": "button" },
+    { "expect": { "called": "pickAudio" } },
+    { "expect": { "text": "녹음 파일 가져오기" } },
+    { "expect": { "text": "2026-11-01 오후 2.00.00 녹음.m4a" } },
+    { "snapshot": "sheet" },
+    { "fill": "예: 녹음을 끝낸 뒤", "value": "배포일은 목요일로 바꾸기로 함" },
+    { "click": "가져오기", "role": "button", "exact": true, "within": "#importSheet", "wait": 600 },
+    { "expect": { "called": "importMeeting", "args": [["/Users/me/Downloads/2026-11-01 오후 2.00.00 녹음.m4a", "/Users/me/Downloads/2026-11-01 오후 2.30.00 녹음.m4a"], { "notes": "배포일은 목요일로 바꾸기로 함" }] } },
+    { "snapshot": "after" }
+  ]
+}

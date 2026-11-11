@@ -1,0 +1,69 @@
+{
+  "about": "질문으로 찾기(가짜 엔진): 둥근 버튼 → 질문 → 다른 화면에 있어도 끝나면 알림 → 보기 → 질문 탭에 주로 다룬/잠깐 언급",
+  "env": {
+    "STUB_MANY": "3",
+    "STUB_ASK_MS": "300"
+  },
+  "steps": [
+    {
+      "go": "#home"
+    },
+    {
+      "click": "질문으로 찾기",
+      "role": "button"
+    },
+    {
+      "fill": "예: 작년 2월",
+      "value": "배포 얘기한 회의"
+    },
+    {
+      "click": "찾기",
+      "role": "button",
+      "exact": true
+    },
+    {
+      "expect": {
+        "called": "askStart",
+        "args": [
+          "배포 얘기한 회의"
+        ]
+      }
+    },
+    {
+      "click": "질문 창 닫기",
+      "role": "button"
+    },
+    {
+      "go": "#stats"
+    },
+    {
+      "until": "건을 찾았습니다",
+      "ms": 6000
+    },
+    {
+      "click": "보기",
+      "role": "button"
+    },
+    {
+      "expect": {
+        "hash": "#meetings"
+      }
+    },
+    {
+      "expect": {
+        "text": "주제로 다룬 회의"
+      }
+    },
+    {
+      "expect": {
+        "text": "배포 일정을 정한 회의"
+      }
+    },
+    {
+      "snapshot": "ask-tab"
+    },
+    {
+      "screenshot": "ask-tab"
+    }
+  ]
+}

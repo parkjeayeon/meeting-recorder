@@ -1,0 +1,14 @@
+{
+  "about": "처음 설정: 시작 화면 → 시작하기 → 다음 단계(권한)로 넘어가며 진행 단계를 저장 → 뒤로",
+  "env": { "OB_STEP": "welcome" },
+  "steps": [
+    { "until": "Meeting Recorder를 시작합니다" },
+    { "snapshot": "welcome" },
+    { "click": "시작하기", "role": "button", "wait": 600 },
+    { "expect": { "called": "onboardingSet", "args": [{ "step": "permissions" }] } },
+    { "expect": { "text": "권한" } },
+    { "snapshot": "permissions" },
+    { "click": "뒤로", "role": "button" },
+    { "expect": { "text": "Meeting Recorder를 시작합니다" } }
+  ]
+}

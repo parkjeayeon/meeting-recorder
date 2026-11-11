@@ -323,9 +323,11 @@ const api = {};
 // 모든 호출을 순서대로 남긴다 (기능 시험이 "무엇이 어떤 값으로 불렸나"를 본다). 이벤트 구독(on…)은 빼고
 const log = [];
 const plain = (v) => { try { return JSON.parse(JSON.stringify(v ?? null)); } catch { return String(v); } };
+// 이벤트 구독은 on + 대문자(onAsk, onMinutes…). onboardingGet·onboardingSet은 이벤트가 아니다
+const isEvent = (k) => /^on[A-Z]/.test(k);
 for (const k of keys) {
-  const fn = impl[k] ?? (k.startsWith('on') ? noop : async () => null);
-  api[k] = k.startsWith('on') ? fn : (...args) => { log.push([k, plain(args)]); return fn(...args); };
+  const fn = impl[k] ?? (isEvent(k) ? noop : async () => null);
+  api[k] = isEvent(k) ? fn : (...args) => { log.push([k, plain(args)]); return fn(...args); };
 }
 contextBridge.exposeInMainWorld('recorderApi', api);
 contextBridge.exposeInMainWorld('stubCalls', () => ({ ...calls }));

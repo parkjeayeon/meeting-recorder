@@ -1,0 +1,17 @@
+{
+  "about": "녹음 압축: 확인을 마친 회의에 안내(모달 아님) → 압축하기 → 압축 호출 → '압축함' 표시와 안내 사라짐",
+  "noMeeting": true,
+  "env": { "STUB_MANY": "2" },
+  "steps": [
+    { "go": "#meetings" },
+    { "click": "주간 회의 1차", "role": "link" },
+    { "expect": { "text": "확인을 마쳤으니 녹음을 압축할까요?" } },
+    { "expect": { "text": "689MB → 약 86MB" } },
+    { "snapshot": "offer" },
+    { "click": "압축하기", "role": "button", "wait": 800 },
+    { "expect": { "called": "compressMeeting" } },
+    { "expect": { "text": "압축함" } },
+    { "expect": { "noText": "확인을 마쳤으니 녹음을 압축할까요?" } },
+    { "snapshot": "done" }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "about": "확인 필요: 추정대로 적용 → 녹취를 고치는 호출 → 처리함에 '랩캐시도 → Memcached', 남은 수 4 → 3",
+  "steps": [
+    { "go": "#meeting/{id}" },
+    { "click": "확인 필요", "role": "tab" },
+    { "expect": { "tab": "확인 필요4" } },
+    { "snapshot": "before" },
+    { "fill": "고칠 말", "value": "Memcached", "enter": true },
+    { "expect": { "called": "applyReview", "args": ["{dir}", [{ "id": "r1", "guess": "Memcached" }]] } },
+    { "expect": { "tab": "확인 필요3" } },
+    { "click": "처리함", "role": "button" },
+    { "expect": { "text": "Memcached" } },
+    { "expect": { "file": "review.json", "includes": ["\"id\":\"r1\"", "\"status\":\"applied\""] } },
+    { "snapshot": "after" },
+    { "screenshot": "after" }
+  ]
+}

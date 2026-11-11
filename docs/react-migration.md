@@ -1,0 +1,38 @@
+# 화면을 TypeScript + React로 옮기는 계획
+
+## 조건 (사용자 결정, 2026-11-11)
+- **동작은 그대로, 안쪽만 바꾼다.** 사용자가 보는 화면 글자·버튼 이름(aria)·흐름·결과가 같아야 한다. 동작을 바꾸고 싶어지면 옮기는 일과 따로, 먼저 묻는다.
+- **Electron은 유지한다.** 메인 프로세스(`src/main.js` 등), preload의 `api.*`, 회의 폴더 파일 형식, `src/core`는 그대로 둔다. 바꾸는 것은 화면(`src/renderer`)뿐.
+- 구조는 FSD(Feature-Sliced Design): app · pages · widgets · features · entities · shared, 조각마다 ui/model/api와 시험.
+
+## 합격 기준
+화면 하나를 옮길 때마다 아래가 **시험을 고치지 않고** 통과해야 한다.
+- `npm run test:ui` (화면 시험 48건: 입력칸 진짜 키, 진행 중 표시, 툴팁 …)
+- `npm run test:feature` (기능 시험 45건: 사용자가 하는 일마다 화면 결과와 본체 호출)
+- `npm run verify:journeys` (검증 스킬의 흐름 7개, `.claude/skills/verify-meeting-recorder/`)
+- `npm test`, `npm run typecheck`, 화면 오류 0, 설치해서 하루 써 보기
+
+시험을 고쳐야 통과한다면 동작이 바뀐 것이다. 이 시험들이 클래스 이름이 아니라 글자·역할·aria로 찾는 이유다.
+
+## 순서
+0. **안전망** (끝남, 2026-11-11): 기능 시험 45건, 검증 스킬과 흐름 7개(처음 설정·가져오기처럼 시험이 없던 곳 포함).
+1. **도구**: 화면만 Vite + React + TypeScript로 빌드(개발은 Vite 서버, 설치본은 빌드 파일, electron-builder에 포함). preload `api.*`에 타입. 화면이 `src/core`를 직접 가져다 써 `app.js`의 복사본(스크립트 해석 규칙 등)을 없앤다.
+2. **공통 부품**: 버튼·알림·툴팁·확인 창·아이콘, 전역 상태(회의 목록·진행 중 작업·질문 작업·문서 캐시)를 한곳에, IPC 소식도 한곳에서. CSS는 조각마다(CSS Modules) — 클래스 이름이 겹쳐 모양이 깨진 일(`.ghost`, `.todo`)을 구조로 막는다. 색·간격 변수는 공용.
+3. **화면을 작은 것부터**: 사전·통계 → 홈 → 받아쓰기 → 회의 목록 → 질문으로 찾기(전역) → **회의 페이지**(재생 막대·탭·확인 필요·채팅·흐름도·용어·액션·⌘F를 조각으로) → 설정·처음 설정 → 옛 `app.js` 지우기.
+   - 지금 라우터가 화면마다 `{ el, update }`를 받으므로 React 화면을 그 자리에 끼운다(`createRoot(el).render(...)`). 화면 하나씩 바꿔도 앱은 계속 동작한다.
+   - 녹음 처리(`recorder.js`, worklet)는 React와 상관없는 오디오 코드라 그대로.
+
+## 시험 도구 전환
+**시험과 코드를 동시에 바꾸지 않는다.** 옮기는 동안은 지금 시험이 합격 기준이라 그대로 둔다.
+
+| 층 | 지금 | 옮긴 뒤 | 언제 |
+|---|---|---|---|
+| 코어·로직 | Vitest | 그대로 (+ `@vitest/coverage-v8`) | — |
+| 컴포넌트 | 없음 | Vitest + `@testing-library/react` + `@testing-library/user-event` + jsdom, FSD 조각 옆에 | 조각을 옮길 때마다 |
+| 기능(E2E) | `feature-test.js`·`ui-test.js`·`verify/drive.js` (직접 만든 Electron 도구 + 가짜 API) | Playwright Electron(`_electron.launch`), `getByRole`·자동 대기·trace | 옮기기가 끝난 뒤, 묶음마다 옮기고 두 시험을 함께 돌리다가 같아지면 옛 도구 삭제 |
+| 화면 비교 | `screens.js` 캡처를 눈으로 | Playwright `toHaveScreenshot()` | Playwright로 옮길 때 |
+
+가짜 API(`scripts/dev/stub-preload.js`)는 계속 쓴다. 화면과 본체가 HTTP가 아니라 IPC로 이야기하므로 MSW 같은 네트워크 흉내는 필요 없다. Playwright에는 가짜 API를 쓰는 작은 시험용 진입점(메인 창 하나만 띄움)을 준다.
+
+## 도구 (pstack)
+구조·타입은 `/pstack:architect`로 먼저 잡고, 화면 하나씩 옮긴 뒤 `verify-meeting-recorder` 스킬로 증명한다. 공통 부품과 회의 페이지는 한 흐름에서(나눠 맡기지 않는다).

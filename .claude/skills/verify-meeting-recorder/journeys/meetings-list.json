@@ -1,0 +1,17 @@
+{
+  "about": "회의 목록: 갈래 칩으로 거르기, 검색, 회의 열기",
+  "env": { "STUB_MANY": "30" },
+  "steps": [
+    { "go": "#meetings" },
+    { "expect": { "text": "확인할 회의" } },
+    { "click": "녹음만 · 실패" },
+    { "snapshot": "rest" },
+    { "click": "전체" },
+    { "fill": "제목, 요약 검색", "value": "채용" },
+    { "expect": { "text": "채용 면접" } },
+    { "expect": { "noText": "배포 점검" } },
+    { "click": "채용 면접", "role": "link" },
+    { "expect": { "text": "채용 면접" } },
+    { "snapshot": "opened" }
+  ]
+}

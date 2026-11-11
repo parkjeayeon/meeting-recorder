@@ -15,3 +15,6 @@ eval-runs/
 # 키·토큰을 담은 환경 변수 파일은 공개 저장소에 올리지 않는다. 값을 비운 예시(.env.example)만 올린다
 .env*
 !.env.example
+
+# 검증 조작 도구(scripts/dev/verify/drive.js)의 증거 — 가짜 데이터지만 실행마다 쌓이므로 올리지 않는다
+verify-runs/
