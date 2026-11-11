@@ -40,8 +40,8 @@
 
 ## 되돌리기 성질 검증 — `npm run verify:undo` (`scripts/dev/formal/review-undo.js`, 스킬 `.claude/skills/verify-review-undo/`)
 확인 필요의 적용·되돌리기가 "어떤 순서로 적용하고 되돌려도 전부 되돌리면 녹취·정리본·회의록이 처음과 같다"를 지키는지, **실제 `applyReview`·`revertReview`**에 fast-check로 생성한 입력(서로 겹치는 말·원래 있던 말을 섞은 작은 어휘, 줄 2~5개, 항목 1~3개, 적용·되돌리기 1~8번)을 수백 개 넣어 본다. 실패하면 가장 짧은 반례(순서·항목·원래 녹취·달라진 파일)를 찍고 seed로 다시 낼 수 있다.
-- 기준선(`--lifo --independent`, 서로 독립인 항목을 나중에 적용한 것부터 되돌림)은 지켜진다 — 회귀 검사로 `npm run dist`가 200건 돌린다(약 12초).
-- 전체 성질은 지금 세 가지로 깨진다(알려진 한계 F1~F3). 옵션으로 조건을 나눠 볼 수 있다: `--lifo` `--independent` `--distinct-heard` `--no-chains`.
+- 처음 만들었을 때 전체 성질이 세 가지로 깨졌고(F1 이어지는 항목·F2 원래 있던 같은 말까지·F3 끊긴 적용 오판), 고친 뒤 제한 없이 8,000건 통과. `npm run dist`가 200건(약 12초) 돌린다.
+- 옵션으로 조건을 좁혀 원인을 나눠 볼 수 있다: `--lifo` `--independent` `--distinct-heard` `--no-chains`.
 - 고장을 잡는지 확인함: `revertReview`가 회의록을 되돌리지 않게 바꾸면 첫 사례에서 실패.
 
 ## 질문으로 찾기 본체 시험 — `scripts/dev/ask-engine-check.js`

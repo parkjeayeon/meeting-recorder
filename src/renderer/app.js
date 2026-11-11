@@ -2974,7 +2974,10 @@ function pageMeeting(id) {
   async function revertItem(r, it) {
     try {
       const res = await api.revertReview(r.dir, it.id);
-      toast('되돌렸습니다', res.removedWord ? `사전에서 '${res.removedWord}'를 뺐습니다` : '항목을 다시 확인 전으로 열었습니다');
+      // 같은 줄을 나중에 고친 항목은 먼저 되돌렸다가 다시 적용한다 (그 항목의 고칠 말이 이제 녹취에 없으면 확인 전으로 연다)
+      const again = res.reapplied?.length ? `같은 줄을 나중에 고친 ${res.reapplied.length}개는 다시 적용했습니다` : '';
+      const reopened = res.reopened?.length ? `${res.reopened.length}개는 고칠 곳이 없어져 다시 확인 전으로 열었습니다` : '';
+      toast('되돌렸습니다', [res.removedWord && `사전에서 '${res.removedWord}'를 뺐습니다`, again, reopened].filter(Boolean).join(' · ') || '항목을 다시 확인 전으로 열었습니다');
       if (res.removedWord) renderDictSettings(await api.dictSettings());
     } catch (err) {
       toast('되돌리지 못했습니다', err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { bad: true });

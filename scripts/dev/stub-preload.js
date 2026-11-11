@@ -127,7 +127,7 @@ const impl = {
     Object.assign(it, { status: 'open' });
     delete it.applied;
     fs.writeFileSync(path.join(dir, 'review.json'), JSON.stringify(review));
-    return { review, removedWord: null };
+    return { review, removedWord: null, ...(it.cascade ? { reapplied: it.cascade } : {}) }; // cascade: 같은 줄을 나중에 고쳐 다시 적용된 항목(기능 시험용)
   },
   finalizeReview: async () => {
     const review = JSON.parse(read('review.json'));

@@ -826,11 +826,29 @@ function legacyUndo(dir, item) {
   return found ? undo : null;
 }
 
-function revertReview(dir, id) {
+function revertReview(dir, id, { cascade = true } = {}) {
   const review = readReview(dir);
   const item = review?.items.find((it) => it.id === id);
   if (!item) throw new Error('확인 항목이 없습니다');
   if (review.finalizedAt) throw new Error('확인을 마친 뒤에는 되돌릴 수 없습니다 (회의록이 이미 다시 쓰였습니다)');
+  // 이 항목이 바꾼 줄을 나중에 다른 항목이 또 고쳤으면: 그 항목들을 먼저 되돌리고 → 이 항목을 되돌리고 → 그 항목들을 다시 적용한다.
+  // 결과는 "이 항목만 적용한 적 없는 것처럼". 예전에는 줄을 못 찾아 그냥 넘어가거나(이어지는 항목, F1) 그 줄의 고친 말을
+  // 전부 되돌려 원래 있던 같은 말까지 바꿨다(F2). 다시 적용할 때 들린 말이 이제 없으면 그 항목은 다시 확인 전으로 연다
+  if (cascade && item.status === 'applied' && item.undo && !item.redo?.appliedAt) {
+    const later = laterOnSameLines(review, item);
+    if (later.length) {
+      const redo = later.map((it) => ({ id: it.id, heard: it.heard, guess: it.applied }));
+      for (const it of later) revertReview(dir, it.id, { cascade: false });
+      revertReview(dir, id, { cascade: false });
+      const reapplied = [];
+      const reopened = [];
+      for (const fix of redo.reverse()) {
+        const after = applyReview(dir, [fix]);
+        (after.items.find((it) => it.id === fix.id)?.status === 'applied' ? reapplied : reopened).push(fix.id);
+      }
+      return { ...readReview(dir), reapplied, reopened };
+    }
+  }
   if (item.status === 'kept') {
     item.status = 'open';
     return writeReview(dir, review);
@@ -864,7 +882,7 @@ function revertReview(dir, id) {
       writeFileAtomic(p, lines.join('\n'));
     }
   }
-  for (const k of ['applied', 'count', 'undo']) delete item[k];
+  for (const k of ['applied', 'count', 'undo', 'seq']) delete item[k];
   item.status = 'open';
   return writeReview(dir, review);
 }
@@ -930,7 +948,7 @@ function applyReview(dir, fixes) {
     if (!texts['transcript.txt'].includes(heard)) {
       // 지난번 적용이 녹취를 고쳐 쓴 뒤 기록(review.json)을 쓰기 전에 끊긴 경우: 녹취에 고칠 말은 없고 고친 말이 있으며
       // 고치기 전 보관본에는 고칠 말이 있었다 → 남은 파일(정리본·회의록)을 마저 고치고, 되돌리기 기록은 파일을 쓴 뒤 보관본과 맞대어 채운다
-      if (item.status === 'open' && texts['transcript.txt'].includes(guess) && readText(dir, 'transcript.before-review.txt').includes(heard)) {
+      if (item.status === 'open' && texts['transcript.txt'].includes(guess) && readText(dir, 'transcript.before-review.txt').includes(heard) && changedByThisItem(review, item, texts['transcript.txt'], readText(dir, 'transcript.before-review.txt'), heard, guess)) {
         for (const f of files.slice(1)) replaceAll(f, heard, guess);
         resumed.push({ item, heard, guess });
       } else skipped.push({ id: item.id, reason: 'notfound', heard });
@@ -952,7 +970,9 @@ function applyReview(dir, fixes) {
       }
     }
     // 시각이 비어 있던 항목은 고치기 전 녹취로 시각을 남긴다 (고친 뒤에는 고칠 말이 녹취에 없다)
-    Object.assign(item, { status: 'applied', at: item.at ?? stampFor(item, before['transcript.txt']), heard, applied: guess, count, undo });
+    // seq: 적용한 순번 — 되돌릴 때 '이 항목 다음에 같은 줄을 고친 항목'을 가린다(줄 글자만으로는 순서를 모른다: 나중 항목이 줄을 원래 글자로 되돌려 놓기도 한다)
+    review.applySeq = (review.applySeq ?? 0) + 1;
+    Object.assign(item, { status: 'applied', at: item.at ?? stampFor(item, before['transcript.txt']), heard, applied: guess, count, undo, seq: review.applySeq });
   }
   // 내용 파일 먼저, 기록(review.json)은 마지막에: 그 사이에 끊기면 "고쳤는데 기록이 없음"이 남고, 다시 적용하면 이어서 기록한다 (아래 resumed).
   // 반대 순서면 "기록은 있는데 안 고쳐짐"이 되어 되돌리기가 엉뚱한 줄을 건드린다
@@ -965,9 +985,53 @@ function applyReview(dir, fixes) {
     const undo = legacyUndo(dir, { heard, applied: guess });
     for (const u of Object.values(undo ?? {})) u.changed = u.changed.filter((c) => !taken.has(c.to));
     const count = Object.values(undo ?? {}).reduce((n, u) => n + u.changed.length, 0);
-    if (count) Object.assign(item, { status: 'applied', heard, applied: guess, count, undo });
+    if (count) {
+      review.applySeq = (review.applySeq ?? 0) + 1;
+      Object.assign(item, { status: 'applied', heard, applied: guess, count, undo, seq: review.applySeq });
+    }
   }
   return { ...writeReview(dir, review), skipped };
+}
+
+// 끊긴 적용인가: 보관본에서 들린 말이 있던 줄과 같은 시각의 지금 줄에 고칠 말이 있고, 그 줄이 다른 항목이 고친 결과(그 항목의
+// 되돌리기 기록의 '바꾼 뒤' 줄)가 아니어야 한다. 앞서 적용한 다른 항목이 같은 들린 말(또는 그 말을 품은 말)을 이미 바꿔
+// 녹취에서 들린 말이 사라진 경우를 끊긴 적용으로 잘못 보고 적용됨으로 표시하던 것 (verify-review-undo F3)
+function changedByThisItem(review, item, transcript, backup, heard, guess) {
+  const others = new Set(review.items.filter((it) => it !== item && it.status === 'applied').flatMap((it) => (it.undo?.['transcript.txt']?.changed ?? []).map((c) => c.to)));
+  const now = new Map(transcript.split('\n').map((l) => [/^\[[\d:]+\]/.exec(l)?.[0], l]));
+  return backup.split('\n').some((l) => {
+    const at = /^\[[\d:]+\]/.exec(l)?.[0];
+    const cur = at && now.get(at);
+    return at && l.includes(heard) && cur && cur.includes(guess) && !others.has(cur);
+  });
+}
+
+// 되돌리려는 항목이 바꾼 줄을 나중에 다른 항목이 또 고친 경우: 그 항목들(과 그 위에 또 고친 항목들). 줄로 잇는다 —
+// 다른 항목의 '바꾸기 전' 줄이 이 항목의 '바꾼 뒤' 줄이면 그 항목은 이 항목 다음에 그 줄을 고쳤다
+function laterOnSameLines(review, item) {
+  // b가 a 다음에 적용됐고(순번), a가 바꾼 뒤의 줄을 b가 다시 바꿨다. 순번이 없는 예전 항목은 잇지 않는다(예전처럼 그 자리에서 되돌림)
+  const touched = (a, b) => a.seq !== undefined && b.seq !== undefined && b.seq > a.seq
+    && Object.entries(a.undo ?? {}).some(([f, u]) => u.changed.some((c) => (b.undo?.[f]?.changed ?? []).some((d) => d.from === c.to)));
+  const out = [];
+  const queue = [item];
+  while (queue.length) {
+    const cur = queue.shift();
+    for (const it of review.items) {
+      if (it === item || out.includes(it) || it.status !== 'applied' || !it.undo || it.redo?.appliedAt) continue;
+      if (touched(cur, it)) {
+        out.push(it);
+        queue.push(it);
+      }
+    }
+  }
+  // 되돌릴 순서: 자기 줄을 또 고친 항목이 남아 있지 않은 것부터 (맨 나중에 고친 것부터)
+  const order = [];
+  const left = [...out];
+  while (left.length) {
+    const i = left.findIndex((a) => !left.some((b) => b !== a && touched(a, b)));
+    order.push(...left.splice(i === -1 ? left.length - 1 : i, 1));
+  }
+  return order;
 }
 
 function setReviewStatus(dir, ids, status) {

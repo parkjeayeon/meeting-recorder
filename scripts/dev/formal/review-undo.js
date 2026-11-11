@@ -1,6 +1,6 @@
 // 형식 검증(성질 기반, 실제 코드): 확인 필요 항목을 어떤 순서로 적용하고 되돌려도, 전부 되돌리면 녹취·정리본·회의록이 처음과 똑같다.
 //   npm run build:ts && npx electron scripts/dev/formal/review-undo.js [--runs 400] [--seed 42] [--lifo] [--independent] [--distinct-heard] [--no-chains]
-//   기준선(지금 지켜지는 범위, 회귀 검사): --lifo --independent   ·   전체 성질(지금은 알려진 발견 셋으로 실패): 옵션 없이
+//   옵션 없이 = 전체 성질(회귀 검사, npm run verify:undo·dist). 옵션은 조건을 좁혀 원인을 나눠 볼 때
 //   검증 스킬: .claude/skills/verify-review-undo/SKILL.md
 // 대상 코드: src/minutes.js의 applyReview·revertReview (+ changedLines, writeReview). 손으로 만든 모델이 아니라 그 함수를 그대로 부른다.
 // 범위: 어휘 9개(서로 겹치는 말 '랩캐시도'⊃'캐시'·'랩', 원래 녹취에 있는 말 'QA'·'배포' 포함)로 만든 줄 2~5개, 항목 1~3개, 적용·되돌리기 1~8번을
