@@ -8,6 +8,8 @@
 ## 2026-11-12
 
 ### 기능
+- **사전 화면을 React로 옮김** (첫 화면, 동작·겉모습 그대로): `pages/dictionary` + 단어 목록 창구 `entities/vocabulary`(상태 주인은 아직 옛 코드의 settings, 설정이 바뀌면 화면이 다시 읽음) + 아이콘 부품. 옛 `pageDictionary`와 단어 나누기 중복을 지웠다. 입력칸은 uncontrolled(시험이 값을 넣는 방식 그대로 통함), 클래스·글자 그대로.
+  - 확인: 화면 시험 48·기능 시험 46·흐름(사전 흐름 새로 더해 8개)을 고치지 않고 통과, 화면 캡처 40장 픽셀까지 같음, React가 그린 화면인지 확인, 단어 목록 단위 시험 4건.
 - **화면을 Vite + React + TypeScript로 묶는 1단계** ([결정 61](docs/decisions.md), [renderer-architecture.md](docs/renderer-architecture.md)): 동작·겉모습은 그대로, 안쪽 틀만. 화면을 `lib/renderer/`로 묶고(`npm run build:renderer`, `start`·시험·`dist`가 먼저 묶음), 개발은 `npm run dev`(지켜보며 묶기 + 앱, 고친 뒤 ⌘R). 옛 화면 코드는 `src/renderer/legacy/`로 옮겨 격리하고, 화면 하나를 React로 옮길 이음새(`reactPage`)·API 타입(preload 객체에서 끌어냄)·가져오기 경계 검사(`check-boundaries.js`)를 넣었다. 화면이 코어를 원본(`src/core/*.mts`)에서 가져온다. 설치본에서 화면 원본은 빼고 묶음만.
   - 확인: 화면 시험 48·기능 시험 46·흐름 7을 고치지 않고 통과, 바뀌기 전·후 화면 캡처 40장(라이트·다크) 픽셀까지 같음, 이음새 시험 4건(jsdom), 경계 검사가 일부러 어긴 다섯 경우를 잡음, 타입 검사가 없는 API 함수 호출을 막음. `check-handlers.js`는 하위 폴더·.ts(x)까지 본다(옮긴 `app.js`를 놓치지 않게).
 

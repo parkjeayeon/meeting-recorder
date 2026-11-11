@@ -64,4 +64,5 @@ API 타입: `src/preload.js`에 함수를 더하면 그것만 고친다. 화면 
 - 오디오 워크릿·`rec://` 재생·글꼴이 설치본(asar)에서 그대로인지는 설치해서 확인한다(묶음은 `lib/`로 들어간다).
 
 ## 다음 단계
-2단계: 공통 부품(버튼·알림·확인 창·아이콘)과 첫 화면(사전) 옮기기 — 사전이 읽는 설정의 단어 목록 창구(`entities/…`)를 열고 `ROUTES`의 `dictionary` 한 줄을 바꾼다.
+- 첫 화면(사전)은 옮겼다(2026-11-12): `pages/dictionary` + `entities/vocabulary`(주인이 준 read·save, settings가 바뀌면 주인이 `changed()`) + `shared/ui`의 `Icon`. 옛 `pageDictionary`와 단어 나누기 코드는 지웠다(`vocabWords`는 창구를 읽음).
+- 다음: 통계 → 홈. 공통 부품(알림·확인 창)은 필요한 화면을 옮길 때 만든다.

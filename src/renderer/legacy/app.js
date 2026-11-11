@@ -2,6 +2,9 @@ import { Recorder } from './recorder.js';
 import { startOnboarding } from './onboarding.js';
 import { scriptMarkdown } from '../../core/script.mts'; // 화면은 코어를 원본(.mts)에서 바로 가져다 쓴다 (Vite가 묶음)
 import { noteVariants } from '../../core/review.mts';
+import { reactPage } from '../shared/page-host/index.tsx'; // React로 옮긴 화면을 옛 라우터에 끼운다 (docs/renderer-architecture.md)
+import { createVocabularyModel } from '../entities/vocabulary/index.ts';
+import { DictionaryPage } from '../pages/dictionary/index.ts';
 
 const api = window.recorderApi;
 const $ = (id) => document.getElementById(id);
@@ -506,7 +509,7 @@ function markedText(raw, text) {
 }
 
 // ── 라우터 ──────────────────────────────────────────────────────────────
-const ROUTES = { home: pageHome, dictations: pageDictations, meetings: pageMeetings, meeting: pageMeeting, dictionary: pageDictionary, stats: pageStats };
+const ROUTES = { home: pageHome, dictations: pageDictations, meetings: pageMeetings, meeting: pageMeeting, dictionary: () => reactPage(DictionaryPage, { model: vocabulary }), stats: pageStats };
 const TITLES = { home: '홈', dictations: '받아쓰기', meetings: '회의', meeting: '회의', dictionary: '사전', stats: '통계' };
 let route = parseHash();
 let current = null; // { el, update? }
@@ -3879,44 +3882,10 @@ function pageMeeting(id) {
 }
 
 // ── 사전 ────────────────────────────────────────────────────────────────
-const vocabWords = () => (settings?.vocabulary ?? '').split(/[,\n]/).map((w) => w.trim()).filter(Boolean);
-
-function pageDictionary() {
-  const input = h('input', { type: 'text', placeholder: '단어나 이름 (예: PJY, Whisper, 김신우)', spellcheck: false });
-  const words = h('div', { class: 'words' });
-  const add = async () => {
-    const list = vocabWords();
-    const fresh = input.value.split(',').map((w) => w.trim()).filter((w) => w && !list.includes(w));
-    if (!fresh.length) return input.focus();
-    await saveDict({ vocabulary: [...list, ...fresh].join(', ') });
-    input.value = '';
-    input.focus();
-    update();
-  };
-  // onkeydown 처리기가 false를 돌려주면 키 입력이 막히므로(영문·지우기 안 됨) 값을 돌려주지 않는다
-  input.onkeydown = (e) => {
-    if (e.key === 'Enter' && !e.isComposing) add();
-  };
-  const update = () => {
-    const list = vocabWords();
-    $('countWords').textContent = list.length || '';
-    if (!list.length) words.replaceChildren(h('div', { class: 'empty', style: 'width:100%' }, h('b', null, '아직 등록한 단어가 없습니다'), '사람 이름, 회사·제품 이름, 전문 용어를 넣어 두면 받아쓰기와 회의 녹취가 그 단어를 더 잘 알아듣습니다.'));
-    else words.replaceChildren(...list.map((w) => h('span', { class: 'word' }, w, h('button', { class: 'icon-btn', 'aria-label': `${w} 지우기`, onclick: async () => {
-      await saveDict({ vocabulary: vocabWords().filter((x) => x !== w).join(', ') });
-      update();
-    } }, icon('i-x')))));
-  };
-  const el = h('div', { class: 'page' },
-    h('div', { class: 'page-head' }, h('div', { style: 'flex:1' }, h('h1', null, '사전'), h('p', { class: 'lead' }, 'Whisper가 자주 틀리는 이름과 용어를 알려 줍니다. 받아쓰기와 회의 녹취에 모두 쓰입니다.'))),
-    h('div', { class: 'add-row' }, input, h('button', { class: 'btn primary', onclick: add }, icon('i-plus'), '추가')),
-    words,
-    h('ul', { class: 'tips' },
-      h('li', null, h('b', null, '고유명사 위주로: '), '흔한 낱말보다 사람·회사·제품 이름이 효과가 큽니다.'),
-      h('li', null, h('b', null, '적힌 그대로: '), '"PJY", "Electron"처럼 화면에 나와야 하는 모양 그대로 적으세요.'),
-      h('li', null, h('b', null, '너무 많지 않게: '), '수십 개를 넘기면 오히려 엉뚱한 단어로 바꿔 듣는 일이 생깁니다.')));
-  update();
-  return { el, update };
-}
+// 사전 단어 목록: 상태 주인은 여기(settings), React 사전 화면(pages/dictionary)은 이 창구로 읽고 쓴다.
+// settings를 바꾸는 곳은 renderDictSettings 하나 — 끝에서 vocabulary.changed()를 불러 사전 화면이 다시 읽게 한다
+const vocabulary = createVocabularyModel({ read: () => settings?.vocabulary ?? '', save: (v) => saveDict({ vocabulary: v }) });
+const vocabWords = () => vocabulary.getSnapshot();
 
 // ── 통계 ────────────────────────────────────────────────────────────────
 function pageStats() {
@@ -4344,6 +4313,7 @@ function renderDictSettings(s) {
   $('countWords').textContent = vocabWords().length || '';
   renderEngine(s.engine);
   renderSideCleanup();
+  vocabulary.changed();
 }
 
 async function saveDict(patch) {
