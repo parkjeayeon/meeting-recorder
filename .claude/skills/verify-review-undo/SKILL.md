@@ -34,7 +34,7 @@ minutes.js가 Electron 앱 객체를 써서 Electron으로 돈다(창 없음, �
 | F2 원래 있던 같은 말까지 | 두 항목이 한 줄을 고친 뒤 먼저 것부터 되돌리면 | 줄 `Memcached 랩캐시도 배포`. r1(`랩캐시도→Memcached`) → r2(`배포→큐에이`) → r1 되돌리기 ⇒ 줄의 `Memcached`를 **전부** `랩캐시도`로 | 우회 경로 `split(applied).join(heard)` |
 | F3 끊긴 적용으로 오판 | 앞 항목이 이 항목의 들린 말을 없앤 뒤 적용 | r1(`수요일→랩캐시도`) → r2(`수요일→캐시`) ⇒ `캐시`가 `랩캐시도` 안에 있어 "끊긴 적용"으로 적용됨 표시 | 이어 하기 조건이 이 경우와 구별되지 않음 |
 
-**고침 (판 이 파일 아래 "맞춰 본 판"):** `revertReview`가 이 항목이 바꾼 줄을 나중에(`seq`가 큰) 다른 항목이 또 고쳤으면 그 항목들을 먼저 되돌리고 → 이 항목을 되돌리고 → 다시 적용한다(`laterOnSameLines`). 다시 적용할 곳이 없으면 확인 전으로 열고 `reopened`로 알린다. 적용할 때 순번 `seq`를 남긴다(줄 글자만으로는 나중 항목이 줄을 원래 글자로 되돌려 놓은 경우를 구별 못 함 — 고치는 중에 이 반례로 한 번 더 깨졌다). 끊긴 적용 이어 하기는 그 줄이 다른 항목이 고친 결과가 아닐 때만(`changedByThisItem`).
+**고침 (판 6a5dc88):** `revertReview`가 이 항목이 바꾼 줄을 나중에(`seq`가 큰) 다른 항목이 또 고쳤으면 그 항목들을 먼저 되돌리고 → 이 항목을 되돌리고 → 다시 적용한다(`laterOnSameLines`). 다시 적용할 곳이 없으면 확인 전으로 열고 `reopened`로 알린다. 적용할 때 순번 `seq`를 남긴다(줄 글자만으로는 나중 항목이 줄을 원래 글자로 되돌려 놓은 경우를 구별 못 함 — 고치는 중에 이 반례로 한 번 더 깨졌다). 끊긴 적용 이어 하기는 그 줄이 다른 항목이 고친 결과가 아닐 때만(`changedByThisItem`).
 
 고친 뒤 **제한 없는 전체 성질**: seed 1~8 × 500건, seed 101·202 × 2,000건 통과. 남은 한계: 이 고침 전에 적용한 항목(`seq` 없음)끼리는 예전처럼 그 자리에서 되돌린다 — 생성기는 늘 새로 적용하므로 이 경우를 만들지 않는다.
 
@@ -50,7 +50,7 @@ minutes.js가 Electron 앱 객체를 써서 Electron으로 돈다(창 없음, �
 ## 덮는 코드와 맞춰 본 판
 - `src/minutes.js`: `applyReview`(같은 글자 모두 바꾸기 `replaceAll`, 확인 필요 칸 빼기, 보관본 `*.before-review.*`, 적용 순번 `seq`, 끊긴 적용 이어 하기 `resumed`·`changedByThisItem`), `revertReview`(단어 항목 경로, 나중 항목 되돌렸다 다시 적용 `laterOnSameLines`), `legacyUndo`, `changedLines`, `writeReview`, `readReview`. 화면 알림: `src/renderer/app.js`의 `revertItem`.
 - 시험: `scripts/dev/formal/review-undo.js`.
-- **맞춰 본 판: e8fb796** — 이 판에서 위 함수를 읽고 검증이 그 동작을 그대로 부른다는 것을 확인했다. 덮는 코드가 이 판 뒤에 바뀌었으면(`git log e8fb796.. -- src/minutes.js`) 검증이 여전히 맞는지 보고, 확인한 뒤에만 이 판을 앞으로 옮긴다.
+- **맞춰 본 판: 6a5dc88** — 이 판에서 위 함수를 읽고 검증이 그 동작을 그대로 부른다는 것을 확인했다. 덮는 코드가 이 판 뒤에 바뀌었으면(`git log 6a5dc88.. -- src/minutes.js`) 검증이 여전히 맞는지 보고, 확인한 뒤에만 이 판을 앞으로 옮긴다.
 
 ## 이 검증이 고장을 잡는지 (확인함)
 `revertReview`가 `minutes.md`를 되돌리지 않게 일부러 바꾸자 첫 사례에서 `diffs: ["minutes.md"]`로 실패했고, 되돌리자 다시 통과했다. 고치기 전 코드(판 b4f4c5f)에서는 F1~F3로 실패한다.
