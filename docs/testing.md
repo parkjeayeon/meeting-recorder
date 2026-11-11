@@ -55,6 +55,11 @@
 - `npm run test:crash` (`scripts/dev/review-crash-check.js`, 빌드 전에 자동): 가짜 회의 폴더에서 확인 필요 적용·되돌리기·구간 다시 받아쓰기 반영이 끊긴 지점을 하나씩 만들고, 다시 누르면 끝나는지와 되돌리면 처음과 바이트까지 같은지. 자식 프로세스가 적용하는 도중 아무 때나 강제 종료 40번.
 - `npm run test:diskfull` (`scripts/dev/disk-full-check.js`, 손으로): 2MB RAM 디스크를 만들어 채운 뒤 바꿔 쓰기. 관리자 권한은 필요 없고 끝나면 디스크를 뗀다 (도는 몇 초 동안 Finder에 `mrfull…` 디스크가 잠깐 보인다).
 
+## 화면 묶음과 경계
+- 화면은 `lib/renderer/main.js`로 묶어 띄운다 — 시험 스크립트를 `electron …`으로 바로 돌릴 땐 먼저 `npm run build:renderer` (`npm run test:*`·`dist`는 알아서). 묶음이 없으면 가짜 API가 콘솔에 크게 알리고, `verify/doctor.js`가 원본보다 오래됐는지 본다.
+- `node scripts/dev/check-boundaries.js` (`npm run typecheck`가 돌림): 화면 가져오기 경계 — `legacy/`는 `main.ts`만, FSD 층 순서, 다른 조각은 `index`로만, Node·Electron 금지.
+- `src/renderer/shared/page-host/index.test.tsx` (`npm test`, jsdom): 이음새 `reactPage`.
+
 ## 단위 테스트 — `npm test`
 `src/core`(회의 데이터 읽기)와 `src/cli`(명령줄 도구 `mr`)를 Vitest로 시험한다. 가짜 녹음 폴더(`src/test/fixture.mts`, 지어낸 예시)를 임시 폴더에 만들어 쓴다.
 - 화자 이름 바꿔 끼우기(조사 맞추기, '화자 1'과 '화자 10', '나'가 낱말 속에서 안 바뀜, 맞바꾸기), 스크립트 해석·말한 시간

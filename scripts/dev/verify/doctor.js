@@ -25,6 +25,11 @@ row('코어 빌드(lib/)가 최신', built >= src, built ? (built >= src ? '' : 
 const preloadKeys = [...fs.readFileSync(path.join(ROOT, 'src/preload.js'), 'utf8').matchAll(/^\s{2}(\w+):/gm)].map((m) => m[1]);
 row('가짜 API가 preload 함수를 모두 가짐', preloadKeys.length > 50, `${preloadKeys.length}개 (stub-preload.js가 이름을 그대로 읽어 만든다)`);
 row('화면 파일', fs.existsSync(path.join(ROOT, 'src/renderer/index.html')), 'src/renderer/index.html');
+// 화면은 Vite로 묶은 lib/renderer/main.js를 불러온다 — 없거나 원본보다 오래됐으면 옛 화면으로 시험하게 된다
+const bundle = path.join(ROOT, 'lib/renderer/main.js');
+const bundled = fs.existsSync(bundle) ? fs.statSync(bundle).mtimeMs : 0;
+const rsrc = Math.max(newest(path.join(ROOT, 'src/renderer'), '.js'), newest(path.join(ROOT, 'src/renderer'), '.ts'), newest(path.join(ROOT, 'src/renderer'), '.tsx'), newest(path.join(ROOT, 'src/renderer'), '.css'), src);
+row('화면 묶음(lib/renderer)이 최신', bundled >= rsrc, bundled ? (bundled >= rsrc ? '' : '원본이 더 새로움 → npm run build:renderer') : '없음 → npm run build:renderer');
 try {
   fs.mkdirSync(path.join(ROOT, 'verify-runs'), { recursive: true });
   fs.accessSync(path.join(ROOT, 'verify-runs'), fs.constants.W_OK);

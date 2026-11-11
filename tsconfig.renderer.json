@@ -1,0 +1,22 @@
+{
+  // 메인 창 화면(src/renderer)의 TypeScript·React. 묶기는 Vite(vite.renderer.config.mts), 여기서는 검사만 한다.
+  // 옛 화면 코드(legacy/*.js)는 검사하지 않는다(checkJs 끔) — 옮긴 화면부터 엄격하게.
+  "compilerOptions": {
+    "target": "es2024",
+    "lib": ["es2024", "dom", "dom.iterable"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "allowJs": true,
+    "checkJs": false,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "types": ["vite/client"]
+  },
+  "include": ["src/renderer/**/*.ts", "src/renderer/**/*.tsx"]
+}

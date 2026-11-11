@@ -5,6 +5,8 @@ const { contextBridge } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
+// 화면은 Vite로 묶은 lib/renderer/main.js다. 없으면 빈 화면으로 시험이 엉뚱하게 실패하므로 크게 알린다
+if (!fs.existsSync(path.join(__dirname, '../../lib/renderer/main.js'))) console.error('[화면 묶음 없음] npm run build:renderer 를 먼저 돌리세요 (lib/renderer/main.js)');
 const dir = process.env.STUB_MEETING_DIR;
 const read = (f) => {
   try {

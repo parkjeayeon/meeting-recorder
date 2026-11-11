@@ -23,7 +23,7 @@ description: Meeting Recorder(macOS Electron 받아쓰기·회의록 앱)의 화
 ```bash
 node scripts/dev/verify/doctor.js
 ```
-읽기만 한다. Electron, 코어 빌드(`lib/`가 `src/core`보다 새로운지 — 아니면 `npm run build:ts`), 가짜 API가 preload 함수를 다 덮는지, 증거 폴더, 설치된 앱이 켜져 있는지(정보), 코드 판(git)을 본다. `점검 통과`가 아니면 조작하지 말고 그 줄부터 고친다.
+읽기만 한다. Electron, 코어 빌드(`lib/`가 `src/core`보다 새로운지 — 아니면 `npm run build:ts`), 화면 묶음(`lib/renderer/main.js`가 화면 원본보다 새로운지 — 아니면 `npm run build:renderer`, 화면은 이 묶음으로 뜬다), 가짜 API가 preload 함수를 다 덮는지, 증거 폴더, 설치된 앱이 켜져 있는지(정보), 코드 판(git)을 본다. `점검 통과`가 아니면 조작하지 말고 그 줄부터 고친다.
 
 ## 2. 띄우고 조작 (Launch + Drive)
 

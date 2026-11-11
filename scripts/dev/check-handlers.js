@@ -7,14 +7,21 @@ const path = require('path');
 const dirs = ['src/renderer', 'src/overlay'];
 const bad = /\bon(keydown|keypress|keyup)\s*(=|:)\s*(\([^)]*\)|[a-z]+)\s*=>(?!\s*\{)/;
 const found = [];
+// 하위 폴더까지, .ts·.tsx도 (옛 화면 코드는 src/renderer/legacy/로 옮겼다 — 맨 위만 보면 검사가 조용히 꺼진다)
+let scanned = 0;
 for (const d of dirs) {
-  for (const f of fs.readdirSync(d).filter((n) => n.endsWith('.js'))) {
+  for (const f of fs.readdirSync(d, { recursive: true }).map(String).filter((n) => /\.(js|ts|tsx)$/.test(n) && !n.endsWith('.d.ts'))) {
+    scanned++;
     fs.readFileSync(path.join(d, f), 'utf8').split('\n').forEach((line, i) => bad.test(line) && found.push(`${d}/${f}:${i + 1}  ${line.trim()}`));
   }
+}
+if (!fs.readdirSync('src/renderer', { recursive: true }).map(String).some((n) => /(^|\/)app\.(js|ts|tsx)$/.test(n))) {
+  console.error('키보드 처리기 검사: 화면 본체(app.js)를 찾지 못했습니다 — 검사 대상 경로를 맞춰 주세요');
+  process.exit(1);
 }
 if (found.length) {
   console.error('키보드 처리기를 블록 { } 으로 써 주세요 (값을 돌려주면 영어·Backspace 입력이 막힙니다):');
   for (const l of found) console.error(`  ${l}`);
   process.exit(1);
 }
-console.log('키보드 처리기 검사 통과');
+console.log(`키보드 처리기 검사 통과 (${scanned}개 파일)`);
