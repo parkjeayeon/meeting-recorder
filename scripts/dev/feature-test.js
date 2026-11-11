@@ -226,6 +226,18 @@ suite('확인 필요 · 처리함: 되돌리기·다시 열기', {}, async (p) =
   check('처리함: 고친 항목 되돌리기(r5), 그대로 둔 항목 다시 열기(r6)', rows && reverted[0]?.[1] === 'r5' && JSON.stringify(reopened?.[1]) === '["r6"]' && reopened[2] === 'open' && st.r5 === 'open' && st.r6 === 'open', { reverted, reopened, st });
 });
 
+suite('확인 필요 · 같은 줄을 나중에 고친 항목이 있을 때 되돌리기', {}, async (p) => {
+  const rv = p.review();
+  rv.items.find((it) => it.id === 'r5').cascade = ['r1'];
+  fs.writeFileSync(path.join(p.dir, 'review.json'), JSON.stringify(rv));
+  await toReview(p);
+  await p.click('처리함', { sel: 'button' });
+  await p.click('되돌리기');
+  await p.wait(300);
+  const toast = (await p.toasts()).find((t) => t.includes('되돌렸습니다'));
+  check('되돌리기 알림: 같은 줄을 나중에 고친 항목은 다시 적용했다고 알림', Boolean(toast?.includes('같은 줄을 나중에 고친 1개는 다시 적용했습니다')), toast);
+});
+
 suite('확인 필요 · 확인 마치기', {}, async (p) => {
   await toReview(p);
   const label = await p.js(`[...document.querySelectorAll('button')].find((b) => /확인 마치기/.test(b.textContent))?.textContent.trim() ?? null`);
