@@ -22,7 +22,7 @@ fs.writeFileSync(path.join(meeting, 'script-clean.txt'), `${lines.join('\n')}\n`
 fs.writeFileSync(path.join(meeting, 'minutes.md'), '# 예시 회의\n\n## 요약\n배포 일정을 정리함.\n\n## 할 일\n- [ ] QA 마치기 — 담당: 화자 2\n\n## 확인 필요\n- "랩캐시도"(00:15)\n');
 fs.writeFileSync(path.join(meeting, 'review.json'), JSON.stringify({ items: [
   { id: 'r1', kind: 'word', at: '00:15', heard: '랩캐시도', guess: 'Memcached', note: '오인식', status: 'open' },
-  { id: 'r2', kind: 'word', at: '00:06', heard: '화요일', applied: '수요일', count: 1, note: '요일', status: 'applied', undo: { 'transcript.txt': { changed: [], inserted: [] } } },
+  { id: 'r2', kind: 'word', at: '00:06', heard: '화요일', applied: '수요일', count: 1, note: '요일', status: 'applied', undo: { 'transcript.txt': { changed: [], inserted: [] } }, failRevert: true },
   { id: 'r4', kind: 'lost', at: null, heard: null, heardNote: null, note: '중간에 말이 끊겨 확인할 수 없음.', status: 'open' },
   { id: 'r3', kind: 'name', at: null, heard: null, heardNote: '도윤님(선배님)', note: "'도윤님(선배님)'이 누구인지 확인이 필요함", status: 'open' },
 ] }));
@@ -112,7 +112,7 @@ app.whenReady().then(async () => {
   await wait(400);
 
   // 오류 알림: 글자색이 배경색과 달라야 한다 (전역 '.bad { color … !important }'가 글자를 배경색으로 칠해 빈 막대로 보인 적이 있다)
-  await js(`[...document.querySelectorAll('.ritem-done button')].find(b=>b.textContent.includes('되돌리기'))?.click()`); // 가짜 API가 아무것도 돌려주지 않아 오류 알림이 뜬다
+  await js(`[...document.querySelectorAll('.ritem-done button')].find(b=>b.textContent.includes('되돌리기'))?.click()`); // 이 항목은 가짜 API가 되돌리기를 실패시킨다(failRevert) → 오류 알림
   await wait(600);
   const toast = await js(`(() => { const t = document.querySelector('#toasts .toast.bad'); if (!t) return null; const b = t.querySelector('b'); return { bg: getComputedStyle(t).backgroundColor, fg: getComputedStyle(b).color, text: t.textContent }; })()`);
   results.push(['오류 알림 글자', Boolean(toast && toast.text && toast.fg !== toast.bg), toast ? `글자 ${toast.fg} · 배경 ${toast.bg}` : '오류 알림이 뜨지 않음']);

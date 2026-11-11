@@ -113,6 +113,49 @@ const impl = {
     calls.saveSvg = { name, svg };
     return `/tmp/stub/${name}.svg`;
   },
+  // ── 기능 시험(scripts/dev/feature-test.js)이 쓰는 흉내: 회의 폴더(STUB_MEETING_DIR)의 파일을 실제로 바꾼다 ──
+  setReviewStatus: async (_d, ids, status) => {
+    const review = JSON.parse(read('review.json'));
+    for (const it of review.items) if (ids.includes(it.id)) it.status = status;
+    fs.writeFileSync(path.join(dir, 'review.json'), JSON.stringify(review));
+    return review;
+  },
+  revertReview: async (_d, id) => {
+    const review = JSON.parse(read('review.json'));
+    const it = review.items.find((x) => x.id === id);
+    if (it.failRevert) throw new Error('되돌릴 기록이 없습니다'); // 화면 시험이 오류 알림을 띄우려고 표시한 항목
+    Object.assign(it, { status: 'open' });
+    delete it.applied;
+    fs.writeFileSync(path.join(dir, 'review.json'), JSON.stringify(review));
+    return { review, removedWord: null };
+  },
+  finalizeReview: async () => {
+    const review = JSON.parse(read('review.json'));
+    for (const it of review.items) if (it.status === 'open') it.status = 'kept';
+    review.finalizedAt = new Date().toISOString();
+    review.finalize = { rewritten: false };
+    fs.writeFileSync(path.join(dir, 'review.json'), JSON.stringify(review));
+    return review;
+  },
+  toggleTodo: async (_d, index, checked) => {
+    let n = -1;
+    const md = read('minutes.md').replace(/^(\s*- )\[( |x)\]/gim, (m, pre) => (++n === index ? `${pre}[${checked ? 'x' : ' '}]` : m));
+    fs.writeFileSync(path.join(dir, 'minutes.md'), md);
+    return md;
+  },
+  updateTerm: async (_d, termId, patch) => {
+    const g = JSON.parse(read('glossary.json') ?? '{"terms":[]}');
+    if (patch.remove) g.terms = g.terms.filter((t) => t.id !== termId);
+    else Object.assign(g.terms.find((t) => t.id === termId) ?? {}, patch);
+    fs.writeFileSync(path.join(dir, 'glossary.json'), JSON.stringify(g));
+    return g;
+  },
+  deleteDictation: async (id) => {
+    const i = dicts.findIndex((r) => r.id === id);
+    if (i >= 0) dicts.splice(i, 1);
+    return true;
+  },
+  repaste: async () => 'pasted',
   // 오래 걸리는 LLM 작업 흉내 (화면 테스트가 진행 중 표시·중복 실행을 본다)
   makeActions: async () => {
     calls.makeActions = (calls.makeActions ?? 0) + 1;
@@ -277,7 +320,14 @@ const strays = [
 ];
 const keys = [...fs.readFileSync(path.join(__dirname, '../../src/preload.js'), 'utf8').matchAll(/^\s{2}(\w+):/gm)].map((m) => m[1]);
 const api = {};
-for (const k of keys) api[k] = impl[k] ?? (k.startsWith('on') ? noop : async () => null);
+// 모든 호출을 순서대로 남긴다 (기능 시험이 "무엇이 어떤 값으로 불렸나"를 본다). 이벤트 구독(on…)은 빼고
+const log = [];
+const plain = (v) => { try { return JSON.parse(JSON.stringify(v ?? null)); } catch { return String(v); } };
+for (const k of keys) {
+  const fn = impl[k] ?? (k.startsWith('on') ? noop : async () => null);
+  api[k] = k.startsWith('on') ? fn : (...args) => { log.push([k, plain(args)]); return fn(...args); };
+}
 contextBridge.exposeInMainWorld('recorderApi', api);
 contextBridge.exposeInMainWorld('stubCalls', () => ({ ...calls }));
+contextBridge.exposeInMainWorld('stubLog', () => plain(log));
 contextBridge.exposeInMainWorld('stubMeetingChanged', (id) => meetingChangedCb({ id }));
