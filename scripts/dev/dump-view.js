@@ -2,7 +2,7 @@
 //   [ROOT=다른 작업 폴더] [STUB_…=…] [DUMP_JS='…'] npx electron scripts/dev/dump-view.js '#home' /tmp/home.html
 // DUMP_JS: 화면을 연 뒤 찍기 전에 돌릴 코드 (원문 펼치기·검색 등 누른 뒤의 모습). 돌린 뒤 0.8초 기다린다
 // DUMP_SEL: 찍을 곳 (기본 #view). 질문 창·둥근 버튼은 '.ask-root'
-// DUMP_MEETING=1: 예시 회의(verify/fixture, 흐름도·액션 포함)를 임시 폴더에 만들어 쓴다. 주소의 {id}가 그 회의 id (끝나면 지움)
+// DUMP_MEETING=1: 예시 회의(verify/fixture, 흐름도·액션 포함)를 임시 폴더에 만들어 쓴다(plain이면 흐름도·액션 없이). 주소의 {id}가 그 회의 id (끝나면 지움)
 // 가짜 API(stub-preload)로 띄우고, 태그마다 줄을 나눠 저장한다. ROOT를 주면 그 폴더의 화면 묶음·가짜 API로 (main을 꺼낸 작업 폴더 등)
 const { app, BrowserWindow } = require('electron');
 const fs = require('fs');
@@ -12,7 +12,7 @@ const root = path.resolve(process.env.ROOT ?? path.join(__dirname, '../..'));
 const [hashArg, out] = process.argv.slice(-2);
 let meetingDir = null;
 if (process.env.DUMP_MEETING) {
-  meetingDir = require(path.join(root, 'scripts/dev/verify/fixture.js')).makeMeeting('mr-dump-', { flowAndActions: true });
+  meetingDir = require(path.join(root, 'scripts/dev/verify/fixture.js')).makeMeeting('mr-dump-', { flowAndActions: process.env.DUMP_MEETING !== 'plain' });
   process.env.STUB_MEETING_DIR = meetingDir;
 }
 const hash = hashArg.replaceAll('{id}', meetingDir ? path.basename(meetingDir) : '');

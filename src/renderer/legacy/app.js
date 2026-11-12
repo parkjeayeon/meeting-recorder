@@ -2,7 +2,7 @@ import { Recorder } from './recorder.js';
 import { startOnboarding } from './onboarding.js';
 import { scriptMarkdown, parseScript, speakerStats, parseStamp } from '../../core/script.mts'; // 화면은 코어를 원본(.mts)에서 바로 가져다 쓴다 (Vite가 묶음)
 import { noteVariants } from '../../core/review.mts';
-import { reactPage, mountReact } from '../shared/page-host/index.tsx'; // React로 옮긴 화면을 옛 라우터에 끼운다 (docs/renderer-architecture.md)
+import { reactPage, mountReact, createIslands } from '../shared/page-host/index.tsx'; // React로 옮긴 화면을 옛 라우터에 끼운다 (docs/renderer-architecture.md)
 import { createVocabularyModel } from '../entities/vocabulary/index.ts';
 import { DictionaryPage } from '../pages/dictionary/index.ts';
 import { StatsPage } from '../pages/stats/index.ts';
@@ -13,7 +13,9 @@ import { createAskStore, AskWidget } from '../features/ask/index.ts';
 import { speakerOrder, termMatcher, termPieces, minutesBlocks, inlinePieces } from '../entities/minutes/index.ts';
 import { FLOW, flowOrder, placeLanes, wrapLines } from '../entities/flow/index.ts';
 import { itemRange, REVIEW_KIND } from '../entities/review/index.ts';
-import { fmt, DAY, TIME, WEEKDAY, PROVIDER_NAME, clock, seconds, sizeLabel, dayKey, dayLabel, createSource } from '../shared/lib/index.ts'; // 숫자·시간 표시는 한 벌 (React 화면과 같이 씀)
+import { GlossaryBody, TermCardBody, ExplainAddBody } from '../features/meeting-terms/index.ts';
+import { ActionsBody, ActionsRowBody } from '../features/meeting-actions/index.ts';
+import { fmt, DAY, TIME, WEEKDAY, PROVIDER_NAME, clock, seconds, sizeLabel, dayKey, dayLabel, createSource, createJobs } from '../shared/lib/index.ts'; // 숫자·시간 표시는 한 벌 (React 화면과 같이 씀)
 import { dictSummary, charsOf } from '../entities/dictation/index.ts';
 import { BUSY, meetState, meetTitle, progressOf, statusText, busyShort, canCompressNow } from '../entities/meeting/index.ts';
 
@@ -766,11 +768,8 @@ const docCache = new Map(); // 회의 id → { minutes, transcript, scriptClean 
 
 // 오래 걸리는 LLM 작업(흐름도 만들기·다시 만들기, 액션 찾기)을 회의별로 기억한다.
 // 탭을 옮기거나 화면을 다시 그리면 버튼이 새로 만들어져 '정리하는 중…'이 사라지고, 다시 누르면 같은 작업이 두 번 돌았다.
-const jobs = new Map(); // `${dir}|흐름도` 같은 키 → { promise, label }
-function runJob(key, label, fn) {
-  if (!jobs.has(key)) jobs.set(key, { label, promise: fn().finally(() => jobs.delete(key)) });
-  return jobs.get(key).promise;
-}
+const jobs = createJobs(); // `${dir}|흐름도` 같은 키 → { promise, label } (React 부품도 구독해 '… 중'을 그린다)
+const runJob = (key, label, fn) => jobs.run(key, label, fn);
 // 진행 중이면 버튼을 돌아가는 표시 + 누를 수 없게
 function markBusy(btn, key) {
   const job = jobs.get(key);
@@ -798,6 +797,7 @@ function reviewTag(r) {
 
 function pageMeeting(id) {
   const el = h('div', { class: 'page' });
+  const islands = createIslands(); // 이 페이지 안의 React 부품 (용어·액션 …) — 다시 그릴 때마다 내리고 새로
   let tab = null;
   const reviewSel = new Set(); // 확인 필요에서 고른 항목
   let addDraft = ''; // 확인 필요 › 직접 추가 입력칸 (다시 그려도 남게)
@@ -896,6 +896,7 @@ function pageMeeting(id) {
     const matcher = termMatcher(doc.glossary?.terms);
     closeTermCard();
     removeAddBtn();
+    islands.clear();
     if (tab === 'minutes') body.append(minutesDoc(r, doc.minutes, reviewOpen, () => { tab = 'review'; draw(); }, matcher));
     else if (tab === 'review') body.append(reviewView(r, doc));
     else if (tab === 'actions') body.append(actionsView(r, doc.actions));
@@ -1005,11 +1006,11 @@ function pageMeeting(id) {
     });
   }
 
-  const BASIS_LABEL = { general: '일반 용어', meeting: '회의 내용에서', unknown: '회의에서 설명 없음' };
   let cardEl = null;
   const outsideCard = (e) => cardEl && !cardEl.contains(e.target) && !e.target.closest?.('.term, .gl-item') && closeTermCard();
   const escCard = (e) => e.key === 'Escape' && closeTermCard();
   function closeTermCard() {
+    islands.unmount(cardEl);
     cardEl?.remove();
     cardEl = null;
     document.removeEventListener('mousedown', outsideCard, true);
@@ -1027,34 +1028,14 @@ function pageMeeting(id) {
     refreshDoc(r);
   }
 
+  // 용어 설명 카드: 뿌리(div.term-card)를 body에 붙이고 안은 React(TermCardBody) — 놓을 자리·고치기도 거기서
   function termCard(anchor, t, editing = false) {
     closeTermCard();
     const r = history.find((m) => m.id === id);
     if (!r) return;
-    const guess = t.status !== 'confirmed';
-    const note = editing ? h('textarea', { class: 'tc-edit', rows: 3, maxlength: 200, 'aria-label': '설명' }) : h('p', { class: 'tc-note' }, t.note);
-    if (editing) note.value = t.note;
-    const acts = editing
-      ? [h('button', { class: 'btn small primary', onclick: () => note.value.trim() && changeTerm(r, t.id, { note: note.value }, '설명을 고쳤습니다') }, '저장'),
-        h('button', { class: 'btn small', onclick: () => termCard(anchor, t) }, '취소')]
-      : [guess && h('button', { class: 'btn small primary', onclick: () => changeTerm(r, t.id, { status: 'confirmed' }) }, icon('i-check'), '맞아요'),
-        h('button', { class: 'btn small', onclick: () => termCard(anchor, t, true) }, icon('i-pencil'), '고치기'),
-        h('button', { class: 'btn small ghost', onclick: () => changeTerm(r, t.id, { remove: true }, `'${t.term}' 설명을 지웠습니다`) }, '지우기')];
-    cardEl = h('div', { class: 'term-card', role: 'dialog', 'aria-label': `${t.term} 설명` },
-      h('div', { class: 'tc-head' }, h('b', null, t.term),
-        h('span', { class: `tc-badge${guess ? ' guess' : ''}` }, guess ? 'LLM 추정 · 확인 전' : t.edited ? '직접 고침' : BASIS_LABEL[t.basis] ?? '')),
-      note,
-      !editing && t.at?.length > 0 && h('div', { class: 'tc-at' }, h('span', null, '회의에서 나온 곳'),
-        t.at.map((s) => (r.firstFile ? h('button', { class: 'seek', title: '여기부터 듣기', onclick: () => seek(parseStamp(s)) }, s) : h('span', { class: 'num' }, s)))),
-      h('div', { class: 'tc-acts' }, acts));
+    cardEl = h('div', { class: 'term-card', role: 'dialog', 'aria-label': `${t.term} 설명` });
     document.body.append(cardEl);
-    // 용어 아래에, 화면 밖으로 나가면 위로
-    const a = anchor.getBoundingClientRect();
-    const c = cardEl.getBoundingClientRect();
-    const top = a.bottom + 6 + c.height > innerHeight - 8 ? Math.max(8, a.top - 6 - c.height) : a.bottom + 6;
-    cardEl.style.top = `${top}px`;
-    cardEl.style.left = `${Math.min(Math.max(8, a.left), innerWidth - c.width - 8)}px`;
-    if (editing) note.focus();
+    islands.mount(cardEl, TermCardBody, { t, host: cardEl, anchor, editing, reopen: (next) => setTimeout(() => termCard(anchor, t, next)), seek: r.firstFile ? (sec) => seek(sec) : null, change: (termId, patch, done) => changeTerm(r, termId, patch, done) });
     setTimeout(() => {
       document.addEventListener('mousedown', outsideCard, true);
       document.addEventListener('keydown', escCard, true);
@@ -1063,81 +1044,44 @@ function pageMeeting(id) {
 
   // 회의록 아래 '용어' 칸: 설명을 스티커처럼 모아 보여 주고, 확인 전인 것은 한 번에 확인
   function glossaryBox(r, g) {
-    const terms = g?.terms ?? [];
-    const guesses = terms.filter((t) => t.status !== 'confirmed');
-    const make = h('button', { class: 'btn small', onclick: async () => {
-      make.classList.add('busy');
-      make.setAttribute('aria-busy', 'true');
-      make.textContent = '용어 찾는 중… (10초 안팎)';
-      try {
-        await api.makeGlossary(r.dir);
-      } catch (err) {
-        toast('용어 설명을 만들지 못했습니다', err.message, { bad: true });
-      }
-      refreshDoc(r);
-    } }, g ? '추정 설명 다시 찾기' : '용어 설명 만들기');
-    return h('section', { class: 'glossary' },
-      h('div', { class: 'glossary-head' }, h('h3', null, '용어', terms.length > 0 && num(terms.length)), h('span', { style: 'flex:1' }),
-        guesses.length > 1 && h('button', { class: 'btn small', onclick: () => changeTerm(r, '*', { status: 'confirmed' }, `${guesses.length}개를 확인했습니다`) }, icon('i-check'), `확인 전 ${guesses.length}개 모두 확인`),
-        make),
-      h('p', { class: 'hint' }, terms.length
-        ? '밑줄 친 말을 누르면 설명을 볼 수 있습니다. 점선은 LLM이 회의 내용으로 추정한 설명입니다. 본문에서 단어를 드래그하면 설명을 더할 수 있습니다.'
-        : '회의록에 나온 사내 용어·약어·기술 용어에 한 줄 설명을 붙입니다. 본문에서 단어를 드래그해 하나씩 더할 수도 있습니다.'),
-      terms.length > 0 && h('div', { class: 'gl-grid' }, terms.map((t) =>
-        h('button', { class: `gl-item${t.status === 'confirmed' ? '' : ' guess'}`, onclick: (e) => termCard(e.currentTarget, t) },
-          h('b', null, t.term), h('span', null, t.note), t.status !== 'confirmed' && h('i', { class: 'gl-badge' }, '추정')))));
+    return islands.mount(h('section', { class: 'glossary' }), GlossaryBody, {
+      terms: g?.terms ?? [],
+      exists: Boolean(g),
+      openCard: (anchor, t) => termCard(anchor, t),
+      change: (termId, patch, done) => changeTerm(r, termId, patch, done),
+      make: async () => {
+        try {
+          await api.makeGlossary(r.dir);
+        } catch (err) {
+          toast('용어 설명을 만들지 못했습니다', err.message, { bad: true });
+        }
+        refreshDoc(r);
+      },
+    });
   }
 
   // ── 액션 (src/actions.js): 할 일(약속·맡은 일·다짐)과 받은 조언·알아 둘 것. 회의록과 따로 actions.json에 ──
-  const ACTION_KIND = { promise: '약속', assigned: '맡음', resolution: '다짐' };
   function actionsView(r, data) {
-    const stamp = (at) => (r.firstFile ? h('button', { class: 'seek', title: '여기부터 듣기', onclick: () => seek(parseStamp(at)) }, at) : h('span', { class: 'num' }, at));
-    // 할 일: 카드 하나 안에 체크리스트 (줄마다 얇은 선, 담당·기한·시각은 오른쪽)
-    const doneCount = () => data.actions.filter((a) => a.done).length;
-    const count = num(`${doneCount()}/${data.actions.length}`);
-    const bar = h('i', { style: `width:${(doneCount() / Math.max(1, data.actions.length)) * 100}%` });
-    const todo = h('section', { class: 'act-sec' },
-      data.actions.length
-        ? h('div', { class: 'act-board' },
-          h('div', { class: 'act-board-head' }, h('h3', null, '할 일'), count, h('span', { class: 'act-progress', 'aria-hidden': 'true' }, bar)),
-          h('ul', { class: 'act-list' }, data.actions.map((a) => {
-            const cb = h('input', { type: 'checkbox', checked: a.done, 'aria-label': `${a.task} 했음` });
-            const li = h('li', { class: `act-item${a.done ? ' done' : ''}`, title: `녹취: “${a.quote}”` },
-              h('label', { class: 'act-check' }, cb, h('span', { class: 'act-task' }, a.task)),
-              h('div', { class: 'act-meta' }, h('span', { class: 'act-kind' }, ACTION_KIND[a.kind] ?? ''), h('span', { class: 'flane' }, a.owner), a.due && h('span', { class: 'flane due' }, a.due), stamp(a.at)));
-            cb.onchange = async () => {
-              a.done = cb.checked;
-              li.classList.toggle('done', cb.checked);
-              count.textContent = `${doneCount()}/${data.actions.length}`;
-              bar.style.width = `${(doneCount() / data.actions.length) * 100}%`;
-              await api.toggleAction(r.dir, a.id, cb.checked);
-              docCache.delete(r.id);
-              loadHistory();
-            };
-            return li;
-          })))
-        : [h('div', { class: 'act-head' }, h('h3', null, '할 일')), h('p', { class: 'act-empty' }, '약속하거나 맡은 할 일은 없었습니다.')]);
-    const keys = data.advice.filter((a) => a.key);
-    const groups = [...new Set(data.advice.map((a) => a.group))];
-    const who = (a) => (a.from || a.to) && h('span', { class: 'act-who' }, `${a.from ?? ''}${a.to ? ` → ${a.to}` : ''}`);
-    const advice = data.advice.length > 0 && h('section', { class: 'act-sec' },
-      h('div', { class: 'act-head' }, h('h3', null, data.adviceTitle ?? '받은 조언'), num(String(data.advice.length))),
-      keys.length > 0 && h('div', { class: 'act-keys' }, keys.map((a) => h('div', { class: 'act-key', title: `녹취: “${a.quote}”` },
-        h('b', null, '★ ', a.text), a.why && h('p', null, a.why), h('div', { class: 'act-meta' }, who(a), stamp(a.at))))),
-      groups.map((g) => h('div', { class: 'act-group' }, h('h4', null, g),
-        h('ul', null, data.advice.filter((a) => a.group === g).map((a) => h('li', { title: `녹취: “${a.quote}”` },
-          h('span', null, a.key && '★ ', a.text), h('span', { class: 'act-meta inline' }, who(a), stamp(a.at))))))));
-    const again = markBusy(h('button', { class: 'btn small ghost', onclick: () => findActions(r, again) }, icon('i-redo'), h('span', null, '다시 찾기')), `${r.dir}|액션`);
-    return h('div', { class: 'acts' },
-      h('div', { class: 'tab-bar' }, h('span', null, '회의가 끝난 뒤 챙길 것입니다. LLM이 원본·정리본·회의록을 보고 고르고, 각 항목의 녹취 인용을 앱이 확인했습니다. 체크는 회의록의 할 일과 따로 저장됩니다.'), again),
-      todo, advice);
+    return islands.mount(h('div', { class: 'acts' }), ActionsBody, {
+      data,
+      seek: r.firstFile ? (sec) => seek(sec) : null,
+      jobs,
+      jobKey: `${r.dir}|액션`,
+      find: () => findActions(r),
+      toggle: async (actionId, done) => {
+        const a = data.actions.find((x) => x.id === actionId);
+        if (a) a.done = done; // 저장이 끝나기 전에 다시 그려도 체크가 남게
+        await api.toggleAction(r.dir, actionId, done);
+        docCache.delete(r.id);
+        loadHistory();
+      },
+    });
   }
 
-  async function findActions(r, btn) {
+  async function findActions(r) {
     const key = `${r.dir}|액션`;
     if (jobs.has(key)) return;
     const run = runJob(key, '찾는 중… (1분 안팎)', () => api.makeActions(r.dir));
-    markBusy(btn, key);
     try {
       const res = await run;
       toast(res.actions.length || res.advice.length ? '액션을 정리했습니다' : '챙길 할 일이나 조언을 찾지 못했습니다',
@@ -1151,11 +1095,7 @@ function pageMeeting(id) {
 
   // 회의록 아래 '액션 찾기' (요청할 때만 만든다). 찾아봤는데 없었으면 그렇다고 보여 주고 다시 찾을 수 있게
   function actionsRow(r, data) {
-    const btn = markBusy(h('button', { class: 'btn small', onclick: () => findActions(r, btn) }, icon('i-check'), h('span', null, data ? '다시 찾기' : '액션 찾기')), `${r.dir}|액션`);
-    return h('div', { class: 'flow-row' },
-      h('div', { class: 'flow-row-text' }, h('b', null, '액션'),
-        h('span', null, data ? '찾아봤지만 약속한 할 일이나 남길 조언이 없었습니다.' : '약속하거나 맡은 할 일과 받은 조언을 찾아 따로 정리합니다. 있을 때만 "액션" 탭이 생깁니다.')),
-      h('div', { class: 'flow-row-acts' }, btn));
+    return islands.mount(h('div', { class: 'flow-row' }), ActionsRowBody, { found: Boolean(data), jobs, jobKey: `${r.dir}|액션`, find: () => findActions(r) });
   }
 
   // ── 흐름도 (src/flow.js): 사용자가 요청한 회의만. 회의록 요약 아래에 그림마다 카드 — 한 줄 요약·채팅·다시 만들기·지우기 ──
@@ -1566,6 +1506,7 @@ function pageMeeting(id) {
   // 본문·스크립트에서 단어를 드래그하면 '설명 추가' 버튼을 띄운다
   let addBtn = null;
   const removeAddBtn = () => {
+    islands.unmount(addBtn);
     addBtn?.remove();
     addBtn = null;
   };
@@ -1576,11 +1517,7 @@ function pageMeeting(id) {
     if (!text || text.length > 40 || !sel.rangeCount || !el.querySelector('.doc, .script')?.contains(sel.anchorNode)) return;
     const r = history.find((m) => m.id === id);
     const rect = sel.getRangeAt(0).getBoundingClientRect();
-    const short = text.length > 12 ? `${text.slice(0, 12)}…` : text;
-    const explain = h('button', { class: 'btn small', onmousedown: (e) => e.preventDefault(), onclick: async () => {
-      explain.classList.add('busy');
-      explain.setAttribute('aria-busy', 'true');
-      explain.lastChild.textContent = '설명 찾는 중…';
+    const explain = async () => {
       try {
         const t = await api.explainTerm(r.dir, text);
         toast(`'${t.term}' 설명을 더했습니다`, t.note);
@@ -1590,10 +1527,10 @@ function pageMeeting(id) {
       removeAddBtn();
       window.getSelection()?.removeAllRanges();
       refreshDoc(r);
-    } }, icon('i-plus'), h('span', null, `'${short}' 설명 추가`));
+    };
     // 잘못 들린 말이면 확인 필요로: 입력칸에 고른 말을 넣어 두고 고칠 말·설명을 이어 쓰게 한다
     const cached = docCache.get(id);
-    const review = cached?.minutes && cached?.transcript && h('button', { class: 'btn small', onmousedown: (e) => e.preventDefault(), onclick: () => {
+    const toReview = cached?.minutes && cached?.transcript ? () => {
       addDraft = `"${text}" `;
       tab = 'review';
       reviewFilter = 'open';
@@ -1605,9 +1542,10 @@ function pageMeeting(id) {
         box?.focus();
         box?.setSelectionRange(box.value.length, box.value.length);
       });
-    } }, icon('i-flag'), h('span', null, '확인 필요에 추가'));
-    addBtn = h('div', { class: 'term-add', style: `top:${Math.max(8, rect.top - 38)}px;left:${Math.min(rect.left, innerWidth - 300)}px` }, explain, review);
+    } : null;
+    addBtn = h('div', { class: 'term-add', style: `top:${Math.max(8, rect.top - 38)}px;left:${Math.min(rect.left, innerWidth - 300)}px` });
     document.body.append(addBtn);
+    islands.mount(addBtn, ExplainAddBody, { text, explain, toReview });
   }
   el.addEventListener('mouseup', () => setTimeout(offerExplain));
   el.addEventListener('mousedown', (e) => !addBtn?.contains(e.target) && removeAddBtn());
@@ -2608,6 +2546,7 @@ function pageMeeting(id) {
       document.removeEventListener('keydown', onKey);
       closeTermCard();
       removeAddBtn();
+      islands.clear();
       closeFind();
       document.removeEventListener('keydown', onFindKey);
       api.watchMeeting(null);
