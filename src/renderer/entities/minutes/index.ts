@@ -7,3 +7,4 @@ export function speakerOrder(lines: readonly { readonly who: string | null }[]):
   for (const l of lines) if (l.who && !order.includes(l.who)) order.push(l.who);
   return order;
 }
+export { TermText } from './ui.tsx';
