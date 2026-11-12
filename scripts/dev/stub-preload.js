@@ -254,7 +254,15 @@ const declinedIds = new Set();
 // STUB_DICTS=75: 받아쓰기 기록 (최신순, 다섯에 하나는 영어, 70번째에만 '배포' — 첫 묶음 밖의 기록도 찾는지)
 const dicts = Array.from({ length: Number(process.env.STUB_DICTS) || 0 }, (_, i) => {
   const text = i === 70 ? '오래된 배포 메모입니다' : `받아쓴 글 ${i}번입니다`;
-  return { id: `d${String(i).padStart(4, '0')}`, mode: 'memo', startedAt: new Date(Date.now() - i * 5 * 3600e3).toISOString(), durationSec: 4, app: i % 2 ? 'Slack' : 'Notes', chars: text.length, wpm: 120, language: i % 5 === 0 ? 'en' : 'ko', transcript: { raw: text, text, cleanupProvider: 'claude-code', timing: { transcribeMs: 300, cleanupMs: 2500 } } };
+  const r = { id: `d${String(i).padStart(4, '0')}`, mode: 'memo', startedAt: new Date(Date.now() - i * 5 * 3600e3).toISOString(), durationSec: 4, app: i % 2 ? 'Slack' : 'Notes', chars: text.length, wpm: 120, language: i % 5 === 0 ? 'en' : 'ko', transcript: { raw: text, text, cleanupProvider: 'claude-code', timing: { transcribeMs: 300, cleanupMs: 2500 } } };
+  // STUB_DICT_EDITS=1: 앞의 셋은 다듬기가 고친 기록 (조금 고침 → 교정 부호, 많이 고침, 다듬기 실패)
+  const edit = process.env.STUB_DICT_EDITS && [
+    { raw: '음 다음 주에 배포 일정 잡아 주세요', text: '다음 주에 배포 일정을 잡아 주세요.' },
+    { raw: '배포 그거', text: '배포 일정은 화요일 오전으로 정하고, QA는 월요일까지 마칩니다.' },
+    { raw: text, text: undefined, cleanupError: '시간 초과' },
+  ][i];
+  if (edit) Object.assign(r.transcript, edit);
+  return r;
 });
 const dictStore = { enabled: true, language: 'ko', meetingLanguage: 'ko', cleanup: true, provider: 'auto', vocabulary: 'PJY, Whisper', minutes: true, diarize: true, diarizeReady: true, hasHfToken: true, meetingSystemAudio: false, engine: { state: 'ready' } };
 // 질문으로 찾기 흉내 (LLM 없이): 단계를 짧게 지나 끝난다. "작년"이 든 질문에 올해 기간 칩을 주면 기간이 겹치지 않아 멈춘다.
@@ -299,12 +307,15 @@ function manyMeetings(n) {
     const at = new Date(Date.UTC(2026, 10, 1, 1 + (per ? (i % per) * 2 : i % 8)) - day * 86400e3);
     const k = i % 9;
     const status = k === 7 ? 'error' : k === 8 ? 'short' : 'done';
+    // STUB_BUSY=1: 둘째·셋째·다섯째 회의는 회의록을 만드는 중 (받아쓰는 중 42%·화자 구분, 쓰는 중, 차례 기다림)
+    const busy = process.env.STUB_BUSY && { 1: { status: 'transcribe', progress: 0.42, diarizing: true }, 2: { status: 'write' }, 4: { status: 'queued' } }[i];
     out.push({
       id: `${at.toISOString().slice(0, 10)}_${String(i).padStart(2, '0')}-00-00_meeting`, dir: `/tmp/stub/m${i}`, mode: 'meeting', startedAt: at.toISOString(), durationSec: 300 + ((i * 397) % 4200), tracks: ['mic'], firstFile: 'mic.wav',
       minutes: status === 'done' ? { status, title: `${topics[i % topics.length]} ${1 + (i % 4)}차`, speakers: 2 + (i % 4), provider: 'claude-code' } : status === 'error' ? { status, error: '앱이 종료되어 중단됨' } : { status },
       summary: status === 'done' ? `${topics[i % topics.length]}에서 일정과 담당을 정리했습니다. 다음 단계와 확인할 점을 남겼습니다.` : null,
       review: status === 'done' ? { open: i % 3, total: 3, finalized: i % 3 === 0 } : null,
     });
+    if (busy) Object.assign(out.at(-1), { minutes: busy, summary: null, review: null });
     const d = out.at(-1).dir;
     // 녹음 크기는 길이에 맞게 (48kHz WAV 초당 96KB, 넷째마다 16kHz 가져온 녹음 — 압축 안 함). 첫 회의는 화면 시험이 보는 689MB
     const sec = out.at(-1).durationSec;

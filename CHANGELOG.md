@@ -11,6 +11,9 @@
 - **main을 새로 받으면 화면이 묶이지 않음** (`Could not resolve '../shared/lib/index.ts'`) — 원인: `.gitignore`의 `lib/`(빌드 결과 폴더용)가 `src/renderer/shared/lib/`까지 가려, 통계 화면을 옮길 때 만든 `shared/lib/index.ts`가 커밋되지 않았다. 내 작업 폴더엔 파일이 있어 시험·설치는 통과했다. 고친 방법: 규칙을 루트만 가리는 `/lib/`로, 파일을 커밋. 확인: main을 새로 꺼낸 작업 폴더에서 화면 묶기·타입 검사·단위 시험 통과, 같은 규칙에 가려진 다른 폴더 없음.
 
 ### 기능
+- **홈 화면을 React로 옮김** (동작·겉모습 그대로): `pages/home` + 창구 `homeSource`·명령 `homeActions`(상태 주인은 아직 옛 코드). 회의 상태와 그 말(`entities/meeting`), 교정 부호 계산(`markParts`), 받아쓰기 한 줄(`widgets/dictation-item`), 복사 단추를 새로 두고 옛 코드도 같은 계산을 쓴다 — 옛 `pageHome`·`homeTodo`·`storagePanel`·`jobCard`·`diffWords` 등 삭제.
+  - 확인: 화면 48·기능 46·흐름 10(홈 흐름 추가)을 고치지 않고 통과, 화면 캡처 60장(기본 라이트·다크 40 + 회의·받아쓰기가 많은 20) main과 같음, `#view` HTML이 네 가지 가짜 데이터(만드는 중 카드·교정 부호·많이 고침·다듬기 실패·폴더 막힘 포함)에서 main과 한 글자도 다르지 않음(React 껍데기 한 겹만), 홈 계산·교정 부호·화면 단위 시험 11건.
+  - 검증 도구: 가짜 데이터 `STUB_BUSY`(만드는 중 회의)·`STUB_DICT_EDITS`(다듬기가 고친 받아쓰기) — 지금까지 어느 시험도 그리지 않던 갈래. `scripts/dev/dump-view.js`(화면 HTML 찍기).
 - **통계 화면을 React로 옮김** (동작·겉모습 그대로): `pages/stats`(막대 그래프·마우스 올림 알림 포함) + 읽기 창구 `createSource`. 받아쓰기 요약 계산은 `entities/dictation`, 숫자·시간 표시는 `shared/lib`로 옮겨 옛 코드(홈 등)도 같이 쓴다. 옛 `pageStats`·`barChart`·표시 함수 삭제.
   - 확인: 화면 48·기능 46·흐름 9(통계 흐름 추가)를 고치지 않고 통과, 화면 캡처 40장 픽셀까지 같음(지금 화면 배율로 main을 다시 찍어 비교), 통계 계산 단위 시험 3건.
 - **홈 최근 회의: 날짜와 요일을 한 줄로** (`11.11 수`) — 두 줄로 쌓여 줄마다 높이만 차지하던 것. 날짜 칸을 64px로.

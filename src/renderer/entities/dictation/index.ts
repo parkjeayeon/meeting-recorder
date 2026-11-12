@@ -1,6 +1,7 @@
 // 받아쓰기 기록 요약 (홈의 한 줄·통계 화면 위 칸). 본체가 전체 기록으로 계산한 통계(totals)가 있으면 그것을,
 // 없으면 화면이 받은 최근 기록으로 센다 (화면이 받는 기록은 최근 300개뿐이라 오래된 기록이 빠진다)
 import type { DictationStats } from '../../../core/dictlog.mts';
+import { dayKey } from '../../shared/lib/index.ts';
 
 /** 화면이 받은 받아쓰기 기록 하나 (history의 mode: 'memo') — 여기서 쓰는 칸만 */
 export interface DictItem {
@@ -8,6 +9,20 @@ export interface DictItem {
   readonly chars?: number;
   readonly wpm?: number;
   readonly transcript: { readonly text?: string; readonly raw?: string };
+}
+/** 받아쓰기 한 줄을 그리는 데 쓰는 칸까지 */
+export interface DictRecord extends DictItem {
+  readonly id: string;
+  readonly app?: string;
+  readonly durationSec: number;
+  readonly dir?: string;
+  readonly transcript: {
+    readonly text?: string;
+    readonly raw: string;
+    readonly cleanupError?: string;
+    readonly cleanupProvider?: string;
+    readonly timing?: { readonly transcribeMs?: number; readonly cleanupMs?: number };
+  };
 }
 export type DictTotals = DictationStats;
 export interface DictSummary {
@@ -19,7 +34,6 @@ export interface DictSummary {
 }
 
 export const charsOf = (r: DictItem): number => r.chars ?? (r.transcript.text ?? r.transcript.raw ?? '').length;
-const dayKey = (d: string | Date) => new Date(d).toDateString();
 
 export function dictSummary(items: readonly DictItem[], totals: DictTotals | null, now = new Date()): DictSummary {
   if (totals) return { total: totals.total, today: totals.today, todayCount: totals.todayCount, wpm: totals.wpm, streak: totals.streak };
@@ -41,3 +55,6 @@ export function dictSummary(items: readonly DictItem[], totals: DictTotals | nul
     streak,
   };
 }
+
+export { diffWords, markParts, type Marked } from './marks.ts';
+export { DictText } from './ui.tsx';

@@ -407,3 +407,9 @@
 - **한 일:** Vite(`vite.renderer.config.mts`)로 `src/renderer/main.ts` → `lib/renderer/main.js·main.css`. `src/renderer/index.html`이 그 두 파일을 불러온다(시험·`main.js` 그대로). 옛 코드는 `src/renderer/legacy/`로 `git mv`. API 타입은 `src/preload.js`의 `recorderApi` 객체에서 JSDoc `@typedef`로 끌어냄. 이음새 `reactPage`, 경계 검사 `check-boundaries.js`, `npm run dev`(지켜보며 묶기 + 앱).
 - **이유:** 개발 서버를 쓰면 창이 코드를 받는 길이 둘(출처·`localStorage`·CSP가 다름)이 되고 시험이 안 도는 길이 생긴다. 문서 주소를 그대로 두면 `localStorage`·워크릿 경로·시험이 그대로다. 두 번째 API 목록은 어긋난다.
 - **트레이드오프:** 고친 뒤 바로 반영(HMR) 없음 — ⌘R. 시험 전에 묶어야 한다. API 인자·결과 타입은 쓰는 곳이 생길 때 적는다.
+
+## 62. 옮긴 화면은 캡처 픽셀에 더해 화면 HTML까지 main과 같아야, 버튼은 주인이 준 명령만 (2026-11-12)
+- **누가:** 홈을 옮기며 정함 (사용자 "마저 진행해" — 합격 기준은 결정 60).
+- **한 일:** 화면을 옮기면 가짜 데이터를 바꿔 가며 `#view` HTML을 main과 비교한다(`scripts/dev/dump-view.js`, docs/testing.md). 그리기 어려운 갈래는 가짜 데이터 스위치로 연다(`STUB_BUSY`·`STUB_DICT_EDITS`). React 화면의 버튼은 주인(옛 코드)이 준 명령(`homeActions`)만 부르고, API 호출과 알림(toast)은 주인 쪽에 둔다.
+- **이유:** 캡처는 창에 보이는 부분과 기본 가짜 데이터만 본다. 홈의 만드는 중 카드·교정 부호·많이 고침은 어떤 시험도 그린 적이 없어, 시험·캡처가 모두 통과해도 틀릴 수 있었다. HTML이 같으면 CSS·시험이 찾는 클래스·aria가 같다는 직접 증거다. 명령을 주인 쪽에 두면 React 화면이 옛 전역(`toast`·`api`)에 기대지 않아 경계 검사를 지키고, 상태를 옮길 때 명령만 바꾸면 된다.
+- **트레이드오프:** 비교할 때마다 main을 따로 꺼내 묶어야 한다(약 1분). 명령 객체가 화면마다 생긴다(홈 6개).

@@ -51,7 +51,7 @@ npx electron scripts/dev/verify/drive.js <흐름.json> [--keep]
 | `snapshot` / `screenshot` | 화면 접근성 스냅샷(역할·이름·상태) / PNG |
 | `js` | 마지막 수단. 화면에 길이 없는 것만(예: 지금 포커스된 입력칸에 쓰기). **사용자 경로의 증거로 쓰지 않는다** |
 
-가짜 데이터 바꾸기(`env`): `STUB_MANY=N` 지어낸 회의 N개(넷째마다 16kHz, 셋째마다 확정, 아홉째마다 실패·짧은 녹음) · `STUB_DICTS=N` 받아쓰기 N개 · `STUB_HISTORY_DICTS=1` 홈에 받아쓰기 · `STUB_STRAY=none` 목록에 없는 폴더 없음 · `STUB_FOLDER=denied` 녹음 폴더 막힘 · `STUB_MINUTES=offline` 회의록 쓰기에서 멈춤 · `OB_STEP=welcome` 처음 설정 · `STUB_ASK_MS`·`STUB_JOB_MS` 가짜 작업 시간. 예시 회의 내용(확인 필요 6항목·용어 2개·할 일 2개)은 `scripts/dev/verify/fixture.js`.
+가짜 데이터 바꾸기(`env`): `STUB_MANY=N` 지어낸 회의 N개(넷째마다 16kHz, 셋째마다 확정, 아홉째마다 실패·짧은 녹음) · `STUB_DICTS=N` 받아쓰기 N개 · `STUB_HISTORY_DICTS=1` 홈에 받아쓰기 · `STUB_STRAY=none` 목록에 없는 폴더 없음 · `STUB_FOLDER=denied` 녹음 폴더 막힘 · `STUB_MINUTES=offline` 회의록 쓰기에서 멈춤 · `OB_STEP=welcome` 처음 설정 · `STUB_ASK_MS`·`STUB_JOB_MS` 가짜 작업 시간 · `STUB_BUSY=1` 지어낸 회의 셋을 회의록 만드는 중으로(받아쓰는 중 42%·쓰는 중·기다림) · `STUB_DICT_EDITS=1` 앞 받아쓰기 셋을 다듬기가 고친 기록으로(교정 부호·많이 고침·다듬기 실패). 예시 회의 내용(확인 필요 6항목·용어 2개·할 일 2개)은 `scripts/dev/verify/fixture.js`.
 
 질문으로 찾기의 "실패" 경우: 질문에 `실패`가 들면 시간 초과, `로그인`이 들면 로그인 풀림, `소식없음`이면 끝난 소식을 안 보냄, `느린`이면 10배 느림.
 
@@ -78,11 +78,11 @@ node scripts/dev/verify/cleanup.js --runs   # 증거까지 (다 본 뒤에만)
 
 ```bash
 npm run verify:journeys   # 지도의 흐름 전부 (약 20초, 통과한 흐름 증거는 안 남김) — npm run dist가 돌린다
-npm run test:feature      # 기능 시험 45건 (scripts/dev/feature-test.js) — 같은 도우미·예시 회의
+npm run test:feature      # 기능 시험 46건 (scripts/dev/feature-test.js) — 같은 도우미·예시 회의
 npm run test:ui           # 입력칸 진짜 키·진행 중 표시·툴팁·질문 엔진 화면 등 48건
 ```
 
-**React/TypeScript 전환의 합격 기준**: 전환은 동작을 그대로 두고 안쪽만 바꾸는 일이다(Electron 유지). 화면 하나를 옮길 때마다 위 세 가지가 **시험을 고치지 않고** 통과해야 한다. 시험을 고쳐서 통과시켰다면 그건 동작이 바뀐 것이니 사용자에게 먼저 묻는다. 이 시험들이 클래스 이름이 아니라 글자·역할·aria로 찾는 이유다 — 옮기며 aria 이름이나 화면 글자를 바꾸지 않는다.
+**React/TypeScript 전환의 합격 기준**: 전환은 동작을 그대로 두고 안쪽만 바꾸는 일이다(Electron 유지). 화면 하나를 옮길 때마다 위 세 가지가 **시험을 고치지 않고** 통과해야 한다. 시험을 고쳐서 통과시켰다면 그건 동작이 바뀐 것이니 사용자에게 먼저 묻는다. 옮긴 화면은 화면 캡처(`screens.js`) 픽셀과 `#view` HTML(`scripts/dev/dump-view.js`, 가짜 데이터로 모든 갈래를 그려서)까지 main과 같아야 한다 — docs/testing.md. 이 시험들이 클래스 이름이 아니라 글자·역할·aria로 찾는 이유다 — 옮기며 aria 이름이나 화면 글자를 바꾸지 않는다.
 
 ## 다른 면
 
