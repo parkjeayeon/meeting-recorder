@@ -1,4 +1,4 @@
-// 옮긴 화면의 HTML이 main과 같은지 상태마다 찍어 비교한다 (docs/testing.md) — 회의 페이지(#view), 홈의 문제 알림, 설정 창과 사이드바, 처음 설정(#onboard).
+// 옮긴 화면의 HTML이 main과 같은지 상태마다 찍어 비교한다 (docs/testing.md) — 회의 페이지(#view), 홈의 문제 알림, ⌘K 빠른 검색, 설정 창과 사이드바, 처음 설정(#onboard).
 //   git worktree add --detach /tmp/wt-main main && ln -s "$PWD/node_modules" /tmp/wt-main/node_modules && (cd /tmp/wt-main && npm run build:ts && npm run build:renderer)
 //   npm run build:renderer && node scripts/dev/view-parity.js /tmp/wt-main /tmp/parity [이름 일부]
 // 같은 상태를 두 쪽에서 연달아 찍는다(가짜 기록의 시각이 지금 기준이라). 다르면 <이름>.diff를 남기고 끝에 실패로 끝난다.
@@ -26,12 +26,18 @@ const M = { DUMP_MEETING: '1' };
 const MANY = { STUB_MANY: '12', STUB_BUSY: '1' };
 const at = (i) => `#meeting/2026-${['11-01', '10-31', '10-30', '', '10-28', '', '', '10-25', '10-24'][i]}_${String(i).padStart(2, '0')}-00-00_meeting`;
 const BOX = { DUMP_SEL: '#dumpbox' };
+const PAL = { DUMP_SEL: '#palette', STUB_DICTS: '3', STUB_HISTORY_DICTS: '1', STUB_MANY: '12' };
 const OB = (step) => ({ OB_STEP: step, DUMP_SEL: '#onboard', DUMP_NO_MIC: '1' }); // 마이크 단계가 주변 소리에 따라 갈리지 않게
 const SETTINGS = ['general', 'cleanup', 'meeting', 'engine', 'accounts', 'perms'].map((sec) => [`설정 · ${sec}`, BOX, `await settings('${sec}'); keep('#settings', '.side')`, '#home']);
 const ONBOARDING = ['welcome', 'permissions', 'token', 'engine', 'account', 'mic', 'fnkey', 'practice', 'done'].map((step) => [`처음 설정 · ${step}`, OB(step), `await wait(1200)`, '#home']);
 const STATES = [
   ['홈 · 기본', { STUB_DICTS: '3', STUB_MANY: '12', STUB_BUSY: '1' }, null, '#home'],
   ['홈 · 폴더 막힘', { STUB_FOLDER: 'denied' }, null, '#home'],
+  ['빠른 검색 · 열기', PAL, `document.getElementById('openPalette').click(); await wait()`, '#home'],
+  ['빠른 검색 · 회의 찾기', PAL, `document.getElementById('openPalette').click(); await wait(); type('#paletteInput', '배포'); await wait()`, '#home'],
+  ['빠른 검색 · 받아쓰기 찾기', PAL, `document.getElementById('openPalette').click(); await wait(); type('#paletteInput', '받아쓴 글'); await wait()`, '#home'],
+  ['빠른 검색 · 아래로 둘', PAL, `document.getElementById('openPalette').click(); await wait(); const i = document.getElementById('paletteInput'); i.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' })); i.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' })); await wait()`, '#home'],
+  ['빠른 검색 · 없음', PAL, `document.getElementById('openPalette').click(); await wait(); type('#paletteInput', 'zzqx'); await wait()`, '#home'],
   ...SETTINGS,
   ['설정 · 사이드바만', BOX, `keep('.side')`, '#home'],
   ['설정 · 언어 바꾸기', BOX, `const sel = need(document.getElementById('sideLanguage'), '언어'); sel.value = 'en'; sel.dispatchEvent(new Event('change', { bubbles: true })); await wait(1000); await settings('general'); keep('#settings', '.side', '#toasts')`, '#home'],
