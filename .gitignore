@@ -7,7 +7,7 @@ native/permissions
 # 검수 캡처는 실제 회의 내용이 찍히므로 공개 저장소에 올리지 않는다
 .impeccable/review/
 .impeccable/questions/
-lib/
+/lib/
 
 # 검색 평가 실행 결과 (실제 회의 내용이 들어갈 수 있어 올리지 않는다)
 eval-runs/
