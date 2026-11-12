@@ -11,6 +11,9 @@
 - **main을 새로 받으면 화면이 묶이지 않음** (`Could not resolve '../shared/lib/index.ts'`) — 원인: `.gitignore`의 `lib/`(빌드 결과 폴더용)가 `src/renderer/shared/lib/`까지 가려, 통계 화면을 옮길 때 만든 `shared/lib/index.ts`가 커밋되지 않았다. 내 작업 폴더엔 파일이 있어 시험·설치는 통과했다. 고친 방법: 규칙을 루트만 가리는 `/lib/`로, 파일을 커밋. 확인: main을 새로 꺼낸 작업 폴더에서 화면 묶기·타입 검사·단위 시험 통과, 같은 규칙에 가려진 다른 폴더 없음.
 
 ### 기능
+- **설정·처음 설정 옮기기 2단계 — 문제 알림의 주인을 entities/issue로** (동작·겉모습 그대로): 옛 `app.js`의 `issues` Map·`issuesRev`·`setIssue`를 `createIssueStore`(넣은 차례·제목과 설명이 같으면 그대로·바꾸면 자리 그대로·지웠다 넣으면 맨 뒤)로. 옛 코드는 구독해서 홈·받아쓰기·회의 목록 창구와 설정 점을 그 자리에서 바꾼다. 부르는 곳 없던 `folderEmpty`·`dictStats`·`searchBox` 삭제.
+  - 확인: 화면 48·기능 46·흐름 13을 고치지 않고 통과, HTML 63가지 상태(홈의 문제 알림 둘 추가)가 main과 같음, 단위 시험 203건(store 4건 추가).
+  - 검증 도구: 처음 설정 마이크 단계는 실제 주변 소리에 따라 '잘 들립니다'와 '말해 보세요'가 갈려 main과 비교가 흔들렸다 — `dump-view.js`의 `DUMP_NO_MIC`(덤프 창에서만 마이크 권한 거절)로 늘 같은 갈래. 소리를 듣는 갈래는 설치본에서 확인.
 - **설정·처음 설정 옮기기 1단계 — 알림·확인 창·툴팁·로컬 저장을 shared로** (동작·겉모습 그대로): 옛 `app.js`의 `toast`·`confirmBox`·아이콘 버튼 툴팁·`store`/`remember`를 `shared/ui`(`createToaster`·`confirmBox`·`installTooltips`)와 `shared/lib`(`store`·`remember`)로. 다음 단계에서 TypeScript로 옮길 설정·처음 설정이 옛 코드를 가져오지 않고 쓰게. 설계는 Opus·Codex 두 안을 Codex가 채점해 고름([결정 65](docs/decisions.md)).
   - 확인: 화면 48·기능 46·흐름 13을 고치지 않고 통과, 회의 페이지·설정 창·처음 설정 `#view`/요소 HTML 61가지 상태가 main과 같음, 단위 시험 199건.
   - 검증 도구: `view-parity.js`에 설정 창(여섯 탭·언어·다듬기·토큰 보기·폴더 막힘, 사이드바 포함)과 처음 설정(아홉 단계·누른 뒤 셋) 24가지 — 옮기기 전에 main과 같음을 먼저 확인한 기준선.

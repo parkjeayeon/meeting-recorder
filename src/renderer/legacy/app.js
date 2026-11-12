@@ -13,6 +13,7 @@ import { createPlayback } from '../features/meeting-player/index.ts';
 import { fmt, TIME, PROVIDER_NAME, clock, sizeLabel, dayLabel, createSource, createJobs, store, remember } from '../shared/lib/index.ts'; // 숫자·시간 표시는 한 벌 (React 화면과 같이 씀)
 import { createToaster, confirmBox, installTooltips } from '../shared/ui/index.tsx';
 import { statusText } from '../entities/meeting/index.ts';
+import { createIssueStore } from '../entities/issue/index.ts';
 
 const api = window.recorderApi;
 const $ = (id) => document.getElementById(id);
@@ -52,24 +53,19 @@ const FULL = new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', 
 const toast = createToaster((m) => api.log(m));
 
 // ── 확인해야 할 문제 (권한·엔진·토큰): 홈 맨 위와 설정 점으로 계속 보인다 ─────────
-const issues = new Map(); // key → { title, detail, action, onAction, sec }
-let issuesRev = 0; // issues가 바뀔 때마다 올림 (홈 창구가 바뀐 줄 안다)
-
-function setIssue(key, issue) {
-  const before = issues.get(key);
-  if (!issue === !before && (!issue || (issue.title === before.title && issue.detail === before.detail))) return; // 권한은 3초마다 다시 확인하므로 바뀐 것만 반영
-  if (issue) issues.set(key, issue);
-  else issues.delete(key);
-  issuesRev++;
+// 주인은 entities/issue(issues.set). 바뀌면 여기서 창구·설정 점·홈을 그 자리에서 바꾼다
+const issues = createIssueStore();
+issues.subscribe(() => {
   homeSource.changed();
   dictationsSource.changed();
   meetingsSource.changed();
-  const secs = new Set([...issues.values()].map((i) => i.sec));
-  $('settingsDot').hidden = issues.size === 0;
+  const list = issues.getSnapshot().entries;
+  const secs = new Set(list.map(([, i]) => i.sec));
+  $('settingsDot').hidden = list.length === 0;
   $('permDot').hidden = !secs.has('perms');
   $('accountsDot').hidden = !secs.has('accounts');
   if (route.name === 'home') refresh();
-}
+});
 
 
 // ── 녹음 ────────────────────────────────────────────────────────────────
@@ -235,7 +231,7 @@ async function run({ action, mode }) {
   loadHistory();
   // 권한이 없으면 macOS는 에러 없이 완전한 무음(0)을 넘겨준다
   if (result.files.system && peakDb.system < -150) {
-    setIssue('system-silent', { title: '상대방 소리가 녹음되지 않았습니다', detail: '시스템 오디오 녹음 권한을 허용한 뒤 앱을 다시 실행하세요.', action: '권한 보기', onAction: () => openSettings('perms'), sec: 'perms', dismiss: true });
+    issues.set('system-silent', { title: '상대방 소리가 녹음되지 않았습니다', detail: '시스템 오디오 녹음 권한을 허용한 뒤 앱을 다시 실행하세요.', action: '권한 보기', onAction: () => openSettings('perms'), sec: 'perms', dismiss: true });
   }
 }
 
@@ -284,7 +280,7 @@ $('startYes').onclick = async () => {
 $('liveSpeakersSel').append(...SPEAKER_CHOICES.map((v) => h('option', { value: v }, v ? `참석 ${speakerLabel(v)}` : '참석 자동')));
 $('liveSpeakersSel').onchange = (e) => api.setSpeakers(e.target.value || null);
 api.onCommand(enqueue);
-api.onFnStatus((s) => setIssue('fn', s.ok ? null : { title: 'fn 키를 감지하지 못합니다', detail: s.reason, action: '권한 보기', onAction: () => openSettings('perms'), sec: 'perms' }));
+api.onFnStatus((s) => issues.set('fn', s.ok ? null : { title: 'fn 키를 감지하지 못합니다', detail: s.reason, action: '권한 보기', onAction: () => openSettings('perms'), sec: 'perms' }));
 
 // ── 기록 데이터 ─────────────────────────────────────────────────────────
 let history = [];
@@ -318,7 +314,7 @@ async function loadHistory() {
   homeSource.changed();
   dictationsSource.changed();
   meetingsSource.changed();
-  setIssue('folder', folderIssue(access));
+  issues.set('folder', folderIssue(access));
   $('countDict').textContent = dictTotals?.count || dictations().length || '';
   $('countMeet').textContent = meetings().length || '';
   refresh();
@@ -464,17 +460,17 @@ function openMeetings(filter) {
   meetFilterPending = filter;
   location.hash = '#meetings';
 }
-// 홈 화면(React)이 읽는 창구와 명령. 주인은 여기: 기록(history·dictTotals·strays)은 loadHistory, 문제는 setIssue에서 changed().
+// 홈 화면(React)이 읽는 창구와 명령. 주인은 여기: 기록(history·dictTotals·strays)은 loadHistory, 문제는 issues 구독에서 changed().
 // freshId·showMarks·openRaw는 바뀐 뒤 refresh()가 다시 그려 deps로 알아챈다 (openRaw는 바꿀 때 새 Set)
 const homeSource = createSource(
-  () => ({ meetings: meetings(), dictations: dictations(), totals: dictTotals, issues: [...issues.entries()], strayCount: strays.length, freshId, showMarks, openRaw }),
-  () => [history, dictTotals, strays, issuesRev, freshId, showMarks, openRaw],
+  () => ({ meetings: meetings(), dictations: dictations(), totals: dictTotals, issues: issues.getSnapshot().entries, strayCount: strays.length, freshId, showMarks, openRaw }),
+  () => [history, dictTotals, strays, issues.getSnapshot().revision, freshId, showMarks, openRaw],
 );
 const homeActions = {
   openSettings: (sec) => openSettings(sec),
   openMeetingStart: () => openMeetingStart(),
   openMeetings,
-  dismissIssue: (key) => setIssue(key, null),
+  dismissIssue: (key) => issues.set(key, null),
   copy: (text) => api.copy(text),
   repaste: async (text) => {
     const status = await api.repaste(text);
@@ -512,7 +508,7 @@ let showMarks = store('showMarks', true);
 // 고친 곳 표시(showMarks)·원문 펼침(openRaw)·녹음 폴더 문제는 주인인 여기 — 바꾸면 changed()
 const dictationsSource = createSource(
   () => ({ version: history, folder: issues.get('folder') ?? null, freshId, showMarks, openRaw }),
-  () => [history, issuesRev, freshId, showMarks, openRaw],
+  () => [history, issues.getSnapshot().revision, freshId, showMarks, openRaw],
 );
 const dictationsActions = {
   loadPage: (query) => api.dictPage(query),
@@ -557,7 +553,7 @@ function currentMeetFilter() {
 }
 const meetingsSource = createSource(
   () => ({ meetings: meetings(), strays, folder: issues.get('folder') ?? null, filter: currentMeetFilter(), asks: askStore.getSnapshot().jobs.filter((t) => t.status !== 'blocked') }),
-  () => [history, strays, issuesRev, meetFilter, askStore.getSnapshot().jobs],
+  () => [history, strays, issues.getSnapshot().revision, meetFilter, askStore.getSnapshot().jobs],
 );
 function setMeetFilter(id) {
   meetFilter = id;
@@ -851,7 +847,7 @@ $('settingsClose').onclick = () => $('settings').close();
 $('settings').addEventListener('click', (e) => e.target === $('settings') && $('settings').close());
 $('openSettings').onclick = () => openSettings();
 $('enginesBtn').onclick = () => {
-  const bad = [...issues.values()].find((i) => i.sec);
+  const bad = issues.getSnapshot().entries.map(([, i]) => i).find((i) => i.sec);
   openSettings(bad?.sec ?? 'engine');
 };
 
@@ -880,7 +876,7 @@ function renderEngine(engine) {
   acts.append(h('button', { class: 'btn small', onclick: () => openSettings('engine') }, bad ? '설치하기' : '엔진 관리'));
   const short = { ready: '준비됨', loading: '불러오는 중', downloading: '받는 중', stopped: '꺼짐' }[engine.state] ?? '설정 필요';
   setEngine('engAsr', bad ? 'bad' : engine.state === 'ready' ? 'ok' : 'busy', short);
-  setIssue('engine', bad ? {
+  issues.set('engine', bad ? {
     title: '받아쓰기를 쓸 수 없습니다', detail: text, sec: 'engine',
     action: '설치하기', onAction: () => openSettings('engine'),
   } : null);
@@ -971,7 +967,7 @@ function renderSideCleanup() {
   else if (settings.provider !== 'auto') label = PROVIDER_NAME[settings.provider];
   else label = ['claude-code', 'codex', 'api'].map((id) => providers[id]?.loggedIn && PROVIDER_NAME[id]).find(Boolean) ?? '계정 없음';
   setEngine('engCleanup', label === '계정 없음' ? 'bad' : settings.cleanup ? 'ok' : '', label);
-  setIssue('cleanup', label === '계정 없음' ? { title: '다듬기에 쓸 계정이 없습니다', detail: 'Claude Code·Codex에 로그인하거나 API 키를 넣으세요. 그 전까지는 들린 그대로 입력합니다.', action: '계정 연결', onAction: () => openSettings('accounts'), sec: 'accounts' } : null);
+  issues.set('cleanup', label === '계정 없음' ? { title: '다듬기에 쓸 계정이 없습니다', detail: 'Claude Code·Codex에 로그인하거나 API 키를 넣으세요. 그 전까지는 들린 그대로 입력합니다.', action: '계정 연결', onAction: () => openSettings('accounts'), sec: 'accounts' } : null);
 }
 
 function renderDictSettings(s) {
@@ -991,7 +987,7 @@ function renderDictSettings(s) {
   }
   const dState = !s.diarize ? ['', '꺼짐'] : !s.diarizeReady ? ['bad', '설치 필요'] : s.hasHfToken ? ['ok', '준비됨'] : ['bad', '토큰 필요'];
   setEngine('engDiarize', ...dState);
-  setIssue('hf', s.diarize && s.diarizeReady && !s.hasHfToken ? {
+  issues.set('hf', s.diarize && s.diarizeReady && !s.hasHfToken ? {
     title: '화자 구분에 Hugging Face 토큰이 필요합니다', detail: '토큰을 넣기 전까지 회의 스크립트에 화자가 표시되지 않습니다.',
     action: '토큰 넣기', onAction: () => openSettings('accounts'), sec: 'accounts',
   } : null);
@@ -1135,7 +1131,7 @@ async function renderPerms(status) {
       row.append(btn);
     }
     list.append(row);
-    setIssue(`perm:${p.kind}`, ok || optional ? null : {
+    issues.set(`perm:${p.kind}`, ok || optional ? null : {
       title: `${p.name} 권한이 필요합니다`, detail: `${p.what}에 씁니다.`, sec: 'perms',
       action: first ? '허용하기' : '시스템 설정 열기', onAction: () => requestPerm(p.kind),
     });
@@ -1313,7 +1309,7 @@ askStore.load(await api.askList()); // 창을 닫았다 열어도 찾던 질문�
 navigate();
 mountReact(askRoot, AskWidget, { store: askStore, deps: askWidgetDeps });
 if (info.capability === 'unsupported') toast('이 macOS에서는 상대방 소리를 녹음할 수 없습니다', '회의도 마이크만 녹음합니다.', { ms: 7000 });
-if (info.fnWarning) setIssue('fnUsage', { title: 'fn 키가 다른 동작과 겹칩니다', detail: info.fnWarning, sec: 'general', dismiss: true });
+if (info.fnWarning) issues.set('fnUsage', { title: 'fn 키가 다른 동작과 겹칩니다', detail: info.fnWarning, sec: 'general', dismiss: true });
 await loadDevices();
 
 recorder.prepare().catch((err) => toast('오디오 엔진 준비 실패', err.message, { bad: true }));
