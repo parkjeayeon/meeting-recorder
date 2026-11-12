@@ -1,5 +1,5 @@
 // 스크립트 줄(`[mm:ss] [화자 1] 말`) 읽기와 화자별 말한 시간.
-// 회의 화면(src/renderer/app.js의 parseScript·speakerStats)과 같은 규칙 — 화면이 React로 옮겨 이 모듈을 불러 쓰기 전까지는 두 곳에 있다.
+// 회의 화면도 이 모듈을 그대로 쓴다 (한 벌).
 
 export interface ScriptLine {
   at: number | null; // 초

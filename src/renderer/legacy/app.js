@@ -1,6 +1,6 @@
 import { Recorder } from './recorder.js';
 import { startOnboarding } from './onboarding.js';
-import { scriptMarkdown } from '../../core/script.mts'; // 화면은 코어를 원본(.mts)에서 바로 가져다 쓴다 (Vite가 묶음)
+import { scriptMarkdown, parseScript, speakerStats, parseStamp } from '../../core/script.mts'; // 화면은 코어를 원본(.mts)에서 바로 가져다 쓴다 (Vite가 묶음)
 import { noteVariants } from '../../core/review.mts';
 import { reactPage, mountReact } from '../shared/page-host/index.tsx'; // React로 옮긴 화면을 옛 라우터에 끼운다 (docs/renderer-architecture.md)
 import { createVocabularyModel } from '../entities/vocabulary/index.ts';
@@ -10,6 +10,9 @@ import { HomePage } from '../pages/home/index.ts';
 import { DictationsPage } from '../pages/dictations/index.ts';
 import { MeetingsPage } from '../pages/meetings/index.ts';
 import { createAskStore, AskWidget } from '../features/ask/index.ts';
+import { speakerOrder, termMatcher, termPieces, minutesBlocks, inlinePieces } from '../entities/minutes/index.ts';
+import { FLOW, flowOrder, placeLanes, wrapLines } from '../entities/flow/index.ts';
+import { itemRange, REVIEW_KIND } from '../entities/review/index.ts';
 import { fmt, DAY, TIME, WEEKDAY, PROVIDER_NAME, clock, seconds, sizeLabel, dayKey, dayLabel, createSource } from '../shared/lib/index.ts'; // 숫자·시간 표시는 한 벌 (React 화면과 같이 씀)
 import { dictSummary, charsOf } from '../entities/dictation/index.ts';
 import { BUSY, meetState, meetTitle, progressOf, statusText, busyShort, canCompressNow } from '../entities/meeting/index.ts';
@@ -98,7 +101,6 @@ document.addEventListener('keydown', (e) => {
 });
 const FULL = new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
 
-const parseStamp = (t) => t.split(':').reduce((acc, n) => acc * 60 + Number(n), 0);
 
 
 function store(key, fallback) {
@@ -784,33 +786,6 @@ let audioFor = null;
 let follow = store('follow', true);
 const SPEEDS = [1, 1.25, 1.5, 2];
 
-function parseScript(text) {
-  return (text ?? '').trim().split('\n').filter(Boolean).map((line) => {
-    const m = line.match(/^\[([\d:]+)\]\s*(?:\[([^\]]+)\]\s*)?(.*)$/);
-    return m ? { at: parseStamp(m[1]), stamp: m[1], who: m[2] ?? null, said: m[3] } : { at: null, stamp: '', who: null, said: line };
-  });
-}
-
-// 화자 색은 원본 스크립트에 처음 나온 순서로 고정한다 (이름을 바꿔도 색은 그대로)
-function speakerOrder(lines) {
-  const order = [];
-  for (const l of lines) if (l.who && !order.includes(l.who)) order.push(l.who);
-  return order;
-}
-
-function speakerStats(lines, total) {
-  const map = new Map();
-  lines.forEach((l, i) => {
-    if (!l.who || l.at === null) return;
-    const next = lines.slice(i + 1).find((n) => n.at !== null)?.at ?? total;
-    const s = map.get(l.who) ?? { who: l.who, sec: 0, lines: 0, first: l.stamp };
-    s.sec += Math.max(0, Math.min(next - l.at, 30));
-    s.lines++;
-    map.set(l.who, s);
-  });
-  return [...map.values()].sort((a, b) => b.sec - a.sec);
-}
-
 let openReviewNext = null; // 알림에서 '확인하기'로 들어오면 확인 필요 탭을 연다
 
 function reviewTag(r) {
@@ -820,7 +795,6 @@ function reviewTag(r) {
   return h('span', { class: 'tag accent' }, rv.open ? `초안 · 확인 ${rv.open}개` : '초안 · 확인 마치기 전');
 }
 
-const REVIEW_KIND = { word: '오인식', name: '이름', meaning: '의미 불명', lost: '유실' };
 
 function pageMeeting(id) {
   const el = h('div', { class: 'page' });
@@ -1018,36 +992,17 @@ function pageMeeting(id) {
         h('div', { class: 'spk-sub' }, `약 ${clock(s.sec)} · ${fmt.format(s.lines)}줄 · 처음 말한 시각 `, h('button', { class: 'seek', onclick: () => seek(parseStamp(s.first)) }, s.first)))));
   }
 
-  // ── 용어 설명: 회의록·정리본·원본의 용어에 밑줄, 누르면 한 줄 설명 카드 ──────────
-  // 낱말 속 글자에는 긋지 않는다 ('나'가 '모르거나'·'나눈'에 붙지 않게): 앞에 글자가 없고,
-  // 뒤가 끝·글자 아닌 것·조사(뒤에 한글이 더 이어지지 않을 때)일 때만. 화면 표시만 하고 파일은 고치지 않는다
-  const JOSA_AFTER = '은|는|이|가|을|를|의|도|에|에서|에게|께서|과|와|로|으로|만|까지|부터|처럼|보다|이나|랑|이랑|이다|입니다';
-  function termMatcher(terms) {
-    const list = (terms ?? []).filter((t) => t.term).sort((a, b) => b.term.length - a.term.length);
-    if (!list.length) return null;
-    const esc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp(`(?<![가-힣A-Za-z0-9])(${list.map((t) => esc(t.term)).join('|')})(?=$|[^가-힣A-Za-z0-9]|(?:${JOSA_AFTER})(?![가-힣]))`, 'g');
-    return { re, byTerm: new Map(list.map((t) => [t.term, t])) };
-  }
-
+  // ── 용어 설명: 회의록·정리본·원본의 용어에 밑줄, 누르면 한 줄 설명 카드 (어디에 긋는지는 entities/minutes) ──────────
   // 글에서 용어를 찾아 밑줄 요소로 바꾼 조각들. seen: 한 문단·한 줄 안에서는 처음 나온 곳에만 긋는다
   function withTerms(text, matcher, seen = new Set()) {
-    if (!matcher || !text) return [text];
-    const out = [];
-    let last = 0;
-    for (const m of text.matchAll(matcher.re)) {
-      const t = matcher.byTerm.get(m[1]);
-      if (!t || seen.has(t.id)) continue;
-      seen.add(t.id);
-      if (m.index > last) out.push(text.slice(last, m.index));
+    return termPieces(text, matcher, seen).map((p) => {
+      if (typeof p === 'string') return p;
+      const t = p.term;
       const open = (e) => termCard(e.currentTarget, t);
-      out.push(h('span', { class: `term${t.status === 'confirmed' ? '' : ' guess'}`, role: 'button', tabindex: 0, title: t.note, onclick: open, onkeydown: (e) => {
+      return h('span', { class: `term${t.status === 'confirmed' ? '' : ' guess'}`, role: 'button', tabindex: 0, title: t.note, onclick: open, onkeydown: (e) => {
         if (e.key === 'Enter') open(e);
-      } }, m[1]));
-      last = m.index + m[1].length;
-    }
-    out.push(text.slice(last));
-    return out;
+      } }, p.text);
+    });
   }
 
   const BASIS_LABEL = { general: '일반 용어', meeting: '회의 내용에서', unknown: '회의에서 설명 없음' };
@@ -1214,78 +1169,11 @@ function pageMeeting(id) {
     return e;
   };
   let measureCtx = null;
-  // 글자 폭을 재서 줄을 나눈다 (낱말 단위, 너무 긴 낱말은 글자 단위), 넘치면 말줄임
+  // 글자 폭을 재서 줄을 나눈다 (낱말 단위, 너무 긴 낱말은 글자 단위), 넘치면 말줄임 — 나누기는 entities/flow
   function wrapText(text, px, weight, maxW, maxLines) {
     measureCtx ??= document.createElement('canvas').getContext('2d');
     measureCtx.font = `${weight} ${px}px ${getComputedStyle(document.body).fontFamily}`;
-    const fits = (t) => measureCtx.measureText(t).width <= maxW;
-    const lines = [];
-    for (const para of String(text ?? '').split('\n')) {
-      let cur = '';
-      for (const word of para.split(/(\s+)/)) {
-        if (fits(cur + word)) cur += word;
-        else if (fits(word.trim())) {
-          lines.push(cur.trim());
-          cur = word.trim();
-        } else {
-          for (const ch of word) {
-            if (fits(cur + ch)) cur += ch;
-            else {
-              lines.push(cur);
-              cur = ch.trim();
-            }
-          }
-        }
-      }
-      lines.push(cur.trim());
-    }
-    const out = lines.filter((l, i) => l || i === 0);
-    if (out.length > maxLines) {
-      out.length = maxLines;
-      let last = out[maxLines - 1];
-      while (last && !fits(`${last}…`)) last = last.slice(0, -1);
-      out[maxLines - 1] = `${last}…`;
-    }
-    return out;
-  }
-
-  // 화살표 순서대로 단계를 늘어놓는다 (들어오는 화살표가 없는 단계부터, 갈래는 나온 순서대로)
-  function flowOrder(f) {
-    const next = new Map(f.steps.map((s) => [s.id, []]));
-    const into = new Set();
-    for (const e of f.edges) {
-      next.get(e.from)?.push(e.to);
-      into.add(e.to);
-    }
-    const out = [];
-    const seen = new Set();
-    const visit = (id) => {
-      if (seen.has(id) || !next.has(id)) return;
-      seen.add(id);
-      out.push(id);
-      for (const n of next.get(id)) visit(n);
-    };
-    for (const s of f.steps) if (!into.has(s.id)) visit(s.id);
-    for (const s of f.steps) visit(s.id);
-    return out.map((id) => f.steps.find((s) => s.id === id));
-  }
-
-  const FLOW = { BW: 164, GX: 36, GY: 46, PAD: 18, LABEL: 104 };
-
-  // 띠가 있는 흐름의 칸: 같은 띠는 오른쪽으로, 띠를 바꾸면 같은 칸 위아래로 (처음 들어가는 빈 띠만 한 칸 당겨 폭을 줄인다)
-  function placeLanes(steps, laneIdx) {
-    const pos = new Map();
-    const last = new Map();
-    let prev = null;
-    for (const s of steps) {
-      const row = laneIdx.get(s.lane) ?? 0;
-      const after = (last.get(row) ?? -1) + 1;
-      const col = !prev ? 0 : prev.row === row ? prev.col + 1 : last.has(row) ? Math.max(after, prev.col) : Math.max(after, prev.col - 1);
-      last.set(row, col);
-      prev = { row, col };
-      pos.set(s.id, prev);
-    }
-    return pos;
+    return wrapLines(text, (t) => measureCtx.measureText(t).width <= maxW, maxLines);
   }
 
   // part: 넓은 그림을 여러 줄로 접을 때 한 줄에 들어갈 단계와 칸 (번호·띠 색은 그림 전체 기준을 이어 쓴다)
@@ -1728,80 +1616,49 @@ function pageMeeting(id) {
   function minutesDoc(r, md, reviewOpen = 0, openReview = null, matcher = null) {
     const box = h('article', { class: 'doc' });
     const flowData = docCache.get(r.id)?.flow;
-    let flowPlaced = false;
-    let sawSummary = false;
-    let list = null;
-    let todoIndex = 0;
-    let skipping = false; // 확인 필요 섹션은 '확인 필요' 탭에서 하나씩 처리한다
+    // 한 줄: 굵게·글·시각 묶음(entities/minutes)을 그리고 용어에 밑줄. 시각은 눌러서 듣기
     const inline = (el, text, terms = matcher) => {
       const seen = new Set();
-      text.split(/\*\*(.+?)\*\*/g).forEach((part, i) => {
-        if (!part) return;
-        if (i % 2) return el.append(h('b', null, ...withTerms(part, terms, seen)));
-        const segs = part.split(/(\(\s*\d{1,2}:\d{2}(?::\d{2})?(?:\s*,\s*\d{1,2}:\d{2}(?::\d{2})?)*\s*\))/);
-        segs.forEach((seg, j) => {
-          if (j % 2 === 0) return seg && el.append(...withTerms(seg, terms, seen));
-          const times = seg.match(/\d{1,2}:\d{2}(?::\d{2})?/g);
-          // 시각 칩과 바로 뒤 문장부호("(02:50)." → 칩 + ".")를 한 덩어리로 묶어 마침표만 다음 줄로 넘어가지 않게 한다
-          const punct = /^[.,;:!?…)\]」』]+/.exec(segs[j + 1] ?? '')?.[0] ?? '';
-          if (punct) segs[j + 1] = segs[j + 1].slice(punct.length);
+      for (const p of inlinePieces(text)) {
+        if (p.kind === 'bold') el.append(h('b', null, ...withTerms(p.text, terms, seen)));
+        else if (p.kind === 'text') el.append(...withTerms(p.text, terms, seen));
+        else {
           const group = h('span', { class: 'stamps' });
-          times.forEach((t, k) => {
+          p.times.forEach((t, k) => {
             if (k) group.append(' ');
             group.append(r.firstFile ? h('button', { class: 'seek', title: '여기부터 듣기', onclick: () => seek(parseStamp(t)) }, t) : h('span', { class: 'num' }, t));
           });
-          if (punct) group.append(punct);
+          if (p.punct) group.append(p.punct);
           el.append(' ', group);
-        });
-      });
+        }
+      }
     };
-    for (const line of md.split('\n')) {
-      const todo = line.match(/^\s*- \[( |x)\]\s+(.*)$/i);
-      const item = line.match(/^\s*[-*]\s+(.*)$/);
-      const heading = line.match(/^(#{1,3})\s+(.*)$/);
-      if (heading) skipping = heading[1] === '##' && heading[2].trim() === '확인 필요';
-      if (skipping) continue;
-      if (todo || item) {
-        if (!list) box.append((list = h('ul')));
-        if (todo) {
-          const index = todoIndex++;
-          const checked = todo[1].trim() !== '';
+    for (const b of minutesBlocks(md, { flows: Boolean(flowData?.flows?.length) })) {
+      if (b.kind === 'flows') box.append(flowsSection(r, flowData));
+      else if (b.kind === 'list') {
+        box.append(h('ul', null, b.items.map((it) => {
+          if (!it.todo) {
+            const li = h('li');
+            inline(li, it.text);
+            return li;
+          }
           const text = h('span');
-          inline(text, todo[2]);
-          const cb = h('input', { type: 'checkbox', checked, 'aria-label': '할 일 완료' });
-          const li = h('li', { class: `todo${checked ? ' done' : ''}` }, cb, text);
+          inline(text, it.text);
+          const cb = h('input', { type: 'checkbox', checked: it.checked, 'aria-label': '할 일 완료' });
+          const li = h('li', { class: `todo${it.checked ? ' done' : ''}` }, cb, text);
           cb.onchange = async () => {
             li.classList.toggle('done', cb.checked);
-            const updated = await api.toggleTodo(r.dir, index, cb.checked);
+            const updated = await api.toggleTodo(r.dir, it.index, cb.checked);
             docCache.set(r.id, { ...docCache.get(r.id), minutes: updated });
           };
-          list.append(li);
-        } else {
-          const li = h('li');
-          inline(li, item[1]);
-          list.append(li);
-        }
-        continue;
-      }
-      list = null;
-      if (!line.trim()) continue;
-      if (heading) {
-        if (heading[1] === '#') continue; // 제목은 페이지 머리에 있다
-        if (heading[1] === '##' && flowData?.flows?.length && !flowPlaced && sawSummary) {
-          box.append(flowsSection(r, flowData));
-          flowPlaced = true;
-        }
-        if (heading[1] === '##') sawSummary = heading[2].trim() === '요약';
-        const hd = h(heading[1] === '##' ? 'h3' : 'h4');
-        inline(hd, heading[2], null);
-        box.append(hd);
+          return li;
+        })));
       } else {
-        const p = h('p');
-        inline(p, line);
-        box.append(p);
+        const el = h(b.kind);
+        inline(el, b.text, b.kind === 'p' ? matcher : null);
+        box.append(el);
       }
     }
-    if (flowData?.flows?.length && !flowPlaced) box.append(flowsSection(r, flowData));
     const actData = docCache.get(r.id)?.actions;
     if (!actData?.actions?.length && !actData?.advice?.length) box.append(actionsRow(r, actData));
     if (!flowData?.flows?.length) box.append(flowRow(r, flowData));
@@ -1904,15 +1761,6 @@ function pageMeeting(id) {
     ids.forEach((i) => reviewSel.delete(i));
     toast(`${ids.length}개를 그대로 두었습니다`, '나중에 다시 열 수 있습니다');
     refreshDoc(r);
-  }
-
-  // 구간 다시 받아쓰기 범위: 설명에 'mm:ss~mm:ss'가 있으면 그 구간, 없으면 항목 시각 앞 10초~뒤 50초
-  function itemRange(it) {
-    const m = /(\d{1,2}:\d{2}(?::\d{2})?)\s*[~∼–-]\s*(\d{1,2}:\d{2}(?::\d{2})?)/.exec(`${it.note ?? ''} ${it.heardNote ?? ''}`);
-    if (m && parseStamp(m[2]) > parseStamp(m[1])) return { start: parseStamp(m[1]), end: parseStamp(m[2]) };
-    if (!it.at) return null;
-    const at = parseStamp(it.at);
-    return { start: Math.max(0, at - 10), end: at + 50 };
   }
 
   // 구간 직접 고르기: 시작·끝(mm:ss)을 넣거나 '지금 재생 위치'로. 끝을 비우면 시작부터 1분, 최대 10분

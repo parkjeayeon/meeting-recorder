@@ -43,7 +43,34 @@ const GLOSSARY = { terms: [
   { id: 'g1', term: 'QA', note: '출시 전에 기능이 제대로 동작하는지 확인하는 품질 검사', basis: 'general', status: 'confirmed', source: 'llm', at: ['00:11'] },
   { id: 'g2', term: '알림', note: '앱 푸시 알림 기능', basis: 'meeting', status: 'suggested', source: 'llm', at: ['00:40'] },
 ] };
-function makeMeeting(prefix = 'mr-feature-') {
+// 흐름도·액션 예시 (화면 캡처 screens.js와 같은 것)
+const FLOW = { flows: [{
+  id: 'f1', title: '배포 절차', summary: 'QA를 마친 뒤 화요일에 배포하고 지켜보는 순서', lanes: [],
+  steps: [
+    { id: 's1', title: 'QA', detail: '결제·로그인·알림만 확인', at: '00:11', quote: 'QA는 월요일까지' },
+    { id: 's2', title: '배포', detail: '화요일 오전에 배포', at: '00:06', quote: '화요일 오전이 좋을 것 같아요' },
+    { id: 's3', title: '모니터링', detail: '나머지는 배포 뒤 확인', at: '00:15', quote: '확인만 하면 됩니다', optional: true },
+  ],
+  edges: [{ from: 's1', to: 's2' }, { from: 's2', to: 's3' }],
+  notes: [{ step: 's2', kind: 'warn', text: '일정이 밀리면\n알림은 다음 배포로', at: '00:11', quote: '알림은 다음 배포로' }],
+  annotations: [],
+}], handoff: null, reason: '배포 순서를 설명함' };
+const ACTIONS = {
+  kind: 'work', adviceTitle: '알아 둘 것',
+  actions: [
+    { id: 'a1', owner: '화자 2', task: 'QA 마치기', due: '월요일', kind: 'assigned', at: '00:11', quote: 'QA는 월요일까지', done: false },
+    { id: 'a2', owner: '화자 1', task: '배포 일정 공지하기', due: null, kind: 'promise', at: '00:06', quote: '화요일 오전이 좋을 것 같아요', done: true },
+    { id: 'a3', owner: '화자 2', task: '결제 화면 오류 재현 영상 공유하기', due: '내일', kind: 'promise', at: '00:15', quote: 'x', done: false },
+    { id: 'a4', owner: '화자 1', task: '롤백 절차 문서 다시 확인하기', due: null, kind: 'assigned', at: '00:20', quote: 'x', done: false },
+    { id: 'a5', owner: '화자 1', task: '다음 주부터 매일 배포 전 체크리스트 보기', due: '다음 주', kind: 'resolution', at: '00:24', quote: 'x', done: false },
+  ],
+  advice: [
+    { id: 'v1', group: '배포', key: true, why: '일정이 밀리면 범위부터 줄여야 해서', from: '화자 1', to: '화자 2', text: '일정이 밀리면 알림은 다음 배포로 넘기기', at: '00:11', quote: 'x' },
+    { id: 'v2', group: 'QA', key: false, why: null, from: '화자 1', to: '화자 2', text: '결제·로그인·알림만 먼저 확인하기', at: '00:15', quote: 'x' },
+  ],
+};
+// flowAndActions: 흐름도·액션 파일까지 (기능 시험·흐름은 없는 상태에서 시작한다)
+function makeMeeting(prefix = 'mr-feature-', { flowAndActions = false } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix)) + '/2026-11-01_23-00-00_meeting';
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'transcript.txt'), `${TRANSCRIPT.join('\n')}\n`);
@@ -51,6 +78,10 @@ function makeMeeting(prefix = 'mr-feature-') {
   fs.writeFileSync(path.join(dir, 'minutes.md'), MINUTES);
   fs.writeFileSync(path.join(dir, 'review.json'), JSON.stringify(REVIEW));
   fs.writeFileSync(path.join(dir, 'glossary.json'), JSON.stringify(GLOSSARY));
+  if (flowAndActions) {
+    fs.writeFileSync(path.join(dir, 'flow.json'), JSON.stringify(FLOW));
+    fs.writeFileSync(path.join(dir, 'actions.json'), JSON.stringify(ACTIONS));
+  }
   fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({ startedAt: '2026-11-01T14:00:00Z', files: { mic: { file: 'mic.wav', durationSec: 1800 } } }));
   return dir;
 }
@@ -78,4 +109,4 @@ const HELPERS = `window.__t = (() => {
   return { find, click, field, type, has, toasts, tab, name };
 })();`;
 
-module.exports = { TRANSCRIPT, MINUTES, REVIEW, GLOSSARY, makeMeeting, HELPERS };
+module.exports = { TRANSCRIPT, MINUTES, REVIEW, GLOSSARY, FLOW, ACTIONS, makeMeeting, HELPERS };
