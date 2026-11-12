@@ -339,10 +339,10 @@ code { font: 12px var(--mono); padding: 1px 5px; border-radius: 5px; background:
 
 /* 최근 회의: 날짜 기둥 + 제목 + 상태 */
 .hrows { display: flex; flex-direction: column; }
-.hrow { display: grid; grid-template-columns: 52px 1fr auto; align-items: center; gap: 14px; padding: 11px 4px; text-decoration: none; color: inherit; }
+.hrow { display: grid; grid-template-columns: 64px 1fr auto; align-items: center; gap: 14px; padding: 11px 4px; text-decoration: none; color: inherit; }
 .hrow + .hrow { border-top: 1px solid var(--line); }
 .hrow:hover .hrow-text b, .srow:hover .sname b { color: var(--accent); }
-.hrow-day { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2; }
+.hrow-day { display: flex; align-items: baseline; gap: 5px; white-space: nowrap; line-height: 1.2; } /* 날짜와 요일을 한 줄로 (11.11 수) */
 .hrow-day b .num { font-size: 13px; font-weight: 650; color: var(--ink); }
 .hrow-day span { font-size: 11.5px; color: var(--ink-3); }
 .hrow-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
