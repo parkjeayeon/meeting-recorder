@@ -2,6 +2,7 @@
 //   [ROOT=다른 작업 폴더] [STUB_…=…] [DUMP_JS='…'] npx electron scripts/dev/dump-view.js '#home' /tmp/home.html
 // DUMP_JS: 화면을 연 뒤 찍기 전에 돌릴 코드 (원문 펼치기·검색 등 누른 뒤의 모습). 돌린 뒤 0.8초 기다린다
 // DUMP_SEL: 찍을 곳 (기본 #view). 질문 창·둥근 버튼은 '.ask-root'
+// DUMP_FLOW=<flow.json>: 예시 회의의 흐름도를 이 파일로 · W·H: 창 크기 (기본 1240×820, 좁히면 흐름도가 접힌다)
 // DUMP_MEETING=1: 예시 회의(verify/fixture, 흐름도·액션 포함)를 임시 폴더에 만들어 쓴다(plain이면 흐름도·액션 없이). 주소의 {id}가 그 회의 id (끝나면 지움)
 // 가짜 API(stub-preload)로 띄우고, 태그마다 줄을 나눠 저장한다. ROOT를 주면 그 폴더의 화면 묶음·가짜 API로 (main을 꺼낸 작업 폴더 등)
 const { app, BrowserWindow } = require('electron');
@@ -13,6 +14,7 @@ const [hashArg, out] = process.argv.slice(-2);
 let meetingDir = null;
 if (process.env.DUMP_MEETING) {
   meetingDir = require(path.join(root, 'scripts/dev/verify/fixture.js')).makeMeeting('mr-dump-', { flowAndActions: process.env.DUMP_MEETING !== 'plain' });
+  if (process.env.DUMP_FLOW) fs.copyFileSync(process.env.DUMP_FLOW, path.join(meetingDir, 'flow.json'));
   process.env.STUB_MEETING_DIR = meetingDir;
 }
 const hash = hashArg.replaceAll('{id}', meetingDir ? path.basename(meetingDir) : '');
@@ -22,7 +24,7 @@ app.dock?.hide();
 setTimeout(() => process.exit(1), 60000);
 app.whenReady().then(async () => {
   try {
-    const w = new BrowserWindow({ width: 1240, height: 820, show: false, webPreferences: { preload: path.join(root, 'scripts/dev/stub-preload.js'), sandbox: false } });
+    const w = new BrowserWindow({ width: +(process.env.W || 1240), height: +(process.env.H || 820), show: false, webPreferences: { preload: path.join(root, 'scripts/dev/stub-preload.js'), sandbox: false } });
     w.webContents.on('console-message', (e) => e.level === 'error' && console.log('CONSOLE', e.message));
     await w.loadFile(path.join(root, 'src/renderer/index.html'));
     await new Promise((r) => setTimeout(r, 1500));

@@ -164,6 +164,17 @@ const impl = {
     await new Promise((r) => setTimeout(r, +(process.env.STUB_JOB_MS || 2500)));
     return JSON.parse(read('actions.json') ?? '{"actions":[],"advice":[]}');
   },
+  // 흐름도 만들기·다시 그리기도 오래 걸린다 (버튼의 '… 중'과 입력칸 막힘을 본다). 그릴 흐름은 찾지 못한 것으로
+  makeFlow: async (_dir, focus) => {
+    calls.makeFlow = [...(calls.makeFlow ?? []), focus];
+    await new Promise((r) => setTimeout(r, +(process.env.STUB_JOB_MS || 2500)));
+    return { flows: [], handoff: null, reason: '가짜 엔진은 흐름을 그리지 않습니다' };
+  },
+  remakeFlow: async (_dir, flowId) => {
+    calls.remakeFlow = [...(calls.remakeFlow ?? []), flowId];
+    await new Promise((r) => setTimeout(r, +(process.env.STUB_JOB_MS || 2500)));
+    return JSON.parse(read('flow.json') ?? 'null');
+  },
   // 목록에 안 나오는 폴더 예시 (날짜를 잘못 읽은 가져오기 둘, 끊긴 녹음 하나). STUB_STRAY=none이면 없음
   strayFolders: async () => (process.env.STUB_STRAY === 'none' ? [] : strays.filter((f) => !calls.trashed?.includes(f.dir))),
   trashMeeting: async (d) => {

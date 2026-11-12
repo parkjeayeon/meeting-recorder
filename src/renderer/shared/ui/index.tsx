@@ -1,5 +1,5 @@
 // 공통 화면 부품. 옛 화면 코드(legacy/app.js)의 h()·icon()과 같은 마크업을 내서 CSS·시험이 그대로 맞는다.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 export { glide, scrollSpy } from './scroll-spy.ts';
 
@@ -64,5 +64,23 @@ export function SearchBox({ placeholder, hidden = false, onInput }: { readonly p
       {/* 옛 searchBox도 spellcheck: false를 주려 했지만 h()가 false 값을 건너뛰어 맞춤법 검사는 늘 켜져 있었다 — 동작을 그대로 두려고 같게 (docs/known-issues.md) */}
       <input ref={input} type="search" placeholder={placeholder} />
     </label>
+  );
+}
+
+/** JobButton이 읽는 작업 목록 (shared/lib의 createJobs가 이 모양) */
+export interface JobsView {
+  readonly get: (key: string) => { readonly label: string } | undefined;
+  readonly subscribe: (onChange: () => void) => () => void;
+  readonly version: () => number;
+}
+
+/** 오래 걸리는 작업 버튼: 그 키의 작업이 돌고 있으면 돌아가는 표시(busy) + 누를 수 없게, 글은 작업 이름 (옛 markBusy와 같은 모양) */
+export function JobButton({ jobs, jobKey, className, icon, label, title, onClick }: { readonly jobs: JobsView; readonly jobKey: string; readonly className: string; readonly icon: string; readonly label: string; readonly title?: string; readonly onClick: () => void }) {
+  useSyncExternalStore(jobs.subscribe, jobs.version);
+  const job = jobs.get(jobKey);
+  return (
+    <button className={job ? `${className} busy` : className} title={title} disabled={Boolean(job)} onClick={onClick}>
+      <Icon id={icon} /><span>{job ? job.label : label}</span>
+    </button>
   );
 }
