@@ -98,6 +98,19 @@ STUB_MINUTES=offline npx electron scripts/dev/screens.js /tmp/mr-screens # 인�
 ```
 예시 회의는 임시 폴더에 만들어 쓴다 (실제 회의 내용이 찍히지 않음). 실제 데이터로 찍은 캡처는 공개 저장소에 올리지 않는다.
 
+## 옮긴 화면이 옛 화면과 같은지 — 캡처 픽셀 + `#view` HTML
+React로 화면을 옮기면 main과 나란히 찍어 비교한다. 캡처는 창 크기만큼만 보이고 가짜 데이터 기본값에선 안 그려지는 갈래(만드는 중 카드, 교정 부호 등)가 있으므로, 화면 HTML도 데이터를 바꿔 가며 비교한다.
+```bash
+git worktree add --detach /tmp/wt-main main && ln -s "$PWD/node_modules" /tmp/wt-main/node_modules
+cp scripts/dev/stub-preload.js /tmp/wt-main/scripts/dev/          # 가짜 데이터 갈래를 새로 더했으면
+(cd /tmp/wt-main && npm run build:ts && npm run build:renderer)
+npx electron scripts/dev/screens.js /tmp/shots-after; ( cd /tmp/wt-main && npx electron scripts/dev/screens.js /tmp/shots-base )   # DARK=1로 한 번 더
+STUB_DICTS=3 STUB_HISTORY_DICTS=1 STUB_MANY=12 STUB_BUSY=1 STUB_DICT_EDITS=1 STUB_FOLDER=denied npx electron scripts/dev/dump-view.js '#home' /tmp/after.html
+ROOT=/tmp/wt-main STUB_DICTS=3 … npx electron scripts/dev/dump-view.js '#home' /tmp/base.html && diff /tmp/base.html /tmp/after.html
+git worktree remove --force /tmp/wt-main
+```
+HTML 차이는 React 껍데기(`<div style="display: contents;">`) 한 겹뿐이어야 한다. 캡처 비교는 같은 브랜치끼리도 회의 화면에서 몇 픽셀 흔들릴 수 있다 — 같은 쪽을 두 번 찍어 흔들림인지 먼저 본다. 화면 배율을 바꾸면 기준을 다시 찍는다.
+
 가짜 API는 `src/preload.js`의 함수 이름을 읽어 같은 모양을 만들므로, 새 IPC를 추가하면 자동으로 따라온다. 예시 값이 필요한 함수만 `stub-preload.js`의 `impl`에 넣는다.
 
 ## 샌드박스 — `node scripts/dev/sandbox-check.js`

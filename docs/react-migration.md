@@ -8,8 +8,9 @@
 ## 합격 기준
 화면 하나를 옮길 때마다 아래가 **시험을 고치지 않고** 통과해야 한다.
 - `npm run test:ui` (화면 시험 48건: 입력칸 진짜 키, 진행 중 표시, 툴팁 …)
-- `npm run test:feature` (기능 시험 45건: 사용자가 하는 일마다 화면 결과와 본체 호출)
-- `npm run verify:journeys` (검증 스킬의 흐름 7개, `.claude/skills/verify-meeting-recorder/`)
+- `npm run test:feature` (기능 시험 46건: 사용자가 하는 일마다 화면 결과와 본체 호출)
+- `npm run verify:journeys` (검증 스킬의 흐름, 지금 10개, `.claude/skills/verify-meeting-recorder/`)
+- 화면 캡처 픽셀과 `#view` HTML이 main과 같음 (가짜 데이터로 모든 갈래를 그려서, [testing.md](testing.md))
 - `npm test`, `npm run typecheck`, 화면 오류 0, 설치해서 하루 써 보기
 
 시험을 고쳐야 통과한다면 동작이 바뀐 것이다. 기능 시험·흐름은 글자·역할·aria로 찾지만, 화면 시험(`ui-test.js`)은 클래스 이름도 약 70개(`.add-row input` 등) 쓴다 — 옮긴 화면도 그 클래스를 그대로 둔다(Playwright로 바꿀 때까지).
@@ -17,6 +18,7 @@
 ## 순서
 0. **안전망** (끝남, 2026-11-11): 기능 시험 45건, 검증 스킬과 흐름 7개(처음 설정·가져오기처럼 시험이 없던 곳 포함).
 1. **도구와 이음새** (끝남, 2026-11-12, [renderer-architecture.md](renderer-architecture.md)): 화면을 Vite + React + TypeScript로 묶는다(`lib/renderer/`, 문서는 그대로 `src/renderer/index.html`). 개발 서버는 쓰지 않고 지켜보며 묶기 + 창 새로 고침(`npm run dev`) — 처음 계획의 "개발은 Vite 서버"를 바꿨다(출처가 둘이 되고 시험이 안 도는 경로가 생겨서). preload 객체에서 API 타입을 끌어냄, 화면이 `src/core` 원본을 가져다 씀, 옛 코드는 `legacy/`에 격리, 이음새 `reactPage`, 경계 검사. 시험 고치지 않고 통과, 화면 캡처 40장 픽셀까지 같음.
+   - **홈** (끝남, 2026-11-12): `pages/home`(계산 `model.ts`와 그리기 나눔) + 창구 `homeSource`(주인은 옛 코드: 기록·문제 알림·받아쓰기 표시 상태) + 명령 `homeActions`(설정 열기·회의 갈래·복사·다시 붙여넣기 — API 호출과 알림은 주인 쪽). 회의 상태·말(`entities/meeting`: `meetState`·`meetTitle`·`statusText`… 와 `RowState`·`JobCard`), 교정 부호 계산(`entities/dictation`의 `markParts`), 받아쓰기 한 줄(`widgets/dictation-item`, 지금은 홈의 짧은 꼴), `CopyButton`. 계산은 옛 코드도 같이 쓴다. `#view` HTML까지 main과 같음.
    - **통계** (끝남, 2026-11-12): `pages/stats`(막대 그래프 포함) + 읽기 창구 `createSource`(주인은 옛 코드의 history·dictTotals, `loadHistory`에서 `changed()`). 받아쓰기 요약 계산(`entities/dictation`)과 숫자·시간 표시(`shared/lib`: fmt·clock·seconds·DAY·PROVIDER_NAME)는 옛 코드도 같이 쓴다 — 두 벌 없음.
    - **사전** (끝남, 2026-11-12): 첫 React 화면. `ROUTES`의 한 줄 + 단어 목록 창구(`entities/vocabulary`, 상태 주인은 아직 옛 코드의 settings) + 아이콘 부품(`shared/ui`). 시험 고치지 않고 통과, 화면 캡처 같음.
 2. **공통 부품**: 버튼·알림·툴팁·확인 창·아이콘, 전역 상태(회의 목록·진행 중 작업·질문 작업·문서 캐시)를 한곳에, IPC 소식도 한곳에서. CSS는 조각마다(CSS Modules) — 클래스 이름이 겹쳐 모양이 깨진 일(`.ghost`, `.todo`)을 구조로 막는다. 색·간격 변수는 공용.

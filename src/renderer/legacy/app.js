@@ -6,8 +6,10 @@ import { reactPage } from '../shared/page-host/index.tsx'; // React로 옮긴 �
 import { createVocabularyModel } from '../entities/vocabulary/index.ts';
 import { DictionaryPage } from '../pages/dictionary/index.ts';
 import { StatsPage } from '../pages/stats/index.ts';
-import { fmt, DAY, PROVIDER_NAME, clock, seconds, createSource } from '../shared/lib/index.ts'; // 숫자·시간 표시는 한 벌 (React 화면과 같이 씀)
-import { dictSummary, charsOf } from '../entities/dictation/index.ts';
+import { HomePage } from '../pages/home/index.ts';
+import { fmt, DAY, TIME, WEEKDAY, PROVIDER_NAME, clock, seconds, sizeLabel, dayKey, dayLabel, createSource } from '../shared/lib/index.ts'; // 숫자·시간 표시는 한 벌 (React 화면과 같이 씀)
+import { dictSummary, charsOf, markParts } from '../entities/dictation/index.ts';
+import { BUSY, meetState, meetTitle, progressOf, statusText, busyShort, canCompressNow } from '../entities/meeting/index.ts';
 
 const api = window.recorderApi;
 const $ = (id) => document.getElementById(id);
@@ -92,18 +94,9 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && hoverTip.classList.contains('show')) hideHoverTip();
 });
 const FULL = new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
-const TIME = new Intl.DateTimeFormat('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
 
 const parseStamp = (t) => t.split(':').reduce((acc, n) => acc * 60 + Number(n), 0);
-const dayKey = (d) => new Date(d).toDateString();
 
-function dayLabel(date) {
-  const key = dayKey(date);
-  const today = new Date();
-  if (key === today.toDateString()) return '오늘';
-  if (key === new Date(today - 864e5).toDateString()) return '어제';
-  return DAY.format(new Date(date));
-}
 
 function store(key, fallback) {
   try {
@@ -133,12 +126,15 @@ function toast(title, detail = '', { bad = false, action = null, onAction = null
 
 // ── 확인해야 할 문제 (권한·엔진·토큰): 홈 맨 위와 설정 점으로 계속 보인다 ─────────
 const issues = new Map(); // key → { title, detail, action, onAction, sec }
+let issuesRev = 0; // issues가 바뀔 때마다 올림 (홈 창구가 바뀐 줄 안다)
 
 function setIssue(key, issue) {
   const before = issues.get(key);
   if (!issue === !before && (!issue || (issue.title === before.title && issue.detail === before.detail))) return; // 권한은 3초마다 다시 확인하므로 바뀐 것만 반영
   if (issue) issues.set(key, issue);
   else issues.delete(key);
+  issuesRev++;
+  homeSource.changed();
   const secs = new Set([...issues.values()].map((i) => i.sec));
   $('settingsDot').hidden = issues.size === 0;
   $('permDot').hidden = !secs.has('perms');
@@ -146,16 +142,6 @@ function setIssue(key, issue) {
   if (route.name === 'home') refresh();
 }
 
-function issueList() {
-  if (!issues.size) return null;
-  return h('div', { class: 'issues' }, [...issues.entries()].map(([key, i]) =>
-    h('div', { class: 'issue' },
-      icon('i-alert'),
-      h('div', { class: 'issue-text' }, h('b', null, i.title), i.detail && h('span', null, i.detail)),
-      i.action && h('button', { class: 'btn small', onclick: i.onAction }, i.action),
-      i.dismiss && h('button', { class: 'icon-btn', 'aria-label': '닫기', onclick: () => setIssue(key, null) }, icon('i-x')),
-    )));
-}
 
 // ── 녹음 ────────────────────────────────────────────────────────────────
 const peakDb = { mic: -Infinity, system: -Infinity };
@@ -377,7 +363,6 @@ let strays = []; // 녹음 폴더에 있지만 목록에 안 나오는 폴더 (r
 let freshId = null;
 const dictations = () => history.filter((r) => r.mode === 'memo' && r.transcript?.raw);
 const meetings = () => history.filter((r) => r.mode === 'meeting');
-const BUSY = ['queued', 'transcribe', 'write'];
 
 // macOS가 녹음 폴더(기본은 문서 폴더 안) 접근을 막으면 목록이 비어 보인다. 녹음이 사라진 게 아니라고 알린다
 const FOLDER_DENIED = new Set(['EPERM', 'EACCES']);
@@ -406,6 +391,7 @@ async function loadHistory() {
   strays = stray ?? [];
   dictTotals = totals ?? null;
   statsSource.changed();
+  homeSource.changed();
   setIssue('folder', folderIssue(access));
   $('countDict').textContent = dictTotals?.count || dictations().length || '';
   $('countMeet').textContent = meetings().length || '';
@@ -445,64 +431,21 @@ api.onMeetingChanged(({ id }) => {
 });
 api.onRecordingsChanged(() => loadHistory());
 
-// 다듬기 전/후를 단어 단위로 비교해 지운 말(취소선)과 넣은 말(밑줄)을 표시한다
-const PUNCT = /^[.,!?…·:;"'“”‘’()]$/;
-const tokenize = (s) => s.match(/[^\s.,!?…·:;"'“”‘’()]+|[.,!?…·:;"'“”‘’()]/g) ?? [];
-const joinTokens = (tokens) => tokens.reduce((out, t, i) => (i && !PUNCT.test(t) ? `${out} ${t}` : out + t), '');
-
-function diffWords(a, b) {
-  const x = tokenize(a);
-  const y = tokenize(b);
-  if (x.length * y.length > 250000) return [{ op: 'eq', tokens: y }];
-  const dp = Array.from({ length: x.length + 1 }, () => new Uint16Array(y.length + 1));
-  for (let i = x.length - 1; i >= 0; i--) {
-    for (let j = y.length - 1; j >= 0; j--) dp[i][j] = x[i] === y[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
-  }
-  const out = [];
-  const push = (op, token) => {
-    const last = out.at(-1);
-    if (last?.op === op) last.tokens.push(token);
-    else out.push({ op, tokens: [token] });
-  };
-  let i = 0;
-  let j = 0;
-  while (i < x.length && j < y.length) {
-    if (x[i] === y[j]) {
-      push('eq', x[i++]);
-      j++;
-    } else if (dp[i + 1][j] >= dp[i][j + 1]) push('del', x[i++]);
-    else push('ins', y[j++]);
-  }
-  while (i < x.length) push('del', x[i++]);
-  while (j < y.length) push('ins', y[j++]);
-  return out;
-}
 
 // 교정 부호를 붙인 글. 너무 많이 고쳤으면(넣은 말 비율 > 40%) 다듬은 글만 보여 준다
 function markedText(raw, text) {
+  const m = markParts(raw, text); // 계산은 entities/dictation (React 화면과 한 벌)
   const el = h('div', { class: 'dtext' });
-  if (!text || raw === text) {
-    el.textContent = text ?? raw;
-    return { el, heavy: false };
+  if (!m.parts) el.textContent = m.text;
+  else for (const p of m.parts) {
+    if (p.space) el.append(' ');
+    el.append(p.op === 'eq' ? p.words : h(p.op, { title: p.op === 'del' ? '다듬기가 지운 말' : '다듬기가 넣은 말' }, p.words));
   }
-  const parts = diffWords(raw, text);
-  const inserted = parts.filter((p) => p.op === 'ins').reduce((n, p) => n + p.tokens.length, 0);
-  const kept = parts.filter((p) => p.op !== 'del').reduce((n, p) => n + p.tokens.length, 0);
-  if (inserted / Math.max(1, kept) > 0.4) {
-    el.textContent = text;
-    return { el, heavy: true };
-  }
-  parts.forEach((part, k) => {
-    const words = joinTokens(part.tokens);
-    if (k && !PUNCT.test(part.tokens[0])) el.append(' ');
-    if (part.op === 'eq') el.append(words);
-    else el.append(h(part.op, { title: part.op === 'del' ? '다듬기가 지운 말' : '다듬기가 넣은 말' }, words));
-  });
-  return { el, heavy: false };
+  return { el, heavy: m.heavy };
 }
 
 // ── 라우터 ──────────────────────────────────────────────────────────────
-const ROUTES = { home: pageHome, dictations: pageDictations, meetings: pageMeetings, meeting: pageMeeting, dictionary: () => reactPage(DictionaryPage, { model: vocabulary }), stats: () => reactPage(StatsPage, { source: statsSource }) };
+const ROUTES = { home: () => reactPage(HomePage, { source: homeSource, actions: homeActions }), dictations: pageDictations, meetings: pageMeetings, meeting: pageMeeting, dictionary: () => reactPage(DictionaryPage, { model: vocabulary }), stats: () => reactPage(StatsPage, { source: statsSource }) };
 const TITLES = { home: '홈', dictations: '받아쓰기', meetings: '회의', meeting: '회의', dictionary: '사전', stats: '통계' };
 let route = parseHash();
 let current = null; // { el, update? }
@@ -595,14 +538,6 @@ function refresh() {
 }
 
 // ── 홈 ───────────────────────────────────────────────────────────────
-function greeting() {
-  const hr = new Date().getHours();
-  if (hr >= 5 && hr < 11) return '좋은 아침이에요';
-  if (hr >= 11 && hr < 17) return '좋은 오후예요';
-  if (hr >= 17 && hr < 23) return '좋은 저녁이에요';
-  return '늦게까지 수고 많아요';
-}
-
 let dictTotals = null; // 본체가 전체 받아쓰기 기록으로 계산한 통계 (dict:stats)
 // 통계 화면(React)이 읽는 창구: 주인은 여기(history·dictTotals), 둘이 바뀌는 loadHistory에서 changed()
 const statsSource = createSource(() => ({ dictations: dictations(), totals: dictTotals, meetings: meetings() }), () => [history, dictTotals]);
@@ -618,157 +553,23 @@ function openMeetings(filter) {
   meetFilterPending = filter;
   location.hash = '#meetings';
 }
-const canCompressNow = (r) => r.minutes?.status === 'done' && r.review?.finalized && r.audio?.wav && r.audio.supported && !r.audio.declined;
-
-function homeSection(title, more, body) {
-  return h('section', { class: 'hsec' },
-    h('div', { class: 'section-head' }, h('h2', null, title), more && h('a', { href: more[0] }, more[1])),
-    body);
-}
-
-function homeTodo(meets) {
-  const rows = [];
-  const hand = meets.filter((r) => ['open', 'draft'].includes(meetState(r)));
-  if (hand.length) {
-    const names = hand.slice(0, 2).map(meetTitle).join(' · ') + (hand.length > 2 ? ` 외 ${hand.length - 2}개` : '');
-    rows.push({ mark: 'open', n: hand.length, title: '확인할 회의', sub: names, on: () => openMeetings('hand') });
-  }
-  const rest = meets.filter((r) => ['fail', 'none'].includes(meetState(r)));
-  if (rest.length) rows.push({ mark: 'fail', n: rest.length, title: '회의록이 없는 녹음', sub: '실패했거나 녹음만 저장된 회의 — 다시 만들 수 있습니다', on: () => openMeetings('rest') });
-  const ready = meets.filter(canCompressNow);
-  if (ready.length) {
-    const sum = (k) => ready.reduce((n, r) => n + (r.audio[k] ?? 0), 0);
-    rows.push({ mark: 'ok', n: ready.length, title: '압축할 수 있는 녹음', sub: `확인을 마친 회의 · ${sizeLabel(sum('bytes'))} → 약 ${sizeLabel(sum('estimate'))}`, on: () => (location.hash = `#meeting/${encodeURIComponent(ready[0].id)}`) });
-  }
-  if (strays.length) rows.push({ mark: 'plain', n: strays.length, title: '목록에 없는 폴더', sub: '녹음 폴더에 회의로 열리지 않는 폴더가 있습니다 — 지울지 골라 주세요', on: () => openMeetings('all') });
-  if (!rows.length) return h('div', { class: 'todo-empty' }, icon('i-check'), '챙길 일이 없습니다');
-  return h('div', { class: 'todo-list' }, rows.map((t) => // 'todo'는 회의록 할 일 줄(li.todo)이 쓰는 이름이라 겹치지 않게
-    h('button', { class: `todo-row ${t.mark}`, onclick: t.on },
-      h('span', { class: 'todo-n' }, num(t.n)),
-      h('span', { class: 'todo-text' }, h('b', null, t.title), h('span', null, t.sub)),
-      icon('i-right'))));
-}
-
-function homeMeetRow(r) {
-  const d = new Date(r.startedAt);
-  return h('a', { class: 'hrow', href: `#meeting/${encodeURIComponent(r.id)}` },
-    h('span', { class: 'hrow-day' }, h('b', null, num(`${d.getMonth() + 1}.${String(d.getDate()).padStart(2, '0')}`)), h('span', null, WEEKDAY[d.getDay()])),
-    h('span', { class: 'hrow-text' }, h('b', null, meetTitle(r)), h('span', null, `${TIME.format(d)} · ${clock(r.durationSec)}${r.minutes?.speakers ? ` · 화자 ${r.minutes.speakers}명` : ''}`)),
-    rowState(r));
-}
-
-// 녹음 공간: 전체 크기, 원본(WAV)·압축 개수와 크기, 그리고 압축할 수 있는 녹음만 (16kHz·그대로 두기·1MB 미만 짧은 녹음은 목록에 올리지 않는다)
-function storagePanel(meets) {
-  const rec = meets.filter((r) => r.audio?.bytes > 0);
-  if (!rec.length) return null;
-  const wav = rec.filter((r) => r.audio.wav);
-  const packed = rec.filter((r) => !r.audio.wav);
-  const sum = (list, k = 'bytes') => list.reduce((n, r) => n + (r.audio[k] ?? 0), 0);
-  const total = sum(rec);
-  // 압축 안내는 회의록이 있는 회의에만 뜬다 → 회의록을 만드는 중이거나 만든 회의만 (짧은 녹음·실패·녹음만은 빼고)
-  const todo = wav.filter((r) => r.audio.supported && !r.audio.declined && r.audio.bytes >= 1e6 && (r.minutes?.status === 'done' || BUSY.includes(r.minutes?.status))).sort((a, b) => b.audio.bytes - a.audio.bytes);
-  const save = todo.reduce((n, r) => n + Math.max(0, r.audio.bytes - r.audio.estimate), 0);
-  const keep = wav.length - todo.length; // 압축하지 않는 원본 (16kHz·그대로 두기·짧은 녹음)
-  const shown = todo.slice(0, 6);
-  return homeSection('녹음 공간', null, h('div', { class: 'store' },
-    h('div', { class: 'store-sum' },
-      h('b', null, num(sizeLabel(total))),
-      h('span', null, `원본 WAV ${wav.length}개 ${sizeLabel(sum(wav))} · 압축 ${packed.length}개${packed.length ? ` ${sizeLabel(sum(packed))}` : ''}`)),
-    // 막대: 압축한 것 · 원본 중 압축해도 남는 크기 · 압축하면 줄어드는 크기
-    h('div', { class: 'store-bar', role: 'img', 'aria-label': `압축 ${sizeLabel(sum(packed))}, 원본 ${sizeLabel(sum(wav) - save)}${save ? `, 압축하면 줄어드는 크기 ${sizeLabel(save)}` : ''}` },
-      packed.length > 0 && h('i', { class: 'aac', style: `flex:${sum(packed)}` }),
-      wav.length > 0 && h('i', { class: 'wav', style: `flex:${sum(wav) - save}` }),
-      save > 0 && h('i', { class: 'save', style: `flex:${save}` })),
-    h('div', { class: 'store-legend' },
-      packed.length > 0 && h('span', null, h('i', { class: 'aac' }), '압축함'),
-      wav.length > 0 && h('span', null, h('i', { class: 'wav' }), '원본'),
-      save > 0 && h('span', null, h('i', { class: 'save' }), `압축하면 약 ${sizeLabel(save)} 줄어듦`)),
-    todo.length
-      ? h('div', { class: 'store-list' },
-        h('p', { class: 'store-cap' }, `압축할 수 있는 녹음 ${todo.length}개`),
-        shown.map((r) => h('a', { class: 'srow', href: `#meeting/${encodeURIComponent(r.id)}` },
-          h('span', { class: 'sname' }, h('b', null, meetTitle(r)), h('span', null, `${dayLabel(r.startedAt)} · ${clock(r.durationSec)}`)),
-          h('span', { class: 'ssize' }, num(sizeLabel(r.audio.bytes)),
-            h('span', { class: `snote${canCompressNow(r) ? ' ok' : ''}` }, canCompressNow(r) ? `지금 압축 → 약 ${sizeLabel(r.audio.estimate)}` : BUSY.includes(r.minutes?.status) ? '회의록 만드는 중' : `확인 마치면 → 약 ${sizeLabel(r.audio.estimate)}`)))),
-        todo.length > shown.length && h('p', { class: 'store-foot' }, `외 ${todo.length - shown.length}개`))
-      : h('div', { class: 'todo-empty' }, icon('i-check'), '압축할 녹음이 없습니다'),
-    keep > 0 && h('p', { class: 'store-foot' }, `원본 ${keep}개는 압축하지 않습니다 — 16kHz 녹음·그대로 두기로 고른 것·회의록이 없는 녹음`)));
-}
-
-function pageHome() {
-  const el = h('div', { class: 'page home' });
-  const update = () => {
-    const st = dictStats();
-    const meets = meetings();
-    const todayMeets = meets.filter((m) => dayKey(m.startedAt) === new Date().toDateString());
-    const line = h('p');
-    if (st.todayCount) {
-      line.append('오늘 ', h('b', null, num(fmt.format(st.today)), '자'), '를 말로 썼어요');
-      if (st.wpm) line.append(' · 평균 ', h('b', null, num(st.wpm)), ' WPM');
-      if (st.streak > 1) line.append(' · ', h('b', null, num(st.streak), '일'), ' 연속');
-    } else line.append(h('kbd', null, 'fn'), '을 꾹 누른 채 말하면 지금 커서 위치에 글이 들어갑니다.');
-    if (todayMeets.length) line.append(' · 오늘 회의 ', h('b', null, num(todayMeets.length), '건'));
-
-    const busy = meets.filter((m) => BUSY.includes(m.minutes?.status));
-    const recentMeets = meets.filter((m) => !['short', 'empty', 'busy'].includes(meetState(m))).slice(0, 5); // 몇 초짜리 시험 녹음은 홈에 올리지 않는다
-    const recentDicts = dictations().slice(0, 4);
-    const permsOk = ![...issues.values()].some((i) => i.sec === 'perms');
-    const steps = [
-      { done: permsOk, title: '권한 허용', text: '마이크·입력 모니터링·손쉬운 사용', action: '권한 보기', on: () => openSettings('perms') },
-      { done: dictations().length > 0, title: 'fn으로 받아쓰기', text: '입력칸에서 fn을 꾹 누른 채 말하고 떼기', action: '설정 보기', on: () => openSettings('general') },
-      { done: meets.some((m) => m.minutes?.status === 'done'), title: '회의 녹음', text: '위쪽 회의 녹음 → 끝나면 회의록', action: '녹음 시작', on: openMeetingStart },
-    ];
-
-    fill(el,
-      h('header', { class: 'hello' }, h('h1', null, greeting()), line),
-      issueList(),
-      h('div', { class: 'home-grid' },
-        h('div', { class: 'home-main' },
-          busy.length > 0 && h('div', { class: 'home-jobs' }, busy.map(jobCard)),
-          homeSection('챙길 일', null, homeTodo(meets)),
-          recentMeets.length > 0 && homeSection('최근 회의', ['#meetings', '모두 보기'], h('div', { class: 'hrows' }, recentMeets.map(homeMeetRow))),
-          // 받아쓰기는 글이 길어 넓은 왼쪽에 (오른쪽 좁은 칸에선 줄마다 두세 번 꺾였다)
-          recentDicts.length > 0 && homeSection('최근 받아쓰기', ['#dictations', '모두 보기'], h('div', { class: 'dlist' }, recentDicts.map((r) => dictItem(r, { compact: true }))))),
-        h('aside', { class: 'home-side' },
-          !steps.every((s) => s.done) && homeSection('시작하기', null, h('ol', { class: 'checklist' }, steps.map((s) =>
-            h('li', { class: s.done ? 'done' : '' },
-              h('span', { class: 'ck' }, s.done && icon('i-check')),
-              h('span', { class: 'ck-text' }, h('b', null, s.title), h('span', null, s.text)),
-              !s.done && h('button', { class: 'btn small', onclick: s.on }, s.action))))),
-          storagePanel(meets))),
-    );
-  };
-  update();
-  return { el, update };
-}
-
-function progressOf(m) {
-  if (m?.status === 'transcribe' && m.progress !== undefined) return m.progress;
-  return null;
-}
-
-function statusText(m) {
-  const s = m?.status;
-  if (s === 'queued') return '차례를 기다리는 중';
-  if (s === 'transcribe') {
-    const p = progressOf(m);
-    return `받아쓰는 중${p !== null ? ` ${Math.round(p * 100)}%` : ''}${m.diarizing ? ' · 화자 구분 중' : ''}`;
-  }
-  if (s === 'write') return '회의록 쓰는 중';
-  if (s === 'error') return m.error ?? '실패';
-  if (s === 'empty') return '들린 말이 없어 회의록을 만들지 않았습니다';
-  if (s === 'short') return '10초 미만이라 회의록을 만들지 않았습니다';
-  return '녹음만 저장됨';
-}
-
-function jobCard(r) {
-  const p = progressOf(r.minutes);
-  return h('a', { class: 'job', href: `#meeting/${encodeURIComponent(r.id)}` },
-    h('b', null, `${dayLabel(r.startedAt)} ${TIME.format(new Date(r.startedAt))} 회의 · 회의록 만드는 중`),
-    h('span', { class: 'pct' }, p !== null ? `${Math.round(p * 100)}%` : ''),
-    h('span', { class: 'sub' }, `${statusText(r.minutes)} · 녹음 ${clock(r.durationSec)}`),
-    h('div', { class: `bar${p === null ? ' indeterminate' : ''}` }, h('i', { style: `width:${Math.round((p ?? 0.3) * 100)}%` })));
-}
+// 홈 화면(React)이 읽는 창구와 명령. 주인은 여기: 기록(history·dictTotals·strays)은 loadHistory, 문제는 setIssue에서 changed().
+// freshId·showMarks·openRaw는 바뀐 뒤 refresh()가 다시 그려 deps로 알아챈다 (openRaw는 바꿀 때 새 Set)
+const homeSource = createSource(
+  () => ({ meetings: meetings(), dictations: dictations(), totals: dictTotals, issues: [...issues.entries()], strayCount: strays.length, freshId, showMarks, openRaw }),
+  () => [history, dictTotals, strays, issuesRev, freshId, showMarks, openRaw],
+);
+const homeActions = {
+  openSettings: (sec) => openSettings(sec),
+  openMeetingStart: () => openMeetingStart(),
+  openMeetings,
+  dismissIssue: (key) => setIssue(key, null),
+  copy: (text) => api.copy(text),
+  repaste: async (text) => {
+    const status = await api.repaste(text);
+    if (status !== 'pasted') toast('클립보드에 복사했습니다', '⌘V로 붙여 넣으세요');
+  },
+};
 
 function speakerDots(n) {
   if (!n) return null;
@@ -810,7 +611,6 @@ const STRAY_REASON = {
   'bad-meta': '회의 정보(meta.json)가 깨짐',
   'old-memo': '예전 버전이 남긴 받아쓰기 녹음 (글 없음)',
 };
-const sizeLabel = (n) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)}GB` : n >= 1e6 ? `${Math.round(n / 1e6)}MB` : `${Math.max(1, Math.round(n / 1e3))}KB`);
 
 function strayBox() {
   if (!strays.length) return null;
@@ -838,7 +638,7 @@ async function trashStrays(list) {
 }
 
 // ── 받아쓰기 ────────────────────────────────────────────────────────────
-const openRaw = new Set();
+let openRaw = new Set(); // 바꿀 땐 새 Set으로 (홈 창구가 바뀐 줄 안다)
 let showMarks = store('showMarks', true);
 
 function copyButton(text, label = '복사') {
@@ -881,6 +681,7 @@ function dictItem(r, { compact = false } = {}) {
     changed && !compact && h('button', {
       class: 'icon-btn', title: openRaw.has(r.id) ? '원문 닫기' : '원문 보기', 'aria-label': '원문',
       onclick: () => {
+        openRaw = new Set(openRaw);
         openRaw.has(r.id) ? openRaw.delete(r.id) : openRaw.add(r.id);
         refresh();
       },
@@ -1005,38 +806,9 @@ function pageDictations() {
 // 기간이 아니라 개수로 자른다: 회의는 몰릴 때도 뜸할 때도 있다 (결정 50, 실험 페이지 scripts/dev/lab/meetings.html)
 const HAND_MAX = 6;
 const RECENT_MAX = 20;
-const WEEKDAY = ['일', '월', '화', '수', '목', '금', '토'];
 
-// 회의 하나의 상태: busy(만드는 중) fail(실패) none(녹음만) short empty | open(확인 남음) draft(확인 마치기 전) done(확정) plain(확인할 것 없음)
-function meetState(r) {
-  const s = r.minutes?.status;
-  if (BUSY.includes(s)) return 'busy';
-  if (s === 'error') return 'fail';
-  if (s === 'short' || s === 'empty') return s;
-  if (s !== 'done') return 'none';
-  const rv = r.review;
-  if (!rv) return 'plain';
-  if (rv.finalized) return 'done';
-  if (rv.open) return 'open';
-  return rv.total ? 'draft' : 'plain';
-}
 const needsHand = (r) => ['busy', 'fail', 'none', 'open', 'draft'].includes(meetState(r));
 const NO_MINUTES = ['fail', 'none', 'short', 'empty'];
-
-function meetTitle(r) {
-  const st = meetState(r);
-  if (st === 'busy') return '회의록 만드는 중';
-  if (st === 'fail') return '회의록을 만들지 못했습니다';
-  if (st === 'none') return '녹음만 저장됨';
-  if (st === 'short') return '짧은 녹음 (10초 미만)';
-  if (st === 'empty') return '들린 말 없음';
-  return r.minutes?.title ?? '제목 없는 회의';
-}
-function busyShort(m) {
-  const p = progressOf(m);
-  if (m?.status === 'transcribe') return `받아쓰는 중${p !== null ? ` ${Math.round(p * 100)}%` : ''}`;
-  return m?.status === 'write' ? '회의록 쓰는 중' : '기다리는 중';
-}
 
 // 줄 목록의 상태: 바탕 없이 글자 + 작은 표시 (주홍은 실패만, 확인 남음은 점만)
 function rowState(r) {

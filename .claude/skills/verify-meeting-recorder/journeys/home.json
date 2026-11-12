@@ -1,0 +1,22 @@
+{
+  "about": "홈(React 화면): 만드는 중 카드, 문제 알림의 버튼, 최근 받아쓰기 복사·다시 붙여넣기(다듬은 글을 보냄), 챙길 일 → 회의 갈래",
+  "noMeeting": true,
+  "env": { "STUB_DICTS": "3", "STUB_HISTORY_DICTS": "1", "STUB_MANY": "6", "STUB_BUSY": "1", "STUB_DICT_EDITS": "1", "STUB_FOLDER": "denied" },
+  "steps": [
+    { "go": "#home" },
+    { "expect": { "text": "받아쓰는 중 42% · 화자 구분 중" } },
+    { "expect": { "text": "많이 고침" } },
+    { "expect": { "text": "다듬기 실패: 시간 초과" } },
+    { "expect": { "text": "녹음 폴더를 읽을 수 없습니다" } },
+    { "click": "권한 열기", "role": "button" },
+    { "expect": { "called": "permOpenSettings", "args": ["files"] } },
+    { "click": "복사", "within": ".dlist", "exact": true },
+    { "expect": { "called": "copy", "args": ["다음 주에 배포 일정을 잡아 주세요."] } },
+    { "click": "다시 붙여넣기", "within": ".dlist" },
+    { "expect": { "called": "repaste", "args": ["다음 주에 배포 일정을 잡아 주세요."] } },
+    { "snapshot": "home" },
+    { "click": "확인할 회의" },
+    { "expect": { "hash": "#meetings" } },
+    { "expect": { "text": "확인할 회의" } }
+  ]
+}
