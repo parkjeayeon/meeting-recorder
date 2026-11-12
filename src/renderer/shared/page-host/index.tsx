@@ -22,7 +22,8 @@ export interface PageHandle {
   readonly reload?: () => void;
 }
 
-export function reactPage<P extends object>(Page: ComponentType<P>, props: P, hooks?: { readonly reload?: () => void }): PageHandle {
+/** hooks — reload: 파일이 바뀌어 다시 읽기 · update: 옛 refresh()가 부를 때 (주지 않으면 같은 값으로 다시 그림) · leave: 떠날 때 치우기 (내리기 전에) */
+export function reactPage<P extends object>(Page: ComponentType<P>, props: P, hooks?: { readonly reload?: () => void; readonly update?: () => void; readonly leave?: () => void }): PageHandle {
   const el = document.createElement('div');
   el.style.display = 'contents';
   const root = createRoot(el);
@@ -33,9 +34,14 @@ export function reactPage<P extends object>(Page: ComponentType<P>, props: P, ho
   draw();
   return {
     el,
-    update: draw,
+    update: () => {
+      if (gone) return;
+      if (hooks?.update) hooks.update();
+      else draw();
+    },
     leave: () => {
       if (gone) return;
+      hooks?.leave?.();
       gone = true;
       root.unmount();
     },
@@ -73,4 +79,9 @@ export function createIslands() {
       roots.clear();
     },
   };
+}
+
+/** 옛 코드가 창구(source)를 바꾼 뒤 그 자리에서 다 그려 두게 (뒤이어 그린 화면을 읽는 코드가 있을 때) */
+export function commit(fn: () => void): void {
+  flushSync(fn);
 }
