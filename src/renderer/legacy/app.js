@@ -5,6 +5,9 @@ import { noteVariants } from '../../core/review.mts';
 import { reactPage } from '../shared/page-host/index.tsx'; // React로 옮긴 화면을 옛 라우터에 끼운다 (docs/renderer-architecture.md)
 import { createVocabularyModel } from '../entities/vocabulary/index.ts';
 import { DictionaryPage } from '../pages/dictionary/index.ts';
+import { StatsPage } from '../pages/stats/index.ts';
+import { fmt, DAY, PROVIDER_NAME, clock, seconds, createSource } from '../shared/lib/index.ts'; // 숫자·시간 표시는 한 벌 (React 화면과 같이 씀)
+import { dictSummary, charsOf } from '../entities/dictation/index.ts';
 
 const api = window.recorderApi;
 const $ = (id) => document.getElementById(id);
@@ -88,20 +91,9 @@ document.addEventListener('scroll', () => hideHoverTip(), true);
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && hoverTip.classList.contains('show')) hideHoverTip();
 });
-const fmt = new Intl.NumberFormat('ko-KR');
-const DAY = new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
 const FULL = new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
 const TIME = new Intl.DateTimeFormat('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-const PROVIDER_NAME = { 'claude-code': 'Claude Code', codex: 'Codex', api: 'API' };
 
-function clock(sec) {
-  const s = Math.max(0, Math.floor(sec));
-  const hh = Math.floor(s / 3600);
-  const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
-  const ss = String(s % 60).padStart(2, '0');
-  return hh ? `${hh}:${mm}:${ss}` : `${mm}:${ss}`;
-}
-const seconds = (ms) => `${(ms / 1000).toFixed(1)}초`;
 const parseStamp = (t) => t.split(':').reduce((acc, n) => acc * 60 + Number(n), 0);
 const dayKey = (d) => new Date(d).toDateString();
 
@@ -413,6 +405,7 @@ async function loadHistory() {
   history = list;
   strays = stray ?? [];
   dictTotals = totals ?? null;
+  statsSource.changed();
   setIssue('folder', folderIssue(access));
   $('countDict').textContent = dictTotals?.count || dictations().length || '';
   $('countMeet').textContent = meetings().length || '';
@@ -509,7 +502,7 @@ function markedText(raw, text) {
 }
 
 // ── 라우터 ──────────────────────────────────────────────────────────────
-const ROUTES = { home: pageHome, dictations: pageDictations, meetings: pageMeetings, meeting: pageMeeting, dictionary: () => reactPage(DictionaryPage, { model: vocabulary }), stats: pageStats };
+const ROUTES = { home: pageHome, dictations: pageDictations, meetings: pageMeetings, meeting: pageMeeting, dictionary: () => reactPage(DictionaryPage, { model: vocabulary }), stats: () => reactPage(StatsPage, { source: statsSource }) };
 const TITLES = { home: '홈', dictations: '받아쓰기', meetings: '회의', meeting: '회의', dictionary: '사전', stats: '통계' };
 let route = parseHash();
 let current = null; // { el, update? }
@@ -611,28 +604,11 @@ function greeting() {
 }
 
 let dictTotals = null; // 본체가 전체 받아쓰기 기록으로 계산한 통계 (dict:stats)
+// 통계 화면(React)이 읽는 창구: 주인은 여기(history·dictTotals), 둘이 바뀌는 loadHistory에서 changed()
+const statsSource = createSource(() => ({ dictations: dictations(), totals: dictTotals, meetings: meetings() }), () => [history, dictTotals]);
+// 받아쓰기 요약 (계산은 entities/dictation — 통계 화면과 한 벌). 본체 전체 통계(dictTotals)가 있으면 그것으로
 function dictStats(items = dictations(), { local = false } = {}) {
-  const chars = (r) => r.chars ?? (r.transcript.text ?? r.transcript.raw ?? '').length;
-  // 전체 기록 통계가 있으면 그것으로 (화면이 받은 기록은 최근 300개뿐이라 그걸로 세면 오래된 기록이 빠진다)
-  if (dictTotals && !local) return { total: dictTotals.total, today: dictTotals.today, todayCount: dictTotals.todayCount, wpm: dictTotals.wpm, streak: dictTotals.streak, chars };
-  const today = items.filter((r) => dayKey(r.startedAt) === new Date().toDateString());
-  const wpms = items.map((r) => r.wpm).filter((w) => w > 0);
-  const days = new Set(items.map((r) => dayKey(r.startedAt)));
-  let streak = 0;
-  const d = new Date();
-  if (!days.has(d.toDateString())) d.setDate(d.getDate() - 1); // 오늘 아직 안 썼으면 어제부터 센다
-  while (days.has(d.toDateString())) {
-    streak++;
-    d.setDate(d.getDate() - 1);
-  }
-  return {
-    total: items.reduce((n, r) => n + chars(r), 0),
-    today: today.reduce((n, r) => n + chars(r), 0),
-    todayCount: today.length,
-    wpm: wpms.length ? Math.round(wpms.reduce((a, b) => a + b, 0) / wpms.length) : null,
-    streak,
-    chars,
-  };
+  return { ...dictSummary(items, local ? null : dictTotals), chars: charsOf };
 }
 
 // 홈: 왼쪽은 할 일(만드는 중 → 챙길 일 → 최근 회의), 오른쪽은 살펴볼 것(시작하기 → 녹음 공간 → 최근 받아쓰기).
@@ -3888,120 +3864,6 @@ const vocabulary = createVocabularyModel({ read: () => settings?.vocabulary ?? '
 const vocabWords = () => vocabulary.getSnapshot();
 
 // ── 통계 ────────────────────────────────────────────────────────────────
-function pageStats() {
-  const el = h('div', { class: 'page' });
-  const items = dictations();
-  const st = dictStats(items); // 전체 기록 통계 (dictTotals)가 있으면 그것으로
-  const all = dictTotals; // 본체가 전체 기록으로 계산한 값 (화면의 items는 최근 300개뿐)
-  const meets = meetings().filter((m) => m.minutes?.status === 'done');
-  const meetSec = meetings().reduce((n, m) => n + (m.durationSec ?? 0), 0);
-
-  const head = h('div', { class: 'page-head' }, h('div', { style: 'flex:1' }, h('h1', null, '통계'), h('p', { class: 'lead' }, '받아쓰기와 회의 기록에서 계산합니다. 음성은 남기지 않고 글과 숫자만 씁니다.')));
-  const row = h('div', { class: 'stat-row' },
-    h('div', { class: 'stat' }, h('span', null, '말로 쓴 글자'), h('b', null, fmt.format(st.total), h('small', null, '자'))),
-    h('div', { class: 'stat' }, h('span', null, '평균 속도'), h('b', null, st.wpm ?? '–', h('small', null, 'WPM'))),
-    h('div', { class: 'stat' }, h('span', null, '연속 사용'), h('b', null, st.streak, h('small', null, '일'))),
-    h('div', { class: 'stat' }, h('span', null, '회의 녹음'), h('b', null, clock(meetSec), h('small', null, `${meetings().length}건`))));
-
-  // 최근 14일 받아쓴 글자: 막대 하나 = 하루 (전체 기록 기준)
-  const days = all ? all.days.map((x) => {
-    const [y, m, dd] = x.date.split('-').map(Number);
-    return { d: new Date(y, m - 1, dd), chars: x.chars, count: x.count };
-  }) : Array.from({ length: 14 }, (_, i) => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    d.setDate(d.getDate() - 13 + i);
-    const list = items.filter((r) => dayKey(r.startedAt) === d.toDateString());
-    return { d, chars: list.reduce((n, r) => n + st.chars(r), 0), count: list.length };
-  });
-  const chart = barChart(days);
-
-  const apps = all ? all.apps.map((a) => [a.app, a.chars]) : [];
-  const maxApp = apps[0]?.[1] || 1;
-  // 언어별: 받아쓴 글자 수 기준, 자동이면 고른 언어
-  const langs = all?.languages ?? [];
-  const langTotal = langs.reduce((n, l) => n + l.chars, 0) || 1;
-  const LANG_NAME = { ko: '한국어', en: 'English', ja: '日本語' };
-
-  const avg = (list) => (list.length ? list.reduce((a, b) => a + b, 0) / list.length : null);
-  const asr = all?.asrMs ?? null;
-  const providers = new Map((all?.cleanup ?? []).map((c) => [c.provider, c]));
-  const perHour = avg(meets.filter((m) => m.minutes.timing?.transcribeMs && m.durationSec > 60).map((m) => (m.minutes.timing.transcribeMs + (m.minutes.timing.writeMs ?? 0)) / 1000 / (m.durationSec / 3600)));
-
-  el.append(head, row);
-  if (!(all?.count ?? items.length)) {
-    el.append(h('div', { class: 'empty locked' }, h('b', null, '받아쓰기를 해 보면 통계가 쌓입니다'), h('kbd', null, 'fn'), '을 꾹 누른 채 말한 글자 수, 속도, 자주 쓰는 앱이 여기에 나타납니다.'));
-  } else {
-    el.append(
-      h('div', { class: 'card', style: 'margin-top:12px' }, h('h3', null, '최근 14일 받아쓴 글자'), h('p', { class: 'sub' }, '막대에 마우스를 올리면 그날의 글자 수와 횟수가 보입니다.'), chart),
-      h('div', { class: 'two' },
-        h('div', { class: 'card' }, h('h3', null, '어디에 썼나'), h('p', { class: 'sub' }, '받아쓴 글자 수, 입력한 앱 기준'),
-          h('div', { class: 'hbars' }, apps.map(([app, n]) => h('div', { class: 'hbar' }, h('span', { title: app }, app), h('div', { class: 'track' }, h('i', { style: `width:${(n / maxApp) * 100}%` })), num(fmt.format(n)))))),
-        h('div', { class: 'card' }, h('h3', null, '걸린 시간'), h('p', { class: 'sub' }, '손을 뗀 뒤부터의 평균'),
-          h('dl', { class: 'kv' },
-            asr !== null && [h('dt', null, '음성 인식 (Whisper turbo)'), h('dd', null, seconds(asr))],
-            [...providers.entries()].map(([p, c]) => [h('dt', null, `다듬기 · ${PROVIDER_NAME[p] ?? p}`), h('dd', null, `${seconds(c.avgMs)} · ${c.count}회`)]),
-            perHour !== null && [h('dt', null, '회의록 (녹음 1시간당)'), h('dd', null, `${Math.round(perHour / 60)}분`)]))),
-      langs.length > 0 && h('div', { class: 'card', style: 'margin-top:12px' }, h('h3', null, '어떤 언어로 썼나'), h('p', { class: 'sub' }, '받아쓴 글자 수 기준 · 자동이면 고른 언어'),
-        h('div', { class: 'hbars lang' }, langs.map((l) => h('div', { class: 'hbar' }, h('span', { title: l.language }, LANG_NAME[l.language] ?? l.language),
-          h('div', { class: 'track' }, h('i', { style: `width:${(l.chars / langTotal) * 100}%` })),
-          num(`${Math.round((l.chars / langTotal) * 100)}% · ${fmt.format(l.count)}회`))))));
-  }
-  return { el };
-}
-
-function barChart(days) {
-  const W = 700;
-  const H = 200;
-  const pad = { l: 40, r: 8, t: 10, b: 24 };
-  const max = Math.max(...days.map((d) => d.chars), 10);
-  const nice = Math.pow(10, Math.floor(Math.log10(max)));
-  const top = Math.ceil(max / nice) * nice;
-  const iw = W - pad.l - pad.r;
-  const ih = H - pad.t - pad.b;
-  const bw = iw / days.length;
-  const svg = document.createElementNS(SVGNS, 'svg');
-  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  svg.setAttribute('preserveAspectRatio', 'none');
-  svg.setAttribute('role', 'img');
-  svg.setAttribute('aria-label', '최근 14일 하루별 받아쓴 글자 수');
-  const add = (tag, attrs, text) => {
-    const n = document.createElementNS(SVGNS, tag);
-    for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
-    if (text !== undefined) n.textContent = text;
-    svg.append(n);
-    return n;
-  };
-  for (const f of [0, 0.5, 1]) {
-    const y = pad.t + ih - f * ih;
-    add('line', { class: 'gridline', x1: pad.l, x2: W - pad.r, y1: y, y2: y });
-    add('text', { class: 'axis', x: pad.l - 8, y: y + 3.5, 'text-anchor': 'end' }, fmt.format(Math.round(top * f)));
-  }
-  const wrap = h('div', { class: 'chart' });
-  const tip = h('div', { class: 'tooltip', hidden: true });
-  days.forEach((d, i) => {
-    const x = pad.l + i * bw + bw * 0.22;
-    const w = bw * 0.56;
-    const bh = d.chars ? Math.max(3, (d.chars / top) * ih) : 2;
-    const y = pad.t + ih - bh;
-    const hit = add('rect', { class: 'hit', x: pad.l + i * bw, y: pad.t, width: bw, height: ih });
-    // 위쪽 끝만 둥글게 (아래는 기준선에 붙는다)
-    const r = Math.min(4, w / 2, bh);
-    add('path', { class: `barmark${d.chars ? '' : ' zero'}`, d: `M${x},${y + bh}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + bh}Z` });
-    if (i % 2 === 1 || i === 13) add('text', { class: 'axis', x: x + w / 2, y: H - 6, 'text-anchor': 'middle' }, i === 13 ? '오늘' : `${d.d.getMonth() + 1}/${d.d.getDate()}`);
-    hit.addEventListener('mouseenter', () => {
-      tip.hidden = false;
-      tip.replaceChildren(`${DAY.format(d.d)} · `, num(`${fmt.format(d.chars)}자`), ` · ${d.count}회`);
-      const rect = svg.getBoundingClientRect();
-      tip.style.left = `${((x + w / 2) / W) * rect.width}px`;
-      tip.style.top = `${(y / H) * rect.height}px`;
-    });
-    hit.addEventListener('mouseleave', () => (tip.hidden = true));
-  });
-  wrap.append(svg, tip);
-  return wrap;
-}
-
 // ── 확인 창 ─────────────────────────────────────────────────────────────
 function confirmBox(title, text, yes) {
   const dlg = $('confirm');

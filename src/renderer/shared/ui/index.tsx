@@ -7,3 +7,8 @@ export function Icon({ id }: { readonly id: string }) {
     </svg>
   );
 }
+
+/** 숫자 글자 (고정폭 숫자 꼴, 옛 num()과 같은 span.num) */
+export function Num({ children }: { readonly children: string | number }) {
+  return <span className="num">{String(children)}</span>;
+}
