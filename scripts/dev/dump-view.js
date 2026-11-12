@@ -12,13 +12,18 @@ app.setName(`mr-dump-${process.pid}`); // 설치된 앱과 단일 실행 잠금�
 app.dock?.hide();
 setTimeout(() => process.exit(1), 60000);
 app.whenReady().then(async () => {
-  const w = new BrowserWindow({ width: 1240, height: 820, show: false, webPreferences: { preload: path.join(root, 'scripts/dev/stub-preload.js'), sandbox: false } });
-  w.webContents.on('console-message', (e) => e.level === 'error' && console.log('CONSOLE', e.message));
-  await w.loadFile(path.join(root, 'src/renderer/index.html'));
-  await new Promise((r) => setTimeout(r, 1500));
-  await w.webContents.executeJavaScript(`location.hash=${JSON.stringify(hash)}; new Promise((r) => setTimeout(r, 600))`);
-  if (process.env.DUMP_JS) await w.webContents.executeJavaScript(`(async () => { ${process.env.DUMP_JS} })().then(() => new Promise((r) => setTimeout(r, 800)))`);
-  const html = await w.webContents.executeJavaScript(`document.getElementById('view').innerHTML`);
-  fs.writeFileSync(out, html.replace(/></g, '>\n<'));
-  app.exit(0);
+  try {
+    const w = new BrowserWindow({ width: 1240, height: 820, show: false, webPreferences: { preload: path.join(root, 'scripts/dev/stub-preload.js'), sandbox: false } });
+    w.webContents.on('console-message', (e) => e.level === 'error' && console.log('CONSOLE', e.message));
+    await w.loadFile(path.join(root, 'src/renderer/index.html'));
+    await new Promise((r) => setTimeout(r, 1500));
+    await w.webContents.executeJavaScript(`location.hash=${JSON.stringify(hash)}; new Promise((r) => setTimeout(r, 600))`);
+    if (process.env.DUMP_JS) await w.webContents.executeJavaScript(`(async () => { ${process.env.DUMP_JS} })().then(() => new Promise((r) => setTimeout(r, 800)))`);
+    const html = await w.webContents.executeJavaScript(`document.getElementById('view').innerHTML`);
+    fs.writeFileSync(out, html.replace(/></g, '>\n<'));
+    app.exit(0);
+  } catch (e) {
+    console.error('찍지 못함:', e.message); // DUMP_JS가 던진 오류 등 — 조용히 60초를 기다리지 않게
+    app.exit(1);
+  }
 });

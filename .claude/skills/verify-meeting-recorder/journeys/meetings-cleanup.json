@@ -1,0 +1,24 @@
+{
+  "about": "회의 목록 정리(React 화면): 목록에 없는 폴더(Finder에서 보기·휴지통), 실패한 회의 다시 만들기, 회의록이 없는 녹음 모두 휴지통으로(확인 창)",
+  "noMeeting": true,
+  "env": { "STUB_MANY": "10", "STUB_STRAY": "some" },
+  "steps": [
+    { "go": "#meetings" },
+    { "expect": { "text": "목록에 보이지 않는 폴더 3개" } },
+    { "click": "Finder에서 보기", "role": "button" },
+    { "expect": { "called": "reveal", "args": ["/tmp/stub/112-06-26_02-26-26_meeting"] } },
+    { "click": "녹음만 · 실패" },
+    { "expect": { "text": "회의록이 없는 녹음 2개" } },
+    { "snapshot": "rest" },
+    { "click": "다시 만들기", "role": "button" },
+    { "expect": { "hash": "#meeting/2026-10-25_07-00-00_meeting" } },
+    { "go": "#meetings" },
+    { "click": "녹음만 · 실패" },
+    { "click": "모두 휴지통으로", "within": ".bulk-row" },
+    { "confirm": true },
+    { "expect": { "called": "trashMeeting", "times": 2 } },
+    { "click": "휴지통으로", "within": ".stray-row", "exact": true },
+    { "confirm": true },
+    { "until": "목록에 보이지 않는 폴더 2개" }
+  ]
+}

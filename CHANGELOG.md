@@ -11,6 +11,9 @@
 - **main을 새로 받으면 화면이 묶이지 않음** (`Could not resolve '../shared/lib/index.ts'`) — 원인: `.gitignore`의 `lib/`(빌드 결과 폴더용)가 `src/renderer/shared/lib/`까지 가려, 통계 화면을 옮길 때 만든 `shared/lib/index.ts`가 커밋되지 않았다. 내 작업 폴더엔 파일이 있어 시험·설치는 통과했다. 고친 방법: 규칙을 루트만 가리는 `/lib/`로, 파일을 커밋. 확인: main을 새로 꺼낸 작업 폴더에서 화면 묶기·타입 검사·단위 시험 통과, 같은 규칙에 가려진 다른 폴더 없음.
 
 ### 기능
+- **회의 목록 화면을 React로 옮김** (동작·겉모습 그대로): `pages/meetings` + 창구 `meetingsSource`·명령 `meetingsActions`, 갈래는 주인의 상태(`meetFilter`). 장부 줄·달별 묶음·바로가기와 스크롤 감시는 `widgets/meeting-ledger`(질문 탭도 같이 씀). 질문 탭 칩은 React, 본문은 아직 옛 코드(`askView`)가 그린 것을 넣는다. 옛 `pageMeetings`·`monthSections`·`handCard`·`cardState`·`askChips`·`strayBox`와 쓰지 않던 `meetingCard` 삭제.
+  - 확인: 화면 48·기능 46·흐름 12(회의 목록 정리 흐름 추가 — main에서도 통과)를 고치지 않고 통과, `#view` HTML이 13가지 상태(회의 420개·지난 해 묶음·스크롤 뒤 바로가기 표시·해 머리 누름·갈래 셋·검색·결과 없음·폴더 막힘·만드는 중·질문 탭)에서 main과 같음, 화면 캡처 같음(움직이는 진행 막대를 뺀 회의 420개 21장 포함), 단위 시험 9건.
+  - 검증 도구: `dump-view.js`가 `DUMP_JS`의 오류를 찍고 끝남(전엔 60초 조용히 기다림).
 - **받아쓰기 기록 화면을 React로 옮김** (동작·겉모습 그대로): `pages/dictations` + 창구 `dictationsSource`·명령 `dictationsActions`. 30개씩 이어 받기·늦게 온 답 버리기·기록이 바뀌면 보던 만큼 다시 받기·0.3초 뒤 전체 검색을 그대로. 받아쓰기 한 줄(`widgets/dictation-item`)에 원문 보기·지우기·인식·다듬기 시간을 더하고 옛 `dictItem`·`copyButton`·`markedText`·쓰지 않던 `groupByDay` 삭제. `SearchBox`, 녹음 폴더 빈 화면(`entities/issue`).
   - 확인: 화면 48·기능 46·흐름 11(받아쓰기 흐름 추가)을 고치지 않고 통과, `#view` HTML이 10가지 상태에서 main과 같음, 화면 캡처(받아쓰기 화면을 캡처 목록에 새로 넣음) main과 같음, 단위 시험 7건(이어 받기·다시 받기·검색·늦은 답 버리기·명령).
   - 알게 된 것: 검색 칸의 `spellcheck: false`가 옛 화면에서 한 번도 적용되지 않았다(도우미가 `false`를 건너뜀) — 동작을 바꾸지 않으려고 그대로 두고 known-issues에 적음.
