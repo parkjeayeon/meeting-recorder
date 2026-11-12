@@ -1,10 +1,10 @@
 // 회의 페이지의 액션 (src/actions.js가 만든 actions.json): 할 일(약속·맡은 일·다짐)과 받은 조언·알아 둘 것.
 // 뿌리 요소(div.acts · div.flow-row)는 옛 회의 페이지가 만들고 여기는 그 안을 그린다 (createIslands).
 // 찾기는 오래 걸리는 작업이라 jobs에 키(`${dir}|액션`)로 두어, 화면을 다시 그리거나 떠났다 와도 '찾는 중'이 남는다.
-import { useRef, useState, useSyncExternalStore } from 'react';
+import { useRef, useState } from 'react';
 import { parseStamp } from '../../../core/script.mts';
 import type { Jobs } from '../../shared/lib/index.ts';
-import { Icon, Num, useNativeEvent } from '../../shared/ui/index.tsx';
+import { Icon, JobButton, Num, useNativeEvent } from '../../shared/ui/index.tsx';
 
 export interface ActionItem {
   readonly id: string;
@@ -34,17 +34,6 @@ export interface ActionsData {
 }
 
 const ACTION_KIND: Readonly<Record<string, string>> = { promise: '약속', assigned: '맡음', resolution: '다짐' };
-
-/** 찾기 버튼: 그 키의 작업이 돌고 있으면 돌아가는 표시 + 누를 수 없게, 글은 작업 이름 */
-function JobButton({ jobs, jobKey, className, icon, label, onClick }: { readonly jobs: Jobs; readonly jobKey: string; readonly className: string; readonly icon: string; readonly label: string; readonly onClick: () => void }) {
-  useSyncExternalStore(jobs.subscribe, jobs.version);
-  const job = jobs.get(jobKey);
-  return (
-    <button className={job ? `${className} busy` : className} disabled={Boolean(job)} onClick={onClick}>
-      <Icon id={icon} /><span>{job ? job.label : label}</span>
-    </button>
-  );
-}
 
 function Stamp({ at, seek }: { readonly at: string; readonly seek: ((sec: number) => void) | null }) {
   return seek ? <button className="seek" title="여기부터 듣기" onClick={() => seek(parseStamp(at))}>{at}</button> : <span className="num">{at}</span>;
