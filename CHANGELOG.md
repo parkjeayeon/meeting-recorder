@@ -11,6 +11,8 @@
 - **main을 새로 받으면 화면이 묶이지 않음** (`Could not resolve '../shared/lib/index.ts'`) — 원인: `.gitignore`의 `lib/`(빌드 결과 폴더용)가 `src/renderer/shared/lib/`까지 가려, 통계 화면을 옮길 때 만든 `shared/lib/index.ts`가 커밋되지 않았다. 내 작업 폴더엔 파일이 있어 시험·설치는 통과했다. 고친 방법: 규칙을 루트만 가리는 `/lib/`로, 파일을 커밋. 확인: main을 새로 꺼낸 작업 폴더에서 화면 묶기·타입 검사·단위 시험 통과, 같은 규칙에 가려진 다른 폴더 없음.
 
 ### 기능
+- **설정·처음 설정 옮기기 4단계 — 설정 창 주인을 TypeScript로** (동작·겉모습 그대로): 옛 `app.js`의 설정 코드 약 430줄(열기·탭·칸마다 새로 고침, 받아쓰기·회의 칸, 사용 한도, 사이드바 엔진 표시, 녹음 폴더, 마이크 장치, 권한 3초 확인, 엔진 설치·지우기, 계정·토큰)을 `features/configuration`의 `mountSettings`로. 그리기는 아직 index.html의 고정 마크업에 DOM으로(다음 단계에서 React). 옛 코드는 설정 열기·권한 새로 고침·녹음 폴더 표시·마이크 장치·처음 설정과 같이 쓰는 엔진 소식만 받아 쓴다. 회의 페이지의 `el`·`icon`을 `shared/ui`로 내리고 옛 `h()`처럼 자식 배열을 펼치게.
+  - 확인: 화면 48·기능 46·흐름 13을 고치지 않고 통과, HTML 63가지 상태가 main과 같음, 단위 시험 218건(설정 controller·DOM 도우미 8건 추가).
 - **설정·처음 설정 옮기기 3단계 — 저장된 설정·계정 정보의 주인을 entities/settings로** (동작·겉모습 그대로): 옛 `let settings`·`let providers`·`renderDictSettings`·`saveDict`·`renderProviders`를 `createSettingsStore`(`refresh`·`save`·`refreshProviders`, 본체 소식 둘은 `connect`에서 한 번)로. 구독자가 바뀐 종류(설정·엔진·계정)를 받아 옛 그리기 함수가 돌던 그 자리에서 같은 DOM을 그린다. 녹음기·회의 시작 창·질문 계정·사전·회의 페이지(`refreshSettings`)가 모두 store를 읽는다.
   - 확인: 화면 48·기능 46·흐름 13을 고치지 않고 통과, HTML 63가지 상태가 main과 같음, 단위 시험 210건(store 7건 추가).
 - **설정·처음 설정 옮기기 2단계 — 문제 알림의 주인을 entities/issue로** (동작·겉모습 그대로): 옛 `app.js`의 `issues` Map·`issuesRev`·`setIssue`를 `createIssueStore`(넣은 차례·제목과 설명이 같으면 그대로·바꾸면 자리 그대로·지웠다 넣으면 맨 뒤)로. 옛 코드는 구독해서 홈·받아쓰기·회의 목록 창구와 설정 점을 그 자리에서 바꾼다. 부르는 곳 없던 `folderEmpty`·`dictStats`·`searchBox` 삭제.

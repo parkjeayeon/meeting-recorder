@@ -91,4 +91,5 @@ API 타입: `src/preload.js`에 함수를 더하면 그것만 고친다. 화면 
   회의록 본문도 옮겼다(2026-11-12): 흐름도·액션·용어 기능을 묶어 그리므로 위젯(`widgets/meeting-minutes`). 이 안의 부품은 이제 섬이 아니라 보통 자식이라 뿌리 요소(div.flows·div.flow-row·section.glossary)를 위젯이 그린다.
   3단계 a(2026-11-12): 회의 페이지 전체를 React가 그리고 옛 `pageMeeting`은 view를 만드는 주인. `reactPage`가 `update`·`leave` 훅을 받게 했다(옛 페이지는 상태가 바뀐 경우에만 다시 그린다). 주인의 draw는 `commit`(flushSync)으로 바로 그려 둔다 — 뒤이어 ⌘F가 새 본문에서 다시 찾는다.
   3단계 b(2026-11-12): 주인을 `pages/meeting/controller.ts`(`meetingPage(id, deps)`)로 옮기고 `pageMeeting` 삭제. 앱 전체의 것(기록 목록·문서 캐시·알림·확인 창·라우터·재생·작업 목록)은 `MeetingDeps`로 받는다 — 옛 라우터가 사라질 때 이 deps를 채우는 쪽만 바뀐다. React 밖에서 만드는 작은 요소(⌘F 막대, body에 붙는 카드의 뿌리)는 옛 `h()`와 같은 규칙의 `el()`(`pages/meeting/dom.ts`)로 — 속성이 같게 나온다.
-  다음: 설정·처음 설정. 공통 부품(알림·확인 창)은 필요한 화면을 옮길 때 만든다.
+  설정·처음 설정(2026-11-13, 결정 65): 알림·확인 창·툴팁·로컬 저장은 `shared/ui`·`shared/lib`, 문제 알림은 `entities/issue`(`createIssueStore`), 저장된 설정·엔진 상태·다듬기 계정은 `entities/settings`(`createSettingsStore`, 구독자가 바뀐 종류 'settings'·'engine'·'providers'를 받아 옛 그리기 자리에서 그린다). 설정 창의 주인은 `features/configuration`(`mountSettings`) — 아직 index.html의 고정 마크업을 DOM으로 그리고, 다음에 React로.
+  다음: 설정 창을 React로, 처음 설정을 TS·React로.
