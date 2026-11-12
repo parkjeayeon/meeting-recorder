@@ -12,7 +12,6 @@ import { meetingPage } from '../pages/meeting/index.ts';
 import { createPlayback } from '../features/meeting-player/index.ts';
 import { fmt, TIME, PROVIDER_NAME, clock, sizeLabel, dayLabel, createSource, createJobs, store, remember } from '../shared/lib/index.ts'; // 숫자·시간 표시는 한 벌 (React 화면과 같이 씀)
 import { createToaster, confirmBox, installTooltips } from '../shared/ui/index.tsx';
-import { dictSummary, charsOf } from '../entities/dictation/index.ts';
 import { statusText } from '../entities/meeting/index.ts';
 
 const api = window.recorderApi;
@@ -310,11 +309,6 @@ function folderIssue(access) {
   };
 }
 
-function folderEmpty() {
-  const i = issues.get('folder');
-  return i && h('div', { class: 'empty' }, h('b', null, i.title), i.detail, i.action && h('br'), i.action && h('button', { class: 'btn', onclick: i.onAction }, i.action));
-}
-
 async function loadHistory() {
   const [list, access, stray, totals] = await Promise.all([api.history(), api.recordingsAccess(), api.strayFolders(), api.dictStats()]);
   history = list;
@@ -462,9 +456,6 @@ let dictTotals = null; // 본체가 전체 받아쓰기 기록으로 계산한 �
 // 통계 화면(React)이 읽는 창구: 주인은 여기(history·dictTotals), 둘이 바뀌는 loadHistory에서 changed()
 const statsSource = createSource(() => ({ dictations: dictations(), totals: dictTotals, meetings: meetings() }), () => [history, dictTotals]);
 // 받아쓰기 요약 (계산은 entities/dictation — 통계 화면과 한 벌). 본체 전체 통계(dictTotals)가 있으면 그것으로
-function dictStats(items = dictations(), { local = false } = {}) {
-  return { ...dictSummary(items, local ? null : dictTotals), chars: charsOf };
-}
 
 // 홈: 왼쪽은 할 일(만드는 중 → 챙길 일 → 최근 회의), 오른쪽은 살펴볼 것(시작하기 → 녹음 공간 → 최근 받아쓰기).
 // 처음 만들 땐 회의가 없어 안내 카드뿐이었다 — 이제는 쌓인 회의에서 손이 갈 곳을 먼저 보인다
@@ -516,11 +507,6 @@ async function trashStrays(list) {
 let openRaw = new Set(); // 바꿀 땐 새 Set으로 (창구가 바뀐 줄 안다)
 let showMarks = store('showMarks', true);
 
-function searchBox(placeholder, value, onInput) {
-  const input = h('input', { type: 'search', placeholder, value, spellcheck: false });
-  input.oninput = () => onInput(input.value);
-  return h('label', { class: 'search' }, icon('i-search'), input);
-}
 
 // 받아쓰기 기록 화면(React)이 읽는 창구와 명령. 목록은 화면이 본체(dictPage)에서 이어 받고, 기록(history)이 바뀌면 다시 받는다.
 // 고친 곳 표시(showMarks)·원문 펼침(openRaw)·녹음 폴더 문제는 주인인 여기 — 바꾸면 changed()
