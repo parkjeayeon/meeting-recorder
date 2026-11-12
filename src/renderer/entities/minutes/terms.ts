@@ -8,7 +8,13 @@ export interface Term {
   readonly id: string;
   readonly term: string;
   readonly note?: string;
+  /** confirmed(확인함) · suggested(LLM 추정) */
   readonly status?: string;
+  /** general(일반 용어) · meeting(회의 내용에서) · unknown(회의에서 설명 없음) */
+  readonly basis?: string;
+  readonly edited?: boolean;
+  /** 회의에서 나온 시각들 (mm:ss) */
+  readonly at?: readonly string[];
 }
 export interface TermMatcher {
   readonly re: RegExp;

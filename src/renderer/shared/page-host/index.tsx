@@ -11,7 +11,7 @@
 // - 입력칸은 값을 쥐지 않는(uncontrolled) 방식으로 쓴다: 시험이 el.value = …; input 이벤트로 넣는데, 값을 쥐는 React 입력칸은 그걸 놓친다.
 // - 시험이 찾는 클래스(.page, .add-row 등)는 옮긴 화면에도 그대로 둔다 (Playwright로 바꿀 때까지).
 import type { ComponentType } from 'react';
-import { createRoot } from 'react-dom/client';
+import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 
 /** 옛 라우터가 화면 함수에서 받는 모양 (legacy/app.js navigate()·refresh()가 쓴다) */
@@ -47,4 +47,30 @@ export function reactPage<P extends object>(Page: ComponentType<P>, props: P, ho
 export function mountReact<P extends object>(host: HTMLElement, Part: ComponentType<P>, props: P): void {
   const root = createRoot(host);
   flushSync(() => root.render(<Part {...props} />));
+}
+
+/** 옛 화면이 아직 그리는 페이지 안의 React 부품들 (회의 페이지를 나눠 옮기는 동안).
+ *  옛 코드가 부품의 뿌리 요소(예: section.glossary)를 만들고 React는 그 안을 그린다 — 감싸는 상자가 생기지 않아
+ *  형제 선택자(.flow-row + .glossary) 같은 CSS가 그대로 맞는다. 옛 화면은 그릴 때마다 새로 만드므로 clear()로 모두 내린다 */
+export function createIslands() {
+  const roots = new Map<HTMLElement, Root>();
+  return {
+    mount<P extends object>(host: HTMLElement, Part: ComponentType<P>, props: P): HTMLElement {
+      roots.get(host)?.unmount();
+      const root = createRoot(host);
+      flushSync(() => root.render(<Part {...props} />));
+      roots.set(host, root);
+      return host;
+    },
+    /** 이 뿌리(host)의 부품만 내린다 */
+    unmount(host: HTMLElement | null | undefined) {
+      if (!host) return;
+      roots.get(host)?.unmount();
+      roots.delete(host);
+    },
+    clear() {
+      for (const r of roots.values()) r.unmount();
+      roots.clear();
+    },
+  };
 }
