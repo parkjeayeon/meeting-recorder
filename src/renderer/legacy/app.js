@@ -9,10 +9,11 @@ import { HomePage } from '../pages/home/index.ts';
 import { DictationsPage } from '../pages/dictations/index.ts';
 import { MeetingsPage } from '../pages/meetings/index.ts';
 import { createAskStore, AskWidget } from '../features/ask/index.ts';
-import { speakerOrder, termMatcher, termPieces, minutesBlocks, inlinePieces } from '../entities/minutes/index.ts';
-import { GlossaryBody, TermCardBody, ExplainAddBody } from '../features/meeting-terms/index.ts';
-import { ActionsBody, ActionsRowBody } from '../features/meeting-actions/index.ts';
-import { FlowsBody, FlowRowBody, FlowChatBody, flowSvgFile } from '../features/meeting-flow/index.ts';
+import { speakerOrder, termMatcher } from '../entities/minutes/index.ts';
+import { MinutesBody } from '../widgets/meeting-minutes/index.ts';
+import { TermCardBody, ExplainAddBody } from '../features/meeting-terms/index.ts';
+import { ActionsBody } from '../features/meeting-actions/index.ts';
+import { FlowChatBody, flowSvgFile } from '../features/meeting-flow/index.ts';
 import { ReviewBody, ReviewChatBody } from '../features/meeting-review/index.ts';
 import { createPlayback, PlayerBody, ScriptBody, SpeakerBarBody, SpeakersBody } from '../features/meeting-player/index.ts';
 import { fmt, DAY, TIME, WEEKDAY, PROVIDER_NAME, clock, seconds, sizeLabel, dayKey, dayLabel, createSource, createJobs } from '../shared/lib/index.ts'; // 숫자·시간 표시는 한 벌 (React 화면과 같이 씀)
@@ -940,18 +941,6 @@ function pageMeeting(id) {
   }
 
   // ── 용어 설명: 회의록·정리본·원본의 용어에 밑줄, 누르면 한 줄 설명 카드 (어디에 긋는지는 entities/minutes) ──────────
-  // 글에서 용어를 찾아 밑줄 요소로 바꾼 조각들. seen: 한 문단·한 줄 안에서는 처음 나온 곳에만 긋는다
-  function withTerms(text, matcher, seen = new Set()) {
-    return termPieces(text, matcher, seen).map((p) => {
-      if (typeof p === 'string') return p;
-      const t = p.term;
-      const open = (e) => termCard(e.currentTarget, t);
-      return h('span', { class: `term${t.status === 'confirmed' ? '' : ' guess'}`, role: 'button', tabindex: 0, title: t.note, onclick: open, onkeydown: (e) => {
-        if (e.key === 'Enter') open(e);
-      } }, p.text);
-    });
-  }
-
   let cardEl = null;
   const outsideCard = (e) => cardEl && !cardEl.contains(e.target) && !e.target.closest?.('.term, .gl-item') && closeTermCard();
   const escCard = (e) => e.key === 'Escape' && closeTermCard();
@@ -989,8 +978,9 @@ function pageMeeting(id) {
   }
 
   // 회의록 아래 '용어' 칸: 설명을 스티커처럼 모아 보여 주고, 확인 전인 것은 한 번에 확인
-  function glossaryBox(r, g) {
-    return islands.mount(h('section', { class: 'glossary' }), GlossaryBody, {
+  // 회의록 아래 용어 칸 (그리기는 features/meeting-terms, 회의록 본문이 같이 그린다)
+  function glossaryProps(r, g) {
+    return {
       terms: g?.terms ?? [],
       exists: Boolean(g),
       openCard: (anchor, t) => termCard(anchor, t),
@@ -1003,7 +993,7 @@ function pageMeeting(id) {
         }
         refreshDoc(r);
       },
-    });
+    };
   }
 
   // ── 액션 (src/actions.js): 할 일(약속·맡은 일·다짐)과 받은 조언·알아 둘 것. 회의록과 따로 actions.json에 ──
@@ -1040,8 +1030,8 @@ function pageMeeting(id) {
   }
 
   // 회의록 아래 '액션 찾기' (요청할 때만 만든다). 찾아봤는데 없었으면 그렇다고 보여 주고 다시 찾을 수 있게
-  function actionsRow(r, data) {
-    return islands.mount(h('div', { class: 'flow-row' }), ActionsRowBody, { found: Boolean(data), jobs, jobKey: `${r.dir}|액션`, find: () => findActions(r) });
+  function actionsRowProps(r, data) {
+    return { found: Boolean(data), jobs, jobKey: `${r.dir}|액션`, find: () => findActions(r) };
   }
 
   // ── 흐름도 (src/flow.js): 사용자가 요청한 회의만. 회의록 요약 아래에 그림마다 카드 — 한 줄 요약·채팅·다시 만들기·지우기 ──
@@ -1053,9 +1043,9 @@ function pageMeeting(id) {
     return v ? Math.min(v, 1040) - 88 - 36 : null;
   }
 
-  function flowsSection(r, data) {
+  function flowsProps(r, data) {
     const seekOr = r.firstFile ? (sec) => seek(sec) : null;
-    return islands.mount(h('div', { class: 'flows' }), FlowsBody, {
+    return {
       data,
       seek: seekOr,
       avail: flowAvail(),
@@ -1086,13 +1076,13 @@ function pageMeeting(id) {
         toast('흐름도를 지웠습니다', f.title);
         refreshDoc(r);
       },
-    });
+    };
   }
 
   // 흐름도가 없을 때 회의록 아래 줄: 무엇을 그릴지(선택) 적고 만들기. 만들어 봤는데 없었으면 그 이유
-  function flowRow(r, data) {
+  function flowRowProps(r, data) {
     const key = `${r.dir}|흐름도`;
-    return islands.mount(h('div', { class: 'flow-row' }), FlowRowBody, {
+    return {
       data: data ?? null,
       jobs,
       jobKey: key,
@@ -1106,7 +1096,7 @@ function pageMeeting(id) {
         }
         refreshDoc(r);
       },
-    });
+    };
   }
 
   // 그림마다 채팅: 고친 그림을 제안받아 '이대로 바꾸기'로 반영 (바꾼 그림도 녹취 인용을 다시 확인)
@@ -1209,64 +1199,26 @@ function pageMeeting(id) {
   el.addEventListener('mouseup', () => setTimeout(offerExplain));
   el.addEventListener('mousedown', (e) => !addBtn?.contains(e.target) && removeAddBtn());
 
-  // 회의록 마크다운: 소제목, 목록, 할 일(체크 가능), 문단, **굵게**, (12:34) 시각은 눌러서 듣기, 용어 밑줄
+  // 회의록 본문: 그리기는 widgets/meeting-minutes (흐름도·액션·용어 부품을 같이). 여기는 파일을 바꾸는 명령과 부품마다의 값
   function minutesDoc(r, md, reviewOpen = 0, openReview = null, matcher = null) {
-    const box = h('article', { class: 'doc' });
-    const flowData = docCache.get(r.id)?.flow;
-    // 한 줄: 굵게·글·시각 묶음(entities/minutes)을 그리고 용어에 밑줄. 시각은 눌러서 듣기
-    const inline = (el, text, terms = matcher) => {
-      const seen = new Set();
-      for (const p of inlinePieces(text)) {
-        if (p.kind === 'bold') el.append(h('b', null, ...withTerms(p.text, terms, seen)));
-        else if (p.kind === 'text') el.append(...withTerms(p.text, terms, seen));
-        else {
-          const group = h('span', { class: 'stamps' });
-          p.times.forEach((t, k) => {
-            if (k) group.append(' ');
-            group.append(r.firstFile ? h('button', { class: 'seek', title: '여기부터 듣기', onclick: () => seek(parseStamp(t)) }, t) : h('span', { class: 'num' }, t));
-          });
-          if (p.punct) group.append(p.punct);
-          el.append(' ', group);
-        }
-      }
-    };
-    for (const b of minutesBlocks(md, { flows: Boolean(flowData?.flows?.length) })) {
-      if (b.kind === 'flows') box.append(flowsSection(r, flowData));
-      else if (b.kind === 'list') {
-        box.append(h('ul', null, b.items.map((it) => {
-          if (!it.todo) {
-            const li = h('li');
-            inline(li, it.text);
-            return li;
-          }
-          const text = h('span');
-          inline(text, it.text);
-          const cb = h('input', { type: 'checkbox', checked: it.checked, 'aria-label': '할 일 완료' });
-          const li = h('li', { class: `todo${it.checked ? ' done' : ''}` }, cb, text);
-          cb.onchange = async () => {
-            li.classList.toggle('done', cb.checked);
-            const updated = await api.toggleTodo(r.dir, it.index, cb.checked);
-            docCache.set(r.id, { ...docCache.get(r.id), minutes: updated });
-          };
-          return li;
-        })));
-      } else {
-        const el = h(b.kind);
-        inline(el, b.text, b.kind === 'p' ? matcher : null);
-        box.append(el);
-      }
-    }
-    const actData = docCache.get(r.id)?.actions;
-    if (!actData?.actions?.length && !actData?.advice?.length) box.append(actionsRow(r, actData));
-    if (!flowData?.flows?.length) box.append(flowRow(r, flowData));
-    box.append(glossaryBox(r, docCache.get(r.id)?.glossary));
-    if (openReview && /^## 확인 필요/m.test(md)) {
-      const finalized = Boolean(docCache.get(r.id)?.review?.finalizedAt);
-      box.append(h('div', { class: 'review-callout' }, icon(finalized ? 'i-check' : 'i-alert'),
-        h('span', null, finalized ? '확인을 마친 회의록입니다.' : reviewOpen ? `초안입니다. 확인이 필요한 부분이 ${reviewOpen}개 남아 있습니다.` : '확인 필요 항목을 모두 처리했습니다. 확인을 마치면 회의록이 확정됩니다.'),
-        h('button', { class: 'btn small', onclick: openReview }, finalized ? '확인 결과 보기' : '확인하기')));
-    }
-    return box;
+    const cached = docCache.get(r.id);
+    const flowData = cached?.flow;
+    const actData = cached?.actions;
+    return islands.mount(h('article', { class: 'doc' }), MinutesBody, {
+      md,
+      seek: r.firstFile ? (sec) => seek(sec) : null,
+      matcher,
+      openTerm: (anchor, t) => termCard(anchor, t),
+      flows: flowData?.flows?.length ? flowsProps(r, flowData) : null,
+      flowRow: flowRowProps(r, flowData),
+      actionsRow: !actData?.actions?.length && !actData?.advice?.length ? actionsRowProps(r, actData) : null,
+      glossary: glossaryProps(r, cached?.glossary),
+      review: openReview && /^## 확인 필요/m.test(md) ? { finalized: Boolean(cached?.review?.finalizedAt), open: reviewOpen, go: () => queueMicrotask(openReview) } : null,
+      toggleTodo: async (index, done) => {
+        const updated = await api.toggleTodo(r.dir, index, done);
+        docCache.set(r.id, { ...docCache.get(r.id), minutes: updated });
+      },
+    });
   }
 
   // 화자 이름 정하기: 회의록·스크립트의 '화자 N'을 실제 이름으로 바꾼다
