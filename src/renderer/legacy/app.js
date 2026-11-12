@@ -9,12 +9,12 @@ import { MeetingsPage } from '../pages/meetings/index.ts';
 import { createAskStore, AskWidget } from '../features/ask/index.ts';
 import { meetingPage } from '../pages/meeting/index.ts';
 import { createPlayback } from '../features/meeting-player/index.ts';
-import { TIME, clock, sizeLabel, dayLabel, createSource, createJobs, store, remember } from '../shared/lib/index.ts'; // 숫자·시간 표시는 한 벌 (React 화면과 같이 씀)
+import { clock, sizeLabel, createSource, createJobs, store, remember } from '../shared/lib/index.ts'; // 숫자·시간 표시는 한 벌 (React 화면과 같이 씀)
 import { createToaster, confirmBox, installTooltips } from '../shared/ui/index.tsx';
-import { statusText } from '../entities/meeting/index.ts';
 import { createIssueStore } from '../entities/issue/index.ts';
 import { createSettingsStore } from '../entities/settings/index.ts';
 import { mountSettings, startOnboarding } from '../features/configuration/index.ts';
+import { mountPalette } from '../features/palette/index.ts';
 
 const api = window.recorderApi;
 const settingsStore = createSettingsStore(api);
@@ -713,116 +713,18 @@ const vocabWords = () => vocabulary.getSnapshot();
 
 // ── 통계 ────────────────────────────────────────────────────────────────
 // ── ⌘K 빠른 검색 ────────────────────────────────────────────────────────
-let paletteItems = [];
-let paletteSel = 0;
-
-function paletteResults(q) {
-  const go = (hash) => () => (location.hash = hash);
-  const groups = [];
-  const nav = [
-    ['i-home', '홈', go('#home')], ['i-mic', '받아쓰기 기록', go('#dictations')], ['i-people', '회의', go('#meetings')],
-    ['i-book', '사전', go('#dictionary')], ['i-chart', '통계', go('#stats')], ['i-gear', '설정', () => openSettings()],
-  ].map(([ic, title, run]) => ({ icon: ic, title, run }));
-  const actions = [
-    { icon: 'i-rec', title: recordingMode === 'meeting' ? '회의 녹음 종료하고 저장' : '회의 녹음 시작', run: () => (recordingMode === 'meeting' ? api.toggle('meeting') : openMeetingStart()) },
-    recordingMode === 'meeting' && { icon: liveClock.paused ? 'i-play' : 'i-pause', title: liveClock.paused ? '회의 녹음 재개' : '회의 녹음 일시정지', run: () => api.pause(!liveClock.paused) },
-    recordingMode === 'meeting' && { icon: 'i-x', title: '회의 녹음 취소 (버리기)', run: () => $('cancelBtn').click() },
-    { icon: 'i-mic', title: recordingMode === 'memo' ? '받아쓰기 정지' : '받아쓰기 시작', sub: 'fn을 꾹 눌러도 됩니다', run: () => api.toggle('memo') },
-    { icon: 'i-key', title: '계정·토큰 연결', run: () => openSettings('accounts') },
-    { icon: 'i-shield', title: 'macOS 권한', run: () => openSettings('perms') },
-    { icon: 'i-folder', title: '녹음 폴더 열기', run: () => api.openRecordings() },
-  ].filter(Boolean);
-  const match = (s) => s.toLowerCase().includes(q);
-  if (!q) {
-    groups.push(['이동', nav], ['동작', actions]);
-    const recent = meetings().filter((m) => m.minutes?.status === 'done').slice(0, 3);
-    if (recent.length) groups.push(['최근 회의', recent.map(meetingResult)]);
-    return groups;
-  }
-  const meet = meetings().filter((m) => match(`${m.minutes?.title ?? ''} ${m.summary ?? ''}`)).slice(0, 6).map(meetingResult);
-  const dict = dictations().filter((r) => match(r.transcript.text ?? r.transcript.raw)).slice(0, 6).map((r) => ({
-    icon: 'i-copy', title: r.transcript.text ?? r.transcript.raw, sub: `${dayLabel(r.startedAt)} ${TIME.format(new Date(r.startedAt))}${r.app ? ` · ${r.app}` : ''} · 눌러서 복사`,
-    run: async () => {
-      await api.copy(r.transcript.text ?? r.transcript.raw);
-      toast('복사했습니다');
-    },
-  }));
-  const n = [...nav, ...actions].filter((i) => match(i.title));
-  if (n.length) groups.push(['이동 · 동작', n]);
-  if (meet.length) groups.push(['회의', meet]);
-  if (dict.length) groups.push(['받아쓰기', dict]);
-  return groups;
-}
-
-function meetingResult(m) {
-  return { icon: 'i-people', title: m.minutes?.title ?? `${dayLabel(m.startedAt)} 회의`, sub: m.summary ?? statusText(m.minutes), meta: clock(m.durationSec), run: () => (location.hash = `#meeting/${encodeURIComponent(m.id)}`) };
-}
-
-function renderPalette() {
-  const q = $('paletteInput').value.trim().toLowerCase();
-  const list = $('paletteList');
-  const groups = paletteResults(q);
-  paletteItems = groups.flatMap((g) => g[1]);
-  paletteSel = Math.min(paletteSel, Math.max(0, paletteItems.length - 1));
-  list.replaceChildren();
-  if (!paletteItems.length) return list.append(h('div', { class: 'pempty' }, `"${q}"에 맞는 것이 없습니다`));
-  let i = 0;
-  for (const [label, items] of groups) {
-    list.append(h('div', { class: 'pgroup' }, label));
-    for (const item of items) {
-      const idx = i++;
-      list.append(h('button', {
-        class: 'pitem', role: 'option', 'aria-selected': String(idx === paletteSel),
-        onmouseenter: () => { paletteSel = idx; markPalette(); },
-        onclick: () => runPalette(idx),
-      }, icon(item.icon), h('span', { class: 'ptext' }, h('b', null, item.title), item.sub && h('small', null, item.sub)), item.meta && num(item.meta)));
-    }
-  }
-}
-
-function markPalette() {
-  $('paletteList').querySelectorAll('.pitem').forEach((el, i) => {
-    el.setAttribute('aria-selected', String(i === paletteSel));
-    if (i === paletteSel) el.scrollIntoView({ block: 'nearest' });
-  });
-}
-
-function runPalette(i) {
-  const item = paletteItems[i];
-  $('palette').close();
-  item?.run();
-}
-
-function openPalette() {
-  if ($('palette').open) return $('palette').close();
-  if ($('settings').open) $('settings').close();
-  $('paletteInput').value = '';
-  paletteSel = 0;
-  renderPalette();
-  $('palette').showModal();
-  $('paletteInput').focus();
-}
-
-$('paletteInput').oninput = () => {
-  paletteSel = 0;
-  renderPalette();
-};
-$('paletteInput').onkeydown = (e) => {
-  if (e.isComposing) return;
-  if (e.key === 'ArrowDown') paletteSel = Math.min(paletteItems.length - 1, paletteSel + 1);
-  else if (e.key === 'ArrowUp') paletteSel = Math.max(0, paletteSel - 1);
-  else if (e.key === 'Enter') return runPalette(paletteSel);
-  else return;
-  e.preventDefault();
-  markPalette();
-};
-$('palette').addEventListener('click', (e) => e.target === $('palette') && $('palette').close());
-$('openPalette').onclick = openPalette;
+const palette = mountPalette({
+  api, meetings, dictations, toast,
+  recording: () => ({ mode: recordingMode, paused: liveClock.paused }),
+  openSettings: (sec) => openSettings(sec),
+  openMeetingStart: () => openMeetingStart(),
+  cancelRecording: () => $('cancelBtn').click(),
+});
 
 document.addEventListener('keydown', (e) => {
   if (e.metaKey && e.key.toLowerCase() === 'k') {
     e.preventDefault();
-    openPalette();
+    palette.open();
   } else if (e.metaKey && e.key === ',') {
     e.preventDefault();
     openSettings();
