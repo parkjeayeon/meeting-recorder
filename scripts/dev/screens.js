@@ -6,6 +6,7 @@ const { app, BrowserWindow, nativeTheme } = require('electron');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { FLOW, ACTIONS } = require('./verify/fixture'); // 흐름도·액션 예시는 검증 도구와 한 벌
 
 const out = path.resolve(process.argv[2] ?? path.join(os.tmpdir(), 'mr-screens'));
 fs.mkdirSync(out, { recursive: true });
@@ -26,32 +27,9 @@ fs.writeFileSync(path.join(meeting, 'glossary.json'), JSON.stringify({ terms: [
   { id: 'g3', term: '랩캐시도', note: '회의에서 설명 없음', basis: 'unknown', status: 'suggested', source: 'llm', at: ['00:15'] },
 ] }));
 // 흐름도 예시 (STUB_FLOW=<flow.json 경로>를 주면 그 파일로 바꿔 본다 — 실제 회의 내용이 찍히니 캡처를 저장소에 올리지 않는다)
-fs.writeFileSync(path.join(meeting, 'flow.json'), process.env.STUB_FLOW ? fs.readFileSync(process.env.STUB_FLOW) : JSON.stringify({ flows: [{
-  id: 'f1', title: '배포 절차', summary: 'QA를 마친 뒤 화요일에 배포하고 지켜보는 순서', lanes: [],
-  steps: [
-    { id: 's1', title: 'QA', detail: '결제·로그인·알림만 확인', at: '00:11', quote: 'QA는 월요일까지' },
-    { id: 's2', title: '배포', detail: '화요일 오전에 배포', at: '00:06', quote: '화요일 오전이 좋을 것 같아요' },
-    { id: 's3', title: '모니터링', detail: '나머지는 배포 뒤 확인', at: '00:15', quote: '확인만 하면 됩니다', optional: true },
-  ],
-  edges: [{ from: 's1', to: 's2' }, { from: 's2', to: 's3' }],
-  notes: [{ step: 's2', kind: 'warn', text: '일정이 밀리면\n알림은 다음 배포로', at: '00:11', quote: '알림은 다음 배포로' }],
-  annotations: [],
-}], handoff: null, reason: '배포 순서를 설명함' }));
+fs.writeFileSync(path.join(meeting, 'flow.json'), process.env.STUB_FLOW ? fs.readFileSync(process.env.STUB_FLOW) : JSON.stringify(FLOW));
 // 액션 예시 (STUB_ACTIONS=<actions.json 경로>로 바꿔 본다 — 실제 회의 내용이 찍히니 캡처를 저장소에 올리지 않는다)
-fs.writeFileSync(path.join(meeting, 'actions.json'), process.env.STUB_ACTIONS ? fs.readFileSync(process.env.STUB_ACTIONS) : JSON.stringify({
-  kind: 'work', adviceTitle: '알아 둘 것',
-  actions: [
-    { id: 'a1', owner: '화자 2', task: 'QA 마치기', due: '월요일', kind: 'assigned', at: '00:11', quote: 'QA는 월요일까지', done: false },
-    { id: 'a2', owner: '화자 1', task: '배포 일정 공지하기', due: null, kind: 'promise', at: '00:06', quote: '화요일 오전이 좋을 것 같아요', done: true },
-    { id: 'a3', owner: '화자 2', task: '결제 화면 오류 재현 영상 공유하기', due: '내일', kind: 'promise', at: '00:15', quote: 'x', done: false },
-    { id: 'a4', owner: '화자 1', task: '롤백 절차 문서 다시 확인하기', due: null, kind: 'assigned', at: '00:20', quote: 'x', done: false },
-    { id: 'a5', owner: '화자 1', task: '다음 주부터 매일 배포 전 체크리스트 보기', due: '다음 주', kind: 'resolution', at: '00:24', quote: 'x', done: false },
-  ],
-  advice: [
-    { id: 'v1', group: '배포', key: true, why: '일정이 밀리면 범위부터 줄여야 해서', from: '화자 1', to: '화자 2', text: '일정이 밀리면 알림은 다음 배포로 넘기기', at: '00:11', quote: 'x' },
-    { id: 'v2', group: 'QA', key: false, why: null, from: '화자 1', to: '화자 2', text: '결제·로그인·알림만 먼저 확인하기', at: '00:15', quote: 'x' },
-  ],
-}));
+fs.writeFileSync(path.join(meeting, 'actions.json'), process.env.STUB_ACTIONS ? fs.readFileSync(process.env.STUB_ACTIONS) : JSON.stringify(ACTIONS));
 process.env.STUB_MEETING_DIR = meeting;
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
