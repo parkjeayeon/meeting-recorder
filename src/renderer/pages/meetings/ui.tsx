@@ -1,13 +1,13 @@
 // 회의 목록 (옛 pageMeetings를 그대로 옮김: 같은 글자·같은 클래스).
 // 갈래(filter)는 주인의 상태다 — 질문으로 찾기가 탭을 열고, 홈의 챙길 일이 갈래를 골라 들어온다. 검색어는 이 화면 것.
-// 질문 탭의 본문은 아직 옛 화면 코드가 그린다(질문으로 찾기를 옮길 때 React로): 그 칸만 주인이 준 askView로 채운다.
+// 질문 탭(칩과 본문)은 질문으로 찾기(features/ask)의 상태 주인(store)을 읽고 그 명령을 쓴다.
 import { useLayoutEffect, useRef, useState, useSyncExternalStore, type DragEvent, type ReactNode } from 'react';
-import { askLabel, askSecs, type AskJob } from '../../entities/ask/index.ts';
+import { askLabel, LiveSecs, type AskJob } from '../../entities/ask/index.ts';
+import { AskTab, type AskStore } from '../../features/ask/index.ts';
 import { FolderEmpty, type Issue } from '../../entities/issue/index.ts';
-import { busyShort, meetState, meetTitle, statusText, type MeetingItem } from '../../entities/meeting/index.ts';
-import { LedgerRows, MonthSections, monthGroups, scrollSpy, YearNav, type LedgerActions } from '../../widgets/meeting-ledger/index.ts';
+import { busyShort, LedgerRows, meetState, meetTitle, MonthSections, monthGroups, statusText, YearNav, type LedgerActions, type MeetingItem } from '../../entities/meeting/index.ts';
 import { dayLabel, sizeLabel, TIME, type Source } from '../../shared/lib/index.ts';
-import { Icon, Num, SearchBox } from '../../shared/ui/index.tsx';
+import { Icon, Num, scrollSpy, SearchBox } from '../../shared/ui/index.tsx';
 import { chips, HAND_MAX, mixed, pick, type Filter } from './model.ts';
 
 /** 녹음 폴더에 있지만 목록에 안 나오는 폴더 (recordings:stray) */
@@ -37,9 +37,6 @@ export interface MeetingsActions extends LedgerActions {
   readonly importMeeting: (paths?: readonly string[]) => void;
   readonly openMeetingStart: () => void;
   readonly filePath: (f: File) => string | null;
-  readonly removeAsk: (t: AskJob) => void;
-  /** 질문 탭 본문 (옛 화면 코드가 그림). 보이면 본 것으로 표시한다 */
-  readonly askView: (t: AskJob, all: readonly MeetingItem[]) => Node;
 }
 
 const STRAY_REASON: Readonly<Record<string, string>> = {
@@ -100,15 +97,15 @@ function HandCard({ r, actions }: { readonly r: MeetingItem; readonly actions: M
   );
 }
 
-function AskChip({ t, pressed, actions }: { readonly t: AskJob; readonly pressed: boolean; readonly actions: MeetingsActions }) {
+function AskChip({ t, pressed, ask, actions }: { readonly t: AskJob; readonly pressed: boolean; readonly ask: AskStore; readonly actions: MeetingsActions }) {
   return (
     <button className={`chip ask${t.status === 'error' ? ' bad' : ''}`} aria-pressed={String(pressed) as 'true' | 'false'} title={t.q} onClick={() => actions.setFilter(`ask:${t.id}`)}>
       {t.status === 'running' ? <span className="spin" /> : <Icon id={t.status === 'error' ? 'i-alert' : t.status === 'stopped' ? 'i-x' : 'i-search'} />}
       {askLabel(t)}
-      {t.status === 'running' ? <span className="num" data-ask-time={t.id}>{askSecs(t)}</span> : t.status === 'done' ? <Num>{t.results.length}</Num> : t.status === 'stopped' ? <span className="num">멈춤</span> : null}
+      {t.status === 'running' ? <LiveSecs t={t} className="num" /> : t.status === 'done' ? <Num>{t.results.length}</Num> : t.status === 'stopped' ? <span className="num">멈춤</span> : null}
       <span className="x" role="button" aria-label="탭 닫기" onClick={(e) => {
         e.stopPropagation();
-        actions.removeAsk(t);
+        void ask.remove(t);
       }}><Icon id="i-x" /></span>
     </button>
   );
@@ -210,16 +207,7 @@ function MeetingList({ items, filter, q, actions }: { readonly items: readonly M
   );
 }
 
-/** 질문 탭 본문: 옛 화면 코드가 그린 것을 이 칸에 넣는다 (그릴 때마다 새로, 옛 화면처럼) */
-function AskTab({ job, all, actions }: { readonly job: AskJob; readonly all: readonly MeetingItem[]; readonly actions: MeetingsActions }) {
-  const box = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    box.current!.replaceChildren(actions.askView(job, all));
-  });
-  return <div ref={box} />;
-}
-
-export function MeetingsPage({ source, actions }: { readonly source: Source<MeetingsInput>; readonly actions: MeetingsActions }) {
+export function MeetingsPage({ source, ask, actions }: { readonly source: Source<MeetingsInput>; readonly ask: AskStore; readonly actions: MeetingsActions }) {
   const input = useSyncExternalStore(source.subscribe, source.getSnapshot);
   const [q, setQ] = useState('');
   const [drop, setDrop] = useState(false);
@@ -257,7 +245,7 @@ export function MeetingsPage({ source, actions }: { readonly source: Source<Meet
           ...chips(all, filter).map((c) => (
             <button key={c.id} className="chip" aria-pressed={String(!asking && filter === c.id) as 'true' | 'false'} onClick={() => actions.setFilter(c.id)}>{c.label}<Num>{c.n}</Num></button>
           )),
-          ...input.asks.map((t) => <AskChip key={`ask:${t.id}`} t={t} pressed={input.filter === `ask:${t.id}`} actions={actions} />),
+          ...input.asks.map((t) => <AskChip key={`ask:${t.id}`} t={t} pressed={input.filter === `ask:${t.id}`} ask={ask} actions={actions} />),
         ] : null}
       </div>
       <div className="bulk-row">
@@ -270,7 +258,7 @@ export function MeetingsPage({ source, actions }: { readonly source: Source<Meet
       </div>
       <div>{!asking && (filter === 'all' || filter === 'rest') && input.strays.length ? <StrayBox strays={input.strays} actions={actions} /> : null}</div>
       {asking ? (
-        <AskTab key="ask" job={asking} all={all} actions={actions} />
+        <div key="ask"><AskTab t={asking} all={all} store={ask} actions={actions} /></div>
       ) : (
         <div key="list">{items.length ? <MeetingList items={items} filter={filter} q={q} actions={actions} /> : <Empty all={all} input={input} q={q} filter={filter} actions={actions} />}</div>
       )}

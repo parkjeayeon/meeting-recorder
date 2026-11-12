@@ -1,6 +1,8 @@
 // 공통 화면 부품. 옛 화면 코드(legacy/app.js)의 h()·icon()과 같은 마크업을 내서 CSS·시험이 그대로 맞는다.
 import { useEffect, useRef, useState } from 'react';
 
+export { glide, scrollSpy } from './scroll-spy.ts';
+
 /** SVG 묶음(index.html의 <symbol id="i-…">)의 아이콘 하나 */
 export function Icon({ id }: { readonly id: string }) {
   return (
@@ -38,18 +40,24 @@ export function CopyButton({ copy, label = '복사' }: { readonly copy: () => un
   );
 }
 
-/** 검색 칸 (옛 searchBox와 같은 마크업). 값은 쥐지 않는다. 입력은 칸에 직접 단 처리기로 받는다 —
- *  React는 문서 뿌리에서 이벤트를 받으므로 거품이 안 오르는 input 이벤트(시험이 값을 넣고 보내는 것)를 놓친다 */
+/** 요소에 직접 단 이벤트 처리기. React는 문서 뿌리에서 이벤트를 받으므로 거품이 안 오르는 이벤트
+ *  (시험이 입력칸에 값을 넣고 보내는 new Event('input'))를 놓친다 — 입력칸의 input·change는 이것으로 받는다 */
+export function useNativeEvent<E extends HTMLElement>(ref: { readonly current: E | null }, type: string, handler: (el: E, e: Event) => void) {
+  const latest = useRef(handler);
+  latest.current = handler;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const on = (e: Event) => latest.current(el, e);
+    el.addEventListener(type, on);
+    return () => el.removeEventListener(type, on);
+  }, [ref, type]);
+}
+
+/** 검색 칸 (옛 searchBox와 같은 마크업). 값은 쥐지 않는다 */
 export function SearchBox({ placeholder, hidden = false, onInput }: { readonly placeholder: string; readonly hidden?: boolean; readonly onInput: (value: string) => void }) {
   const input = useRef<HTMLInputElement>(null);
-  const latest = useRef(onInput);
-  latest.current = onInput;
-  useEffect(() => {
-    const el = input.current!;
-    const on = () => latest.current(el.value);
-    el.addEventListener('input', on);
-    return () => el.removeEventListener('input', on);
-  }, []);
+  useNativeEvent(input, 'input', (el) => onInput(el.value));
   return (
     <label className="search" hidden={hidden}>
       <Icon id="i-search" />

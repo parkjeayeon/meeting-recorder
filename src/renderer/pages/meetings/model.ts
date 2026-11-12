@@ -1,7 +1,7 @@
 // 회의 목록의 계산: 갈래 칩, 거르기·검색, 확인할 회의 카드·최근 회의·이전 회의(달별) (결정 50)
 // 기간이 아니라 개수로 자른다: 회의는 몰릴 때도 뜸할 때도 있다
 import { meetState, type MeetingItem } from '../../entities/meeting/index.ts';
-import { NO_MINUTES } from '../../widgets/meeting-ledger/index.ts';
+import { NO_MINUTES } from '../../entities/meeting/index.ts';
 
 export const HAND_MAX = 6;
 export const RECENT_MAX = 20;

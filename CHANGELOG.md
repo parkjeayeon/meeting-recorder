@@ -11,6 +11,10 @@
 - **main을 새로 받으면 화면이 묶이지 않음** (`Could not resolve '../shared/lib/index.ts'`) — 원인: `.gitignore`의 `lib/`(빌드 결과 폴더용)가 `src/renderer/shared/lib/`까지 가려, 통계 화면을 옮길 때 만든 `shared/lib/index.ts`가 커밋되지 않았다. 내 작업 폴더엔 파일이 있어 시험·설치는 통과했다. 고친 방법: 규칙을 루트만 가리는 `/lib/`로, 파일을 커밋. 확인: main을 새로 꺼낸 작업 폴더에서 화면 묶기·타입 검사·단위 시험 통과, 같은 규칙에 가려진 다른 폴더 없음.
 
 ### 기능
+- **질문으로 찾기를 React로 옮김** (동작·겉모습 그대로): 둥근 버튼·질문 창·조건 칩·알림(`features/ask`의 `AskWidget`)과 회의 화면의 질문 탭 본문(`AskTab`). 상태를 처음으로 옛 코드에서 꺼냈다 — 질문 목록·창·쓰던 질문·범위·알림과 본체 소식 구독·5초 맞추기를 `createAskStore`가 든다(결정 63). 옛 질문 코드 약 400줄과 쓰지 않게 된 `ledgerRows`·`rowState`·`speakerDots`·`stopThen` 삭제.
+  - 확인: 화면 48·기능 46·흐름 13(질문 탭 흐름 추가 — main에서도 통과)을 고치지 않고 통과, `.ask-root`·`#view` HTML이 20가지 상태(창 열기·쓰기·예시·최근 몇 개·기간·찾는 중(단계 진행 중간 포함)·찾음·알림·막힘·실패·멈춤, 질문 탭 넷)에서 main과 같음(입력칸 속성 순서만), 화면 캡처 42장 같음, 단위 시험 14건(store·말·질문 창·질문 탭).
+  - 옮기며 잡은 것: 질문 창의 열리는 움직임(`.askpanel.opening`)을 한 프레임 뒤 지우면 끊긴다 — 옛 규칙대로 창을 다시 그릴 때까지 둔다. 단계 표시의 빈칸을 돌기로 고쳐 쓰면 `style=""`이 남아 표시마다 새로 만든다.
+  - 검증 도구: `dump-view.js`의 `DUMP_SEL`(화면 밖 둥근 버튼·질문 창 찍기).
 - **회의 목록 화면을 React로 옮김** (동작·겉모습 그대로): `pages/meetings` + 창구 `meetingsSource`·명령 `meetingsActions`, 갈래는 주인의 상태(`meetFilter`). 장부 줄·달별 묶음·바로가기와 스크롤 감시는 `widgets/meeting-ledger`(질문 탭도 같이 씀). 질문 탭 칩은 React, 본문은 아직 옛 코드(`askView`)가 그린 것을 넣는다. 옛 `pageMeetings`·`monthSections`·`handCard`·`cardState`·`askChips`·`strayBox`와 쓰지 않던 `meetingCard` 삭제.
   - 확인: 화면 48·기능 46·흐름 12(회의 목록 정리 흐름 추가 — main에서도 통과)를 고치지 않고 통과, `#view` HTML이 13가지 상태(회의 420개·지난 해 묶음·스크롤 뒤 바로가기 표시·해 머리 누름·갈래 셋·검색·결과 없음·폴더 막힘·만드는 중·질문 탭)에서 main과 같음, 화면 캡처 같음(움직이는 진행 막대를 뺀 회의 420개 21장 포함), 단위 시험 9건.
   - 검증 도구: `dump-view.js`가 `DUMP_JS`의 오류를 찍고 끝남(전엔 60초 조용히 기다림).

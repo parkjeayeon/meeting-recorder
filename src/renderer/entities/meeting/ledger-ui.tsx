@@ -1,9 +1,10 @@
 // 회의 장부 줄과 달별 장부 (옛 ledgerRows·monthSections와 같은 마크업)
 import type { MouseEvent } from 'react';
-import { meetTitle, RowState, type MeetingItem } from '../../entities/meeting/index.ts';
+import { meetTitle, type MeetingItem } from './model.ts';
+import { RowState } from './ui.tsx';
 import { clock, TIME } from '../../shared/lib/index.ts';
 import { Icon, Num } from '../../shared/ui/index.tsx';
-import { ledgerRows, type LedgerYear } from './model.ts';
+import { ledgerRows, type LedgerYear } from './ledger.ts';
 
 export interface LedgerActions {
   /** 열어서 회의록 만들기·다시 만들기 */
@@ -29,8 +30,15 @@ export function SpeakerDots({ n }: { readonly n: number | undefined }) {
   );
 }
 
-export function LedgerRows({ list, recent = false, actions }: { readonly list: readonly MeetingItem[]; readonly recent?: boolean; readonly actions: LedgerActions }) {
-  return ledgerRows(list, { recent }).map((row) => {
+/** 줄 제목 아래 글을 바꿀 때 (질문 탭: 그 회의가 걸린 이유와 인용) */
+export interface RowReason {
+  readonly text: string;
+  readonly quote?: string | null;
+}
+
+export function LedgerRows({ list, recent = false, reasons, actions }: { readonly list: readonly MeetingItem[]; readonly recent?: boolean; readonly reasons?: readonly (RowReason | null)[]; readonly actions: LedgerActions }) {
+  return ledgerRows(list, { recent }).map((row, i) => {
+    const reason = reasons?.[i];
     const { r, st } = row;
     return (
       <a key={r.id} className={`lrow${row.first ? ' daystart' : ''}`} href={`#meeting/${encodeURIComponent(r.id)}`}>
@@ -38,7 +46,8 @@ export function LedgerRows({ list, recent = false, actions }: { readonly list: r
         <time className="ltime">{TIME.format(new Date(r.startedAt))}</time>
         <span className={`ltitle${row.muted ? ' muted' : ''}`}>
           <b>{meetTitle(r)}</b>
-          {row.sub ? <span className={row.sub.why ? 'why' : undefined}>{row.sub.text}</span> : null}
+          {reason ? <span className="reason" title={reason.quote ? `“${reason.quote}”` : ''}>{reason.text}</span>
+            : row.sub ? <span className={row.sub.why ? 'why' : undefined}>{row.sub.text}</span> : null}
         </span>
         <RowState r={r} />
         <Num>{clock(r.durationSec)}</Num>
