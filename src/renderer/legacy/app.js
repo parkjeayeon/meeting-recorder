@@ -1,7 +1,7 @@
 import { Recorder } from './recorder.js';
 import { startOnboarding } from './onboarding.js';
 import { scriptMarkdown, parseScript, speakerStats, parseStamp } from '../../core/script.mts'; // 화면은 코어를 원본(.mts)에서 바로 가져다 쓴다 (Vite가 묶음)
-import { reactPage, mountReact, createIslands } from '../shared/page-host/index.tsx'; // React로 옮긴 화면을 옛 라우터에 끼운다 (docs/renderer-architecture.md)
+import { reactPage, mountReact, createIslands, commit } from '../shared/page-host/index.tsx'; // React로 옮긴 화면을 옛 라우터에 끼운다 (docs/renderer-architecture.md)
 import { createVocabularyModel } from '../entities/vocabulary/index.ts';
 import { DictionaryPage } from '../pages/dictionary/index.ts';
 import { StatsPage } from '../pages/stats/index.ts';
@@ -10,12 +10,10 @@ import { DictationsPage } from '../pages/dictations/index.ts';
 import { MeetingsPage } from '../pages/meetings/index.ts';
 import { createAskStore, AskWidget } from '../features/ask/index.ts';
 import { speakerOrder, termMatcher } from '../entities/minutes/index.ts';
-import { MinutesBody } from '../widgets/meeting-minutes/index.ts';
+import { MeetingPage } from '../pages/meeting/index.ts';
 import { TermCardBody, ExplainAddBody } from '../features/meeting-terms/index.ts';
-import { ActionsBody } from '../features/meeting-actions/index.ts';
-import { FlowChatBody, flowSvgFile } from '../features/meeting-flow/index.ts';
-import { ReviewBody, ReviewChatBody } from '../features/meeting-review/index.ts';
-import { createPlayback, PlayerBody, ScriptBody, SpeakerBarBody, SpeakersBody } from '../features/meeting-player/index.ts';
+import { flowSvgFile } from '../features/meeting-flow/index.ts';
+import { createPlayback } from '../features/meeting-player/index.ts';
 import { fmt, DAY, TIME, WEEKDAY, PROVIDER_NAME, clock, seconds, sizeLabel, dayKey, dayLabel, createSource, createJobs } from '../shared/lib/index.ts'; // 숫자·시간 표시는 한 벌 (React 화면과 같이 씀)
 import { dictSummary, charsOf } from '../entities/dictation/index.ts';
 import { BUSY, meetState, meetTitle, progressOf, statusText, busyShort, canCompressNow } from '../entities/meeting/index.ts';
@@ -787,9 +785,72 @@ function reviewTag(r) {
 }
 
 
+// 회의 페이지: 그리기는 React(pages/meeting). 여기는 아직 주인 — 페이지 상태(탭·고른 항목·채팅 …)와 파일을 바꾸는 명령, ⌘F, body에 뜨는 용어 카드.
+// draw()는 무엇을 보일지(view)를 만들어 창구로 넘긴다 (그릴 때마다 React가 안을 새로 만든다 — 옛 화면처럼)
 function pageMeeting(id) {
-  const el = h('div', { class: 'page' });
-  const islands = createIslands(); // 이 페이지 안의 React 부품 (용어·액션 …) — 다시 그릴 때마다 내리고 새로
+  const islands = createIslands(); // body에 붙는 React 부품 (용어 카드·설명 추가)
+  let view = null;
+  let version = 0;
+  const viewSource = createSource(() => view, () => [view]);
+  const show = (v) => {
+    view = { version: ++version, gone: null, head: null, menu: null, speakerBar: null, player: null, compress: null, state: null, tabs: [], tab: null, body: { kind: 'none' }, chat: null, flowChat: null, ...v };
+    commit(() => viewSource.changed());
+  };
+  const rec = () => history.find((m) => m.id === id);
+  const commands = {
+    setTab: (t) => queueMicrotask(() => { tab = t; draw(); }),
+    copyMinutes: async () => {
+      await api.copy(docCache.get(id)?.minutes ?? '');
+      toast('회의록을 복사했습니다', '마크다운 형식');
+    },
+    copyScript: async (clean) => {
+      const d = docCache.get(id) ?? {};
+      await api.copy(scriptMarkdown(clean ? d.scriptClean : d.transcript));
+      toast(`${clean ? '정리본' : '원본'}을 복사했습니다`, '마크다운 형식');
+    },
+    copyTranscript: () => {
+      api.copy(docCache.get(id)?.transcript);
+      toast('원본 스크립트를 복사했습니다');
+    },
+    makeClean: async () => {
+      await api.cleanScript(rec().dir);
+      docCache.delete(id);
+      draw();
+    },
+    remake: (speakers) => remake(rec(), speakers),
+    resume: () => {
+      docCache.delete(id);
+      api.resumeMinutes(rec().dir).catch((err) => toast('이어서 쓰지 못했습니다', err.message, { bad: true }));
+      setTimeout(loadHistory, 400);
+    },
+    reveal: () => {
+      const r = rec();
+      api.reveal(`${r.dir}/${r.firstFile}`);
+    },
+    compress: () => runCompress(rec()),
+    declineCompress: async () => {
+      await api.declineCompress(rec().dir, true);
+      toast('원본 그대로 둡니다', '… 메뉴에서 언제든 압축할 수 있습니다');
+      await loadHistory();
+    },
+    trash: async () => {
+      if (!(await confirmBox('이 회의를 휴지통으로 옮길까요?', '녹음 파일과 회의록이 함께 옮겨집니다. Finder 휴지통에서 되살릴 수 있습니다.', '휴지통으로'))) return;
+      try {
+        audio.pause();
+        await api.trashMeeting(rec().dir);
+        toast('휴지통으로 옮겼습니다');
+        replaceRoute('#meetings');
+        loadHistory();
+      } catch (err) {
+        toast('옮기지 못했습니다', err.message, { bad: true });
+      }
+    },
+    back: () => window.history.back(),
+    toMeetings: () => replaceRoute('#meetings'),
+    setFindScope: (node) => {
+      if (node) findScope = node;
+    },
+  };
   let tab = null;
   const reviewSel = new Set(); // 확인 필요에서 고른 항목
   let addDraft = ''; // 확인 필요 › 직접 추가 입력칸 (다시 그려도 남게)
@@ -807,13 +868,13 @@ function pageMeeting(id) {
 
   const r0 = history.find((m) => m.id === id);
   if (!r0) {
-    el.append(h('div', { class: 'empty gone' }, h('b', null, '삭제된 녹음입니다'), '휴지통으로 옮겼거나 폴더를 옮긴 회의입니다. Finder 휴지통에서 되살리면 다시 보입니다.', h('br'),
-      h('div', { style: 'display:flex;gap:8px;justify-content:center' },
-        navIndex > 0 && h('button', { class: 'btn', onclick: () => window.history.back() }, icon('i-left'), '뒤로'),
-        h('button', { class: 'btn', onclick: () => replaceRoute('#meetings') }, '회의 목록'))));
+    const goneHandle = reactPage(MeetingPage, { source: viewSource, commands });
+    show({ gone: { canBack: navIndex > 0 } });
     setTimeout(() => setCrumbs('삭제된 녹음'));
-    return { el };
+    return goneHandle;
   }
+  const handle = reactPage(MeetingPage, { source: viewSource, commands }, { reload: () => reloadPage(), update: () => updatePage(), leave: () => leavePage() });
+  const el = handle.el;
 
   if (audioFor !== id) {
     audio.pause();
@@ -855,69 +916,42 @@ function pageMeeting(id) {
     if (doc.transcript) tabs.push(['clean', '정리본'], ['raw', '원본'], ['speakers', '화자', order.length ? `${order.length}명` : null]);
     if (!tabs.some((t) => t[0] === tab)) tab = tabs[0]?.[0] ?? null;
 
-    const head = h('div', { class: 'meet-head' },
-      h('div', { style: 'flex:1;min-width:0' },
-        h('h1', null, title),
-        h('div', { class: 'meet-meta' },
-          h('span', { class: 'tag' }, FULL.format(new Date(r.startedAt))),
-          h('span', { class: 'tag' }, num(clock(r.durationSec))),
-          m?.speakers && h('span', { class: 'tag' }, `화자 ${m.speakers}명`),
-          r.speakersHint && h('span', { class: 'tag' }, `참석 인원 ${speakerLabel(String(r.speakersHint))}로 지정`),
-          s === 'done' && r.review && h('button', { class: `tag tag-btn${r.review.finalized ? '' : ' accent'}`, title: '확인 필요 보기', onclick: () => { tab = 'review'; draw(); } },
-            r.review.finalized ? '확정된 회의록' : r.review.open ? `초안 · 확인 ${r.review.open}개 남음` : '초안 · 확인 마치기 전'),
-          s === 'done' && m.provider && h('span', { class: 'tag' }, `${PROVIDER_NAME[m.provider] ?? m.provider}로 작성`),
-          m?.timing?.model && h('span', { class: 'tag' }, `Whisper ${m.timing.model}`),
-          r.audio?.bytes > 0 && h('span', { class: 'tag' }, `녹음 ${sizeLabel(r.audio.bytes)}${r.audio.compressed ? ' · 압축함' : ''}`),
-          m?.diarizeError && h('span', { class: 'tag accent' }, `화자 구분 실패: ${m.diarizeError}`))),
-      meetingActions(r, doc));
-
     closeTermCard();
     removeAddBtn();
-    islands.clear(); // 앞서 그린 React 부품을 모두 내리고 새로
-    const player = r.firstFile ? islands.mount(h('div', { class: 'player' }), PlayerBody, { playback, raw, color, durationSec: r.durationSec, missing: doc.speech?.missing ?? [] }) : null;
-
-    const body = h('div');
-    findScope = body;
     const matcher = termMatcher(doc.glossary?.terms);
-    if (tab === 'minutes') body.append(minutesDoc(r, doc.minutes, reviewOpen, () => { tab = 'review'; draw(); }, matcher));
-    else if (tab === 'review') body.append(reviewView(r, doc));
-    else if (tab === 'actions') body.append(actionsView(r, doc.actions));
+    let body = { kind: 'none' };
+    if (tab === 'minutes') body = { kind: 'minutes', props: minutesDoc(r, doc.minutes, reviewOpen, () => { tab = 'review'; draw(); }, matcher) };
+    else if (tab === 'review') body = { kind: 'review', props: reviewView(r, doc) };
+    else if (tab === 'actions') body = { kind: 'actions', props: actionsView(r, doc.actions) };
     else if (tab === 'clean' || tab === 'raw') {
       const text = tab === 'clean' ? doc.scriptClean : doc.transcript;
-      const bar = h('div', { class: 'tab-bar' },
-        h('span', null, tab === 'clean' ? '맞장구·하다 만 말·잡담을 쳐내고, 같은 사람이 이어서 한 말을 한 줄로 합친 스크립트입니다.' : '녹취 그대로의 스크립트입니다.'),
-        text && h('button', { class: 'btn', onclick: async (e) => {
-          const btn = e.currentTarget; // await 뒤에는 e.currentTarget이 null
-          await api.copy(scriptMarkdown(text));
-          toast(`${tab === 'clean' ? '정리본' : '원본'}을 복사했습니다`, '마크다운 형식');
-          btn.blur();
-        } }, icon('i-copy'), tab === 'clean' ? '정리본 복사' : '원본 복사'));
-      body.append(bar);
-      if (text) body.append(scriptView(r, parseScript(text), color, matcher));
-      else {
-        const make = h('button', { class: 'btn primary' }, '정리본 만들기');
-        make.onclick = async () => {
-          make.classList.add('busy'); // 흐리게 하지 않고 진행 중 표시
-          make.textContent = '만드는 중… (1~2분)';
-          await api.cleanScript(r.dir);
-          docCache.delete(id);
-          draw();
-        };
-        body.append(h('div', { class: 'state' }, h('b', null, '정리본이 아직 없습니다'), h('p', null, '대화 흐름과 상관없는 말을 쳐낸 정리본을 만듭니다.'), h('div', { class: 'row' }, make)));
-      }
-    } else if (tab === 'speakers') body.append(speakersView(r, raw, color));
+      body = { kind: 'script', clean: tab === 'clean', props: text ? scriptView(r, parseScript(text), color, matcher) : null, making: false };
+    } else if (tab === 'speakers') body = { kind: 'speakers', props: speakersView(r, raw, color) };
 
-    fill(el, 
-      head,
-      order.length > 0 && speakerBar(r, order, color),
-      player,
-      compressNote(r),
-      s !== 'done' && stateCard(r),
-      tabs.length > 0 && h('div', { class: 'tabs', role: 'tablist' }, tabs.map(([tid, label, n]) =>
-        h('button', { class: 'tab', role: 'tab', 'aria-selected': String(tid === tab), onclick: () => { tab = tid; draw(); } }, label, n && num(n)))),
+    show({
+      head: {
+        title,
+        when: FULL.format(new Date(r.startedAt)),
+        length: clock(r.durationSec),
+        speakers: m?.speakers || null,
+        speakersHint: r.speakersHint ? speakerLabel(String(r.speakersHint)) : null,
+        review: s === 'done' && r.review ? { finalized: Boolean(r.review.finalized), open: r.review.open ?? 0 } : null,
+        provider: s === 'done' && m.provider ? PROVIDER_NAME[m.provider] ?? m.provider : null,
+        model: m?.timing?.model || null,
+        audio: r.audio?.bytes > 0 ? `녹음 ${sizeLabel(r.audio.bytes)}${r.audio.compressed ? ' · 압축함' : ''}` : null,
+        diarizeError: m?.diarizeError || null,
+      },
+      menu: meetingMenu(r, doc),
+      speakerBar: order.length > 0 ? speakerBar(r, order, color) : null,
+      player: r.firstFile ? { playback, raw, color, durationSec: r.durationSec, missing: doc.speech?.missing ?? [] } : null,
+      compress: compressNote(r),
+      state: s !== 'done' ? stateCard(r) : null,
+      tabs,
+      tab,
       body,
-      chat && chatDrawer(r, doc),
-      flowChat && flowChatDrawer(r, doc));
+      chat: chat ? chatDrawer(r, doc) : null,
+      flowChat: flowChat ? flowChatDrawer(r, doc) : null,
+    });
     if (findBar) runFind({ keep: true }); // 탭을 바꾸거나 다시 그려도 찾던 말을 그대로 표시
   }
 
@@ -932,12 +966,12 @@ function pageMeeting(id) {
   });
 
   function scriptView(r, lines, color, matcher = null) {
-    return islands.mount(h('div', { class: 'script' }), ScriptBody, { lines, color, playback, matcher, openTerm: (anchor, t) => termCard(anchor, t), rename: renameTo(r) });
+    return { lines, color, playback, matcher, openTerm: (anchor, t) => termCard(anchor, t), rename: renameTo(r) };
   }
 
   function speakersView(r, raw, color) {
-    if (!speakerStats(raw, r.durationSec).length) return h('div', { class: 'state' }, h('b', null, '화자 구분 결과가 없습니다'), h('p', null, '설정 › 회의에서 화자 구분을 켜고 회의록을 다시 만들면 누가 말했는지 표시됩니다.'));
-    return islands.mount(h('div', { class: 'spk-list' }), SpeakersBody, { raw, total: r.durationSec, color, seek: (sec) => seek(sec), rename: renameTo(r) });
+    if (!speakerStats(raw, r.durationSec).length) return null; // '화자 구분 결과가 없습니다'
+    return { raw, total: r.durationSec, color, seek: (sec) => seek(sec), rename: renameTo(r) };
   }
 
   // ── 용어 설명: 회의록·정리본·원본의 용어에 밑줄, 누르면 한 줄 설명 카드 (어디에 긋는지는 entities/minutes) ──────────
@@ -998,7 +1032,7 @@ function pageMeeting(id) {
 
   // ── 액션 (src/actions.js): 할 일(약속·맡은 일·다짐)과 받은 조언·알아 둘 것. 회의록과 따로 actions.json에 ──
   function actionsView(r, data) {
-    return islands.mount(h('div', { class: 'acts' }), ActionsBody, {
+    return {
       data,
       seek: r.firstFile ? (sec) => seek(sec) : null,
       jobs,
@@ -1011,7 +1045,7 @@ function pageMeeting(id) {
         docCache.delete(r.id);
         loadHistory();
       },
-    });
+    };
   }
 
   async function findActions(r) {
@@ -1112,7 +1146,7 @@ function pageMeeting(id) {
     const f = doc.flow?.flows?.find((x) => x.id === flowChat.flowId);
     if (!f) return null;
     const fc = flowChat;
-    return islands.mount(h('aside', { class: 'chat', 'aria-label': '흐름도 채팅' }), FlowChatBody, {
+    return {
       f,
       messages: [...fc.messages],
       busy: fc.busy,
@@ -1149,7 +1183,7 @@ function pageMeeting(id) {
         }
         refreshDoc(r);
       },
-    });
+    };
   }
 
   // 본문·스크립트에서 단어를 드래그하면 '설명 추가' 버튼을 띄운다
@@ -1204,7 +1238,7 @@ function pageMeeting(id) {
     const cached = docCache.get(r.id);
     const flowData = cached?.flow;
     const actData = cached?.actions;
-    return islands.mount(h('article', { class: 'doc' }), MinutesBody, {
+    return {
       md,
       seek: r.firstFile ? (sec) => seek(sec) : null,
       matcher,
@@ -1218,12 +1252,12 @@ function pageMeeting(id) {
         const updated = await api.toggleTodo(r.dir, index, done);
         docCache.set(r.id, { ...docCache.get(r.id), minutes: updated });
       },
-    });
+    };
   }
 
   // 화자 이름 정하기: 회의록·스크립트의 '화자 N'을 실제 이름으로 바꾼다
   function speakerBar(r, order, color) {
-    return islands.mount(h('div', { class: 'spk-bar' }), SpeakerBarBody, { order, color, rename: renameTo(r) });
+    return { order, color, rename: renameTo(r) };
   }
 
   async function refreshDoc(r) {
@@ -1340,7 +1374,7 @@ function pageMeeting(id) {
     const items = doc.review?.items ?? [];
     for (const rid of [...reviewSel]) if (!items.some((it) => it.id === rid && it.status === 'open')) reviewSel.delete(rid);
     const addKey = `${r.dir}|확인추가`;
-    return islands.mount(h('div', { class: 'review' }), ReviewBody, {
+    return {
       review: doc.review ?? null,
       minutes: doc.minutes ?? '',
       transcript: doc.transcript ?? '',
@@ -1415,7 +1449,7 @@ function pageMeeting(id) {
         },
         warn: (title) => toast(title, '', { bad: true }),
       },
-    });
+    };
   }
 
   function chatDrawer(r, doc) {
@@ -1428,7 +1462,7 @@ function pageMeeting(id) {
       list.forEach((f) => c.applying.delete(f.id));
       draw();
     };
-    return islands.mount(h('aside', { class: 'chat', 'aria-label': '확인 필요 채팅' }), ReviewChatBody, {
+    return {
       items,
       messages: [...c.messages],
       busy: c.busy,
@@ -1460,15 +1494,13 @@ function pageMeeting(id) {
         if (chat === c) draw();
         setTimeout(() => document.querySelector('.chat textarea')?.focus(), 30);
       }),
-    });
+    };
   }
 
-  function speakersSelect() {
-    const sel = h('select', { 'aria-label': '참석 인원' }, h('option', { value: '' }, '자동'));
-    for (let n = 2; n <= 10; n++) sel.append(h('option', { value: String(n) }, `${n}명`));
-    const r = history.find((m) => m.id === id);
-    sel.value = r?.speakersHint ? String(r.speakersHint) : r?.minutes?.speakers ? String(r.minutes.speakers) : '';
-    return sel;
+  // 참석 인원 고르기의 처음 값: 지정한 인원, 없으면 회의록이 센 화자 수
+  function speakersValue() {
+    const r = rec();
+    return r?.speakersHint ? String(r.speakersHint) : r?.minutes?.speakers ? String(r.minutes.speakers) : '';
   }
 
   function remake(r, speakers) {
@@ -1478,36 +1510,15 @@ function pageMeeting(id) {
     setTimeout(loadHistory, 400);
   }
 
+  // 회의록이 없을 때의 카드: 만드는 중 · 짧은 녹음 · 쓰다가 멈춤(회의록만 다시 쓰기) · 없음/실패/들린 말 없음
   function stateCard(r) {
     const m = r.minutes;
     const s = m?.status;
-    if (BUSY.includes(s)) {
-      const p = progressOf(m);
-      return h('div', { class: 'state' }, h('b', null, '회의록을 만드는 중입니다'), h('p', null, `${statusText(m)} · 2시간 회의는 약 20분 걸립니다. 창을 닫아도 계속됩니다.`),
-        h('div', { class: `bar${p === null ? ' indeterminate' : ''}`, style: 'margin-top:14px' }, h('i', { style: `width:${Math.round((p ?? 0.3) * 100)}%` })));
-    }
-    if (s === 'short' || r.durationSec < 10) {
-      return h('div', { class: 'state' }, h('b', null, '짧은 녹음입니다'), h('p', null, '10초 미만 녹음은 회의록을 만들지 않습니다. 필요 없으면 오른쪽 위 ⋯ 메뉴에서 휴지통으로 옮기세요.'));
-    }
-    const sel = speakersSelect();
+    if (BUSY.includes(s)) return { kind: 'busy', text: statusText(m), progress: progressOf(m) };
+    if (s === 'short' || r.durationSec < 10) return { kind: 'short' };
     // 회의록 쓰기에서 멈췄으면(인터넷 끊김·앱 종료) 저장된 녹취로 회의록만 다시 쓴다
-    if (s === 'error' && m.stage === 'write') {
-      const resume = h('button', { class: 'btn primary', onclick: () => {
-        docCache.delete(r.id);
-        api.resumeMinutes(r.dir).catch((err) => toast('이어서 쓰지 못했습니다', err.message, { bad: true }));
-        setTimeout(loadHistory, 400);
-      } }, '회의록만 다시 쓰기');
-      const redo = h('button', { class: 'btn', onclick: () => remake(r, sel.value) }, '녹취부터 다시');
-      return h('div', { class: 'state' },
-        h('b', null, m.offline ? '인터넷 연결이 없어 회의록을 쓰지 못했습니다' : '회의록을 쓰다가 멈췄습니다'),
-        h('p', { class: 'err' }, m.offline ? '녹취와 화자 구분은 저장되어 있습니다. 연결되면 자동으로 이어서 씁니다.' : `${m.error} · 녹취와 화자 구분은 저장되어 있어 회의록만 다시 쓸 수 있습니다.`),
-        h('div', { class: 'row' }, resume, h('label', { class: 'hint', style: 'margin:0 0 0 12px' }, '참석 인원 '), sel, redo));
-    }
-    const go = h('button', { class: 'btn primary', onclick: () => remake(r, sel.value) }, s === 'error' ? '다시 만들기' : '회의록 만들기');
-    return h('div', { class: 'state' },
-      h('b', null, s === 'error' ? '회의록을 만들지 못했습니다' : s === 'empty' ? '들린 말이 없었습니다' : '아직 회의록이 없습니다'),
-      h('p', { class: s === 'error' ? 'err' : '' }, s === 'error' ? m.error : s === 'empty' ? '녹음에서 말소리를 찾지 못했습니다. 마이크를 확인해 주세요.' : '녹음은 저장되어 있습니다. 녹취·화자 구분·회의록을 만들 수 있습니다.'),
-      h('div', { class: 'row' }, h('label', { class: 'hint', style: 'margin:0' }, '참석 인원 '), sel, go));
+    if (s === 'error' && m.stage === 'write') return { kind: 'stalled', offline: Boolean(m.offline), error: m.error ?? '', speakersValue: speakersValue() };
+    return { kind: s === 'error' ? 'error' : s === 'empty' ? 'empty' : 'none', error: m?.error ?? '', speakersValue: speakersValue() };
   }
 
   // 녹음 압축 (AAC 96kbps): 확인을 마친 회의에만 안내한다. 고를 때까지 늘 보이고(모달 아님), '그대로 두기'면 숨기고 … 메뉴에 남긴다.
@@ -1542,74 +1553,22 @@ function pageMeeting(id) {
   }
   function compressNote(r) {
     if (!canCompress(r) || r.audio.declined) return null;
-    // 녹음에 딸린 안내라 재생 막대 바로 아래 한 줄로 (카드로 띄우면 회의 내용보다 눈에 띈다). 줄어드는 크기를 막대 길이로 보여 준다
-    const ratio = Math.max(0.04, Math.min(1, r.audio.estimate / r.audio.bytes));
-    return h('div', { class: 'compress-note', role: 'region', 'aria-label': '녹음 압축' },
-      h('div', { class: 'compress-text' },
-        h('div', { class: 'compress-head' },
-          h('b', null, '확인을 마쳤으니 녹음을 압축할까요?'),
-          h('span', { class: 'compress-size' },
-            h('span', { class: 'compress-bar', 'aria-hidden': 'true' }, h('i', { style: `width:${(ratio * 100).toFixed(1)}%` })),
-            `${sizeLabel(r.audio.bytes)} → 약 ${sizeLabel(r.audio.estimate)}`)),
-        h('span', { class: 'compress-detail' }, 'AAC 96kbps · 재생·구간 다시 받아쓰기·녹취부터 다시 만들기는 그대로 됩니다. 원본 WAV는 지웁니다.')),
-      h('div', { class: 'compress-acts' },
-        h('button', { class: `btn small${compressBusy ? ' busy' : ''}`, disabled: compressBusy, onclick: () => runCompress(r) }, compressBusy ? '압축하는 중…' : '압축하기'),
-        h('button', { class: 'btn small ghost', disabled: compressBusy, onclick: async () => {
-          await api.declineCompress(r.dir, true);
-          toast('원본 그대로 둡니다', '… 메뉴에서 언제든 압축할 수 있습니다');
-          await loadHistory();
-        } }, '그대로 두기')));
+    return { bytes: r.audio.bytes, estimate: r.audio.estimate, busy: compressBusy };
   }
 
-  function meetingActions(r, doc) {
+  // 오른쪽 위 버튼과 메뉴에 무엇을 보일지 (그리기·메뉴 열고 닫기는 pages/meeting)
+  function meetingMenu(r, doc) {
     const s = r.minutes?.status;
     const busy = BUSY.includes(s);
-    const wrap = h('div', { class: 'meet-acts' });
-    let menu = null;
-    const closeMenu = () => {
-      menu?.remove();
-      menu = null;
-      document.removeEventListener('mousedown', outside);
+    return {
+      minutes: Boolean(doc.minutes),
+      remake: !busy && Boolean(s) && s !== 'short',
+      busy,
+      transcript: Boolean(doc.transcript),
+      compress: canCompress(r) ? { bytes: r.audio.bytes, estimate: r.audio.estimate } : null,
+      compressBusy,
+      speakersValue: speakersValue(),
     };
-    const outside = (e) => !wrap.contains(e.target) && closeMenu();
-    const openMenu = (content) => {
-      if (menu) return closeMenu();
-      menu = h('div', { class: 'menu' }, content);
-      wrap.append(menu);
-      setTimeout(() => document.addEventListener('mousedown', outside));
-    };
-    if (doc.minutes) wrap.append(h('button', { class: 'btn', onclick: async (e) => {
-      const btn = e.currentTarget; // await 뒤에는 e.currentTarget이 null
-      await api.copy(doc.minutes);
-      toast('회의록을 복사했습니다', '마크다운 형식');
-      btn.blur();
-    } }, icon('i-copy'), '회의록 복사'));
-    if (!busy && s && s !== 'short') {
-      wrap.append(h('button', { class: 'btn', onclick: () => {
-        const sel = speakersSelect();
-        openMenu([h('label', null, '참석 인원', sel), h('button', { class: 'btn primary', onclick: () => { closeMenu(); remake(r, sel.value); } }, '녹취부터 다시 만들기')]);
-      } }, icon('i-redo'), '다시 만들기'));
-    }
-    wrap.append(h('button', { class: 'icon-btn', 'aria-label': '더 보기', onclick: () => openMenu([
-      h('button', { onclick: () => { closeMenu(); api.reveal(`${r.dir}/${r.firstFile}`); } }, icon('i-folder'), 'Finder에서 보기'),
-      doc.transcript && h('button', { onclick: () => { closeMenu(); api.copy(doc.transcript); toast('원본 스크립트를 복사했습니다'); } }, icon('i-copy'), '원본 스크립트 복사'),
-      canCompress(r) && h('button', { disabled: compressBusy, onclick: () => { closeMenu(); runCompress(r); } }, icon('i-folder'), `녹음 압축하기 (${sizeLabel(r.audio.bytes)} → 약 ${sizeLabel(r.audio.estimate)})`),
-      h('hr'),
-      h('button', { class: 'danger', disabled: busy, onclick: async () => {
-        closeMenu();
-        if (!(await confirmBox('이 회의를 휴지통으로 옮길까요?', '녹음 파일과 회의록이 함께 옮겨집니다. Finder 휴지통에서 되살릴 수 있습니다.', '휴지통으로'))) return;
-        try {
-          audio.pause();
-          await api.trashMeeting(r.dir);
-          toast('휴지통으로 옮겼습니다');
-          replaceRoute('#meetings');
-          loadHistory();
-        } catch (err) {
-          toast('옮기지 못했습니다', err.message, { bad: true });
-        }
-      } }, icon('i-trash'), '휴지통으로 옮기기'),
-    ]) }, icon('i-more')));
-    return wrap;
   }
 
   // 창 크기가 바뀌면 재생 막대를 다시 칠하고, 흐름도는 가로·세로 배치가 바뀔 수 있어 다시 그린다
@@ -1734,31 +1693,30 @@ function pageMeeting(id) {
   window.addEventListener('resize', onResize);
   document.addEventListener('keydown', onKey);
 
+  // 파일이 바뀌면 다시 읽기, 진행률·상태·확인 필요 숫자가 바뀐 경우에만 다시 그리기, 떠날 때 치우기
+  function reloadPage() {
+    docCache.delete(id);
+    draw();
+  }
+  function updatePage() {
+    const r = rec();
+    if (!r) return;
+    if (stateKey(r) !== lastKey) draw();
+  }
+  function leavePage() {
+    window.removeEventListener('resize', onResize);
+    document.removeEventListener('keydown', onKey);
+    closeTermCard();
+    removeAddBtn();
+    islands.clear();
+    closeFind();
+    document.removeEventListener('keydown', onFindKey);
+    api.watchMeeting(null);
+  }
+
   draw();
   api.watchMeeting(r0.dir); // 이 회의 파일이 바뀌면(앱 밖에서 고쳐도) 다시 읽어 그린다
-  return {
-    el,
-    reload: () => {
-      docCache.delete(id);
-      draw();
-    },
-    // 진행률·상태·확인 필요 숫자가 바뀐 경우에만 다시 그린다
-    update: () => {
-      const r = history.find((m) => m.id === id);
-      if (!r) return;
-      if (stateKey(r) !== lastKey) draw();
-    },
-    leave: () => {
-      window.removeEventListener('resize', onResize);
-      document.removeEventListener('keydown', onKey);
-      closeTermCard();
-      removeAddBtn();
-      islands.clear();
-      closeFind();
-      document.removeEventListener('keydown', onFindKey);
-      api.watchMeeting(null);
-    },
-  };
+  return handle;
 }
 
 // ── 사전 ────────────────────────────────────────────────────────────────
