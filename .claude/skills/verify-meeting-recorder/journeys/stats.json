@@ -1,0 +1,15 @@
+{
+  "about": "통계(React 화면): 위 칸 숫자, 최근 14일 막대에 마우스를 올리면 그날의 글자 수·횟수, 앱·언어 막대",
+  "noMeeting": true,
+  "env": { "STUB_DICTS": "12", "STUB_MANY": "3" },
+  "steps": [
+    { "go": "#stats" },
+    { "expect": { "text": "말로 쓴 글자" } },
+    { "expect": { "text": "최근 14일 받아쓴 글자" } },
+    { "expect": { "text": "어떤 언어로 썼나" } },
+    { "js": "(() => { const r = document.querySelectorAll('.chart rect.hit')[13]; r.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body })); return document.querySelectorAll('.chart rect.hit').length; })()" },
+    { "wait": 200 },
+    { "expect": { "text": "130자 · 13회" } },
+    { "snapshot": "stats" }
+  ]
+}

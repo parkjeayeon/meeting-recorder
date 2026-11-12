@@ -65,4 +65,5 @@ API 타입: `src/preload.js`에 함수를 더하면 그것만 고친다. 화면 
 
 ## 다음 단계
 - 첫 화면(사전)은 옮겼다(2026-11-12): `pages/dictionary` + `entities/vocabulary`(주인이 준 read·save, settings가 바뀌면 주인이 `changed()`) + `shared/ui`의 `Icon`. 옛 `pageDictionary`와 단어 나누기 코드는 지웠다(`vocabWords`는 창구를 읽음).
-- 다음: 통계 → 홈. 공통 부품(알림·확인 창)은 필요한 화면을 옮길 때 만든다.
+- 통계도 옮겼다(2026-11-12): 읽기 창구 `shared/lib`의 `createSource(read, deps)` — 주인의 값 참조가 그대로면 같은 스냅샷. 표시 함수·받아쓰기 요약은 옛 코드와 한 벌.
+- 다음: 홈. 공통 부품(알림·확인 창)은 필요한 화면을 옮길 때 만든다.

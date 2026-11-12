@@ -17,6 +17,7 @@
 ## 순서
 0. **안전망** (끝남, 2026-11-11): 기능 시험 45건, 검증 스킬과 흐름 7개(처음 설정·가져오기처럼 시험이 없던 곳 포함).
 1. **도구와 이음새** (끝남, 2026-11-12, [renderer-architecture.md](renderer-architecture.md)): 화면을 Vite + React + TypeScript로 묶는다(`lib/renderer/`, 문서는 그대로 `src/renderer/index.html`). 개발 서버는 쓰지 않고 지켜보며 묶기 + 창 새로 고침(`npm run dev`) — 처음 계획의 "개발은 Vite 서버"를 바꿨다(출처가 둘이 되고 시험이 안 도는 경로가 생겨서). preload 객체에서 API 타입을 끌어냄, 화면이 `src/core` 원본을 가져다 씀, 옛 코드는 `legacy/`에 격리, 이음새 `reactPage`, 경계 검사. 시험 고치지 않고 통과, 화면 캡처 40장 픽셀까지 같음.
+   - **통계** (끝남, 2026-11-12): `pages/stats`(막대 그래프 포함) + 읽기 창구 `createSource`(주인은 옛 코드의 history·dictTotals, `loadHistory`에서 `changed()`). 받아쓰기 요약 계산(`entities/dictation`)과 숫자·시간 표시(`shared/lib`: fmt·clock·seconds·DAY·PROVIDER_NAME)는 옛 코드도 같이 쓴다 — 두 벌 없음.
    - **사전** (끝남, 2026-11-12): 첫 React 화면. `ROUTES`의 한 줄 + 단어 목록 창구(`entities/vocabulary`, 상태 주인은 아직 옛 코드의 settings) + 아이콘 부품(`shared/ui`). 시험 고치지 않고 통과, 화면 캡처 같음.
 2. **공통 부품**: 버튼·알림·툴팁·확인 창·아이콘, 전역 상태(회의 목록·진행 중 작업·질문 작업·문서 캐시)를 한곳에, IPC 소식도 한곳에서. CSS는 조각마다(CSS Modules) — 클래스 이름이 겹쳐 모양이 깨진 일(`.ghost`, `.todo`)을 구조로 막는다. 색·간격 변수는 공용.
 3. **화면을 작은 것부터**: 사전·통계 → 홈 → 받아쓰기 → 회의 목록 → 질문으로 찾기(전역) → **회의 페이지**(재생 막대·탭·확인 필요·채팅·흐름도·용어·액션·⌘F를 조각으로) → 설정·처음 설정 → 옛 `app.js` 지우기.
