@@ -74,6 +74,12 @@ function CountPop({ scope, setScope, close }: { readonly scope: AskScope; readon
     const t = setTimeout(() => input.current?.focus());
     return () => clearTimeout(t);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- 열 때 한 번
+  useNativeEvent(input, 'keydown', (_el, e) => {
+    if ((e as KeyboardEvent).key === 'Enter') {
+      e.preventDefault();
+      close();
+    }
+  });
   useNativeEvent(input, 'input', (el) => {
     const v = el.value.replace(/\D/g, '').replace(/^0+/, '');
     if (v !== el.value) el.value = v; // 숫자만
@@ -92,12 +98,7 @@ function CountPop({ scope, setScope, close }: { readonly scope: AskScope; readon
         ))}
       </div>
       <label className="field">
-        <input ref={input} type="text" inputMode="numeric" placeholder="직접 입력" maxLength={5} aria-label="최근 몇 개" onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            close();
-          }
-        }} />
+        <input ref={input} type="text" inputMode="numeric" placeholder="직접 입력" maxLength={5} aria-label="최근 몇 개" />
         개
       </label>
     </div>

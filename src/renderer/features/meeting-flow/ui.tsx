@@ -142,6 +142,13 @@ export function FlowChatBody({ f, messages, busy, draft, setDraft, send, apply, 
     const text = input.current!.value.trim();
     if (text && !busy) send(text);
   };
+  useNativeEvent(input, 'keydown', (_el, e) => {
+    const k = e as KeyboardEvent;
+    if (k.key === 'Enter' && !k.shiftKey && !k.isComposing) {
+      k.preventDefault();
+      go();
+    }
+  });
   return (
     <>
       <header className="chat-head">
@@ -175,12 +182,7 @@ export function FlowChatBody({ f, messages, busy, draft, setDraft, send, apply, 
         {busy ? <div className="msg assistant busy"><div className="msg-text">녹취를 다시 보고 있습니다…</div></div> : null}
       </div>
       <div className="chat-input">
-        <textarea ref={input} rows={2} placeholder="예: 마지막에 백업 단계도 넣어 주세요" onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-            e.preventDefault();
-            go();
-          }
-        }} />
+        <textarea ref={input} rows={2} placeholder="예: 마지막에 백업 단계도 넣어 주세요" />
         <button className="icon-btn send" aria-label="보내기" disabled={busy || undefined} onClick={go}><Icon id="i-send" /></button>
       </div>
     </>
