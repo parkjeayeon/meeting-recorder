@@ -109,7 +109,8 @@ STUB_DICTS=3 STUB_HISTORY_DICTS=1 STUB_MANY=12 STUB_BUSY=1 STUB_DICT_EDITS=1 STU
 ROOT=/tmp/wt-main STUB_DICTS=3 … npx electron scripts/dev/dump-view.js '#home' /tmp/base.html && diff /tmp/base.html /tmp/after.html
 git worktree remove --force /tmp/wt-main
 ```
-HTML 차이는 React 껍데기(`<div style="display: contents;">`) 한 겹뿐이어야 한다. 캡처 비교는 같은 브랜치끼리도 회의 화면에서 몇 픽셀 흔들릴 수 있다 — 같은 쪽을 두 번 찍어 흔들림인지 먼저 본다. 화면 배율을 바꾸면 기준을 다시 찍는다.
+누른 뒤의 모습은 `DUMP_JS='…'`로(예: 원문 펼치기, 검색어 넣기, 끝까지 스크롤). 가짜 기록의 시각은 지금 시각 기준이라 두 쪽을 같은 분 안에 찍는다.
+HTML 차이는 React 껍데기(`<div style="display: contents;">`) 한 겹뿐이어야 한다(그 밖에 알고 둔 것: React는 `<input>`의 `type`을 맨 뒤에 쓴다 — 속성 순서뿐). 캡처 비교는 같은 브랜치끼리도 회의 화면에서 몇 픽셀 흔들릴 수 있다 — 같은 쪽을 두 번 찍어 흔들림인지 먼저 본다. 화면 배율을 바꾸면 기준을 다시 찍는다.
 
 가짜 API는 `src/preload.js`의 함수 이름을 읽어 같은 모양을 만들므로, 새 IPC를 추가하면 자동으로 따라온다. 예시 값이 필요한 함수만 `stub-preload.js`의 `impl`에 넣는다.
 

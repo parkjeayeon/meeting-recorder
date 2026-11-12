@@ -1,10 +1,11 @@
 // 홈 (옛 pageHome을 그대로 옮김: 같은 글자·같은 클래스). 값은 상태 주인이 준 창구(source)로 읽고, 할 일은 주인이 준 명령(actions)으로.
 import { useSyncExternalStore, type ReactNode } from 'react';
 import { BUSY, canCompressNow, JobCard, meetTitle, RowState, type MeetingItem } from '../../entities/meeting/index.ts';
+import type { Issue } from '../../entities/issue/index.ts';
 import { DictationItem } from '../../widgets/dictation-item/index.ts';
 import { clock, dayLabel, fmt, sizeLabel, TIME, WEEKDAY, type Source } from '../../shared/lib/index.ts';
 import { Icon, Num } from '../../shared/ui/index.tsx';
-import { homeView, type HomeInput, type Issue, type MeetFilter, type Step, type Storage, type TodoRow } from './model.ts';
+import { homeView, type HomeInput, type MeetFilter, type Step, type Storage, type TodoRow } from './model.ts';
 
 export interface HomeActions {
   readonly openSettings: (sec: string) => void;
@@ -177,7 +178,7 @@ export function HomePage({ source, actions }: { readonly source: Source<HomeInpu
             <Section title="최근 받아쓰기" more={['#dictations', '모두 보기']}>
               <div className="dlist">
                 {v.recentDicts.map((r) => (
-                  <DictationItem key={r.id} r={r} fresh={r.id === input.freshId} plain={!input.showMarks} rawOpen={input.openRaw.has(r.id)} onCopy={actions.copy} onRepaste={actions.repaste} />
+                  <DictationItem key={r.id} r={r} compact fresh={r.id === input.freshId} plain={!input.showMarks} rawOpen={input.openRaw.has(r.id)} onCopy={actions.copy} onRepaste={actions.repaste} />
                 ))}
               </div>
             </Section>

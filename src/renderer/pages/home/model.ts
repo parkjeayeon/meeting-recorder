@@ -1,17 +1,8 @@
 // 홈에 보일 것을 계산한다 (그리기와 따로라 시험하기 쉽다). 값은 상태 주인(옛 화면 코드)이 준 그대로 읽기만 한다.
 import { dictSummary, type DictRecord, type DictSummary, type DictTotals } from '../../entities/dictation/index.ts';
 import { BUSY, canCompressNow, meetState, meetTitle, type MeetingItem } from '../../entities/meeting/index.ts';
+import type { Issue } from '../../entities/issue/index.ts';
 import { dayKey, sizeLabel } from '../../shared/lib/index.ts';
-
-/** 확인해야 할 문제 (권한·엔진·토큰·녹음 폴더). sec: 설정의 어느 칸인지 */
-export interface Issue {
-  readonly title: string;
-  readonly detail?: string | null;
-  readonly action?: string | null;
-  readonly onAction?: () => void;
-  readonly dismiss?: boolean;
-  readonly sec?: string;
-}
 
 export interface HomeInput {
   readonly meetings: readonly MeetingItem[];

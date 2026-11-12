@@ -1,5 +1,6 @@
 // 화면 하나의 #view HTML을 찍는다 — React로 옮긴 화면이 옛 화면과 같은 마크업인지 main과 비교할 때 (docs/testing.md).
-//   [ROOT=다른 작업 폴더] [STUB_…=…] npx electron scripts/dev/dump-view.js '#home' /tmp/home.html
+//   [ROOT=다른 작업 폴더] [STUB_…=…] [DUMP_JS='…'] npx electron scripts/dev/dump-view.js '#home' /tmp/home.html
+// DUMP_JS: 화면을 연 뒤 찍기 전에 돌릴 코드 (원문 펼치기·검색 등 누른 뒤의 모습). 돌린 뒤 0.8초 기다린다
 // 가짜 API(stub-preload)로 띄우고, 태그마다 줄을 나눠 저장한다. ROOT를 주면 그 폴더의 화면 묶음·가짜 API로 (main을 꺼낸 작업 폴더 등)
 const { app, BrowserWindow } = require('electron');
 const fs = require('fs');
@@ -15,7 +16,9 @@ app.whenReady().then(async () => {
   w.webContents.on('console-message', (e) => e.level === 'error' && console.log('CONSOLE', e.message));
   await w.loadFile(path.join(root, 'src/renderer/index.html'));
   await new Promise((r) => setTimeout(r, 1500));
-  const html = await w.webContents.executeJavaScript(`location.hash=${JSON.stringify(hash)}; new Promise((r) => setTimeout(() => r(document.getElementById('view').innerHTML), 600))`);
+  await w.webContents.executeJavaScript(`location.hash=${JSON.stringify(hash)}; new Promise((r) => setTimeout(r, 600))`);
+  if (process.env.DUMP_JS) await w.webContents.executeJavaScript(`(async () => { ${process.env.DUMP_JS} })().then(() => new Promise((r) => setTimeout(r, 800)))`);
+  const html = await w.webContents.executeJavaScript(`document.getElementById('view').innerHTML`);
   fs.writeFileSync(out, html.replace(/></g, '>\n<'));
   app.exit(0);
 });

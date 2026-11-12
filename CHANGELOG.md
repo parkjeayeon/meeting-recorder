@@ -11,6 +11,9 @@
 - **main을 새로 받으면 화면이 묶이지 않음** (`Could not resolve '../shared/lib/index.ts'`) — 원인: `.gitignore`의 `lib/`(빌드 결과 폴더용)가 `src/renderer/shared/lib/`까지 가려, 통계 화면을 옮길 때 만든 `shared/lib/index.ts`가 커밋되지 않았다. 내 작업 폴더엔 파일이 있어 시험·설치는 통과했다. 고친 방법: 규칙을 루트만 가리는 `/lib/`로, 파일을 커밋. 확인: main을 새로 꺼낸 작업 폴더에서 화면 묶기·타입 검사·단위 시험 통과, 같은 규칙에 가려진 다른 폴더 없음.
 
 ### 기능
+- **받아쓰기 기록 화면을 React로 옮김** (동작·겉모습 그대로): `pages/dictations` + 창구 `dictationsSource`·명령 `dictationsActions`. 30개씩 이어 받기·늦게 온 답 버리기·기록이 바뀌면 보던 만큼 다시 받기·0.3초 뒤 전체 검색을 그대로. 받아쓰기 한 줄(`widgets/dictation-item`)에 원문 보기·지우기·인식·다듬기 시간을 더하고 옛 `dictItem`·`copyButton`·`markedText`·쓰지 않던 `groupByDay` 삭제. `SearchBox`, 녹음 폴더 빈 화면(`entities/issue`).
+  - 확인: 화면 48·기능 46·흐름 11(받아쓰기 흐름 추가)을 고치지 않고 통과, `#view` HTML이 10가지 상태에서 main과 같음, 화면 캡처(받아쓰기 화면을 캡처 목록에 새로 넣음) main과 같음, 단위 시험 7건(이어 받기·다시 받기·검색·늦은 답 버리기·명령).
+  - 알게 된 것: 검색 칸의 `spellcheck: false`가 옛 화면에서 한 번도 적용되지 않았다(도우미가 `false`를 건너뜀) — 동작을 바꾸지 않으려고 그대로 두고 known-issues에 적음.
 - **홈 화면을 React로 옮김** (동작·겉모습 그대로): `pages/home` + 창구 `homeSource`·명령 `homeActions`(상태 주인은 아직 옛 코드). 회의 상태와 그 말(`entities/meeting`), 교정 부호 계산(`markParts`), 받아쓰기 한 줄(`widgets/dictation-item`), 복사 단추를 새로 두고 옛 코드도 같은 계산을 쓴다 — 옛 `pageHome`·`homeTodo`·`storagePanel`·`jobCard`·`diffWords` 등 삭제.
   - 확인: 화면 48·기능 46·흐름 10(홈 흐름 추가)을 고치지 않고 통과, 화면 캡처 60장(기본 라이트·다크 40 + 회의·받아쓰기가 많은 20) main과 같음, `#view` HTML이 네 가지 가짜 데이터(만드는 중 카드·교정 부호·많이 고침·다듬기 실패·폴더 막힘 포함)에서 main과 한 글자도 다르지 않음(React 껍데기 한 겹만), 홈 계산·교정 부호·화면 단위 시험 11건.
   - 검증 도구: 가짜 데이터 `STUB_BUSY`(만드는 중 회의)·`STUB_DICT_EDITS`(다듬기가 고친 받아쓰기) — 지금까지 어느 시험도 그리지 않던 갈래. `scripts/dev/dump-view.js`(화면 HTML 찍기).

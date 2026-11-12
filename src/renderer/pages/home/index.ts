@@ -1,2 +1,2 @@
 export { HomePage, type HomeActions } from './ui.tsx';
-export type { HomeInput, Issue, MeetFilter } from './model.ts';
+export type { HomeInput, MeetFilter } from './model.ts';

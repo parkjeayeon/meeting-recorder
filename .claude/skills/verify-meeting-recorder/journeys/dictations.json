@@ -1,0 +1,22 @@
+{
+  "about": "받아쓰기 기록(React 화면): 원문 보기, 확인 창을 거쳐 지우기(목록에서 빠짐), 전체에서 검색, 복사",
+  "noMeeting": true,
+  "env": { "STUB_DICTS": "4", "STUB_DICT_EDITS": "1" },
+  "steps": [
+    { "go": "#dictations" },
+    { "expect": { "text": "전체 4개" } },
+    { "expect": { "text": "다듬기 실패: 시간 초과" } },
+    { "click": "원문", "role": "button" },
+    { "expect": { "text": "음 다음 주에 배포 일정 잡아 주세요" } },
+    { "click": "삭제", "role": "button" },
+    { "confirm": true },
+    { "expect": { "called": "deleteDictation", "args": ["d0000"] } },
+    { "until": "전체 3개" },
+    { "expect": { "noText": "다음 주에 배포 일정을 잡아" } },
+    { "fill": "받아쓴 말, 앱 이름 검색", "value": "받아쓴 글 3" },
+    { "until": "\"받아쓴 글 3\" 1개" },
+    { "click": "복사", "role": "button", "exact": true },
+    { "expect": { "called": "copy", "args": ["받아쓴 글 3번입니다"] } },
+    { "snapshot": "search" }
+  ]
+}
