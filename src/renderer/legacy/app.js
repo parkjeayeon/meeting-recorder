@@ -1,5 +1,4 @@
 import { Recorder } from './recorder.js';
-import { startOnboarding } from './onboarding.js';
 import { reactPage, mountReact } from '../shared/page-host/index.tsx'; // React로 옮긴 화면을 옛 라우터에 끼운다 (docs/renderer-architecture.md)
 import { createVocabularyModel } from '../entities/vocabulary/index.ts';
 import { DictionaryPage } from '../pages/dictionary/index.ts';
@@ -15,7 +14,7 @@ import { createToaster, confirmBox, installTooltips } from '../shared/ui/index.t
 import { statusText } from '../entities/meeting/index.ts';
 import { createIssueStore } from '../entities/issue/index.ts';
 import { createSettingsStore } from '../entities/settings/index.ts';
-import { mountSettings } from '../features/configuration/index.ts';
+import { mountSettings, startOnboarding } from '../features/configuration/index.ts';
 
 const api = window.recorderApi;
 const settingsStore = createSettingsStore(api);
@@ -872,7 +871,7 @@ const tapListeners = new Set();
 api.onOnboardingFn((s) => fnListeners.forEach((fn) => fn(s)));
 api.onOnboardingTap(() => tapListeners.forEach((fn) => fn()));
 const onboardingCtx = {
-  api, h, icon, toast, setupListeners: settingsUi.setupListeners, fnListeners, tapListeners,
+  api, toast, setupListeners: settingsUi.setupListeners, fnListeners, tapListeners,
   getMic: () => $('micSelect').value,
   setMic: (id) => {
     $('micSelect').value = id;
