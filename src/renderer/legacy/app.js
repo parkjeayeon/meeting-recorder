@@ -14,6 +14,7 @@ import { GlossaryBody, TermCardBody, ExplainAddBody } from '../features/meeting-
 import { ActionsBody, ActionsRowBody } from '../features/meeting-actions/index.ts';
 import { FlowsBody, FlowRowBody, FlowChatBody, flowSvgFile } from '../features/meeting-flow/index.ts';
 import { ReviewBody, ReviewChatBody } from '../features/meeting-review/index.ts';
+import { createPlayback, PlayerBody, ScriptBody, SpeakerBarBody, SpeakersBody } from '../features/meeting-player/index.ts';
 import { fmt, DAY, TIME, WEEKDAY, PROVIDER_NAME, clock, seconds, sizeLabel, dayKey, dayLabel, createSource, createJobs } from '../shared/lib/index.ts'; // 숫자·시간 표시는 한 벌 (React 화면과 같이 씀)
 import { dictSummary, charsOf } from '../entities/dictation/index.ts';
 import { BUSY, meetState, meetTitle, progressOf, statusText, busyShort, canCompressNow } from '../entities/meeting/index.ts';
@@ -772,8 +773,8 @@ const runJob = (key, label, fn) => jobs.run(key, label, fn);
 const audio = new Audio(); // 문서 밖에 두어 화면을 다시 그려도 재생이 끊기지 않는다
 audio.preload = 'metadata';
 let audioFor = null;
-let follow = store('follow', true);
-const SPEEDS = [1, 1.25, 1.5, 2];
+// 재생 상태(시각·멈춤·속도·따라가기)를 재생 막대와 스크립트가 같이 구독한다 (features/meeting-player)
+const playback = createPlayback(audio, { initial: store('follow', true), save: (on) => remember('follow', on) });
 
 let openReviewNext = null; // 알림에서 '확인하기'로 들어오면 확인 필요 탭을 연다
 
@@ -802,10 +803,6 @@ function pageMeeting(id) {
   let lastKey = null;
   // 회의록 진행 상태와 확인 필요 숫자(제목 아래 배지)가 바뀌면 다시 그린다
   const stateKey = (r) => JSON.stringify([r.minutes?.status, r.minutes?.progress, r.minutes?.diarizing, r.minutes?.updatedAt, r.minutes?.title, r.review?.open, r.review?.finalized, r.audio?.bytes, r.audio?.declined]); // 녹음 압축·그대로 두기도 다시 그린다
-  let lineEls = [];
-  let lineTimes = [];
-  let playingIdx = -1;
-  let player = null;
 
   const r0 = history.find((m) => m.id === id);
   if (!r0) {
@@ -823,10 +820,7 @@ function pageMeeting(id) {
     audioFor = id;
   }
 
-  const seek = (sec, play = true) => {
-    audio.currentTime = sec;
-    if (play) audio.play();
-  };
+  const seek = (sec, play = true) => playback.seek(sec, play);
 
   async function draw() {
     const r = history.find((m) => m.id === id);
@@ -876,17 +870,14 @@ function pageMeeting(id) {
           m?.diarizeError && h('span', { class: 'tag accent' }, `화자 구분 실패: ${m.diarizeError}`))),
       meetingActions(r, doc));
 
-    lineEls = [];
-    lineTimes = [];
-    playingIdx = -1;
-    player = r.firstFile ? playerBar(r, raw, color, doc.speech) : null;
+    closeTermCard();
+    removeAddBtn();
+    islands.clear(); // 앞서 그린 React 부품을 모두 내리고 새로
+    const player = r.firstFile ? islands.mount(h('div', { class: 'player' }), PlayerBody, { playback, raw, color, durationSec: r.durationSec, missing: doc.speech?.missing ?? [] }) : null;
 
     const body = h('div');
     findScope = body;
     const matcher = termMatcher(doc.glossary?.terms);
-    closeTermCard();
-    removeAddBtn();
-    islands.clear();
     if (tab === 'minutes') body.append(minutesDoc(r, doc.minutes, reviewOpen, () => { tab = 'review'; draw(); }, matcher));
     else if (tab === 'review') body.append(reviewView(r, doc));
     else if (tab === 'actions') body.append(actionsView(r, doc.actions));
@@ -901,7 +892,7 @@ function pageMeeting(id) {
           btn.blur();
         } }, icon('i-copy'), tab === 'clean' ? '정리본 복사' : '원본 복사'));
       body.append(bar);
-      if (text) body.append(scriptView(r, parseScript(text), color, seek, matcher));
+      if (text) body.append(scriptView(r, parseScript(text), color, matcher));
       else {
         const make = h('button', { class: 'btn primary' }, '정리본 만들기');
         make.onclick = async () => {
@@ -918,7 +909,7 @@ function pageMeeting(id) {
     fill(el, 
       head,
       order.length > 0 && speakerBar(r, order, color),
-      player?.el,
+      player,
       compressNote(r),
       s !== 'done' && stateCard(r),
       tabs.length > 0 && h('div', { class: 'tabs', role: 'tablist' }, tabs.map(([tid, label, n]) =>
@@ -926,61 +917,26 @@ function pageMeeting(id) {
       body,
       chat && chatDrawer(r, doc),
       flowChat && flowChatDrawer(r, doc));
-    syncPlaying(true);
     if (findBar) runFind({ keep: true }); // 탭을 바꾸거나 다시 그려도 찾던 말을 그대로 표시
   }
 
-  function scriptView(r, lines, color, seekTo, matcher = null) {
-    const box = h('div', { class: 'script' });
-    for (const l of lines) {
-      const row = h('div', { class: 'sline' },
-        h('button', { class: 'stime', title: '여기부터 듣기', onclick: () => l.at !== null && seekTo(l.at) }, l.stamp),
-        l.who ? h('button', { class: 'who', title: '눌러서 이름 바꾸기', onclick: (e) => renameSpeaker(e.currentTarget, r, l.who) }, h('i', { style: `background:${color(l.who)}` }), l.who) : h('span'),
-        h('span', { class: 'ssaid' }, ...withTerms(l.said, matcher)));
-      box.append(row);
-      if (l.at !== null) {
-        lineEls.push(row);
-        lineTimes.push(l.at);
-      }
+  // 스크립트·화자 그리기는 features/meeting-player. 이름 바꾸기는 여기서 파일에 (끝나면 다시 그린다)
+  const renameTo = (r) => (from, to) => queueMicrotask(async () => {
+    if (to) {
+      await api.renameSpeaker(r.dir, from, to);
+      docCache.delete(r.id);
+      toast(`'${from}'을 '${to}'(으)로 바꿨습니다`, '회의록과 스크립트에 모두 반영했습니다');
     }
-    return box;
-  }
+    draw();
+  });
 
-  function renameSpeaker(btn, r, from) {
-    const input = h('input', { type: 'text', class: 'rename', value: from });
-    btn.replaceWith(input);
-    input.focus();
-    input.select();
-    let done = false;
-    const finish = async (save) => {
-      if (done) return;
-      done = true;
-      const to = input.value.trim();
-      if (save && to && to !== from) {
-        await api.renameSpeaker(r.dir, from, to);
-        docCache.delete(r.id);
-        toast(`'${from}'을 '${to}'(으)로 바꿨습니다`, '회의록과 스크립트에 모두 반영했습니다');
-      }
-      draw();
-    };
-    input.onkeydown = (e) => {
-      if (e.key === 'Enter') finish(true);
-      if (e.key === 'Escape') finish(false);
-    };
-    input.onblur = () => finish(true);
+  function scriptView(r, lines, color, matcher = null) {
+    return islands.mount(h('div', { class: 'script' }), ScriptBody, { lines, color, playback, matcher, openTerm: (anchor, t) => termCard(anchor, t), rename: renameTo(r) });
   }
 
   function speakersView(r, raw, color) {
-    const stats = speakerStats(raw, r.durationSec);
-    const total = stats.reduce((n, s) => n + s.sec, 0) || 1;
-    if (!stats.length) return h('div', { class: 'state' }, h('b', null, '화자 구분 결과가 없습니다'), h('p', null, '설정 › 회의에서 화자 구분을 켜고 회의록을 다시 만들면 누가 말했는지 표시됩니다.'));
-    return h('div', { class: 'spk-list' },
-      h('p', { class: 'hint', style: 'margin:0 0 6px' }, '이름을 누르면 바꿀 수 있습니다. 말한 시간은 스크립트 줄 간격으로 어림한 값입니다.'),
-      stats.map((s) => h('div', { class: 'spk' },
-        h('div', { class: 'spk-name' }, h('i', { style: `background:${color(s.who)}` }), h('button', { onclick: (e) => renameSpeaker(e.currentTarget, r, s.who) }, s.who)),
-        h('div', { class: 'share' }, h('i', { style: `width:${(s.sec / total) * 100}%;background:${color(s.who)}` })),
-        h('span', { class: 'num' }, `${Math.round((s.sec / total) * 100)}%`),
-        h('div', { class: 'spk-sub' }, `약 ${clock(s.sec)} · ${fmt.format(s.lines)}줄 · 처음 말한 시각 `, h('button', { class: 'seek', onclick: () => seek(parseStamp(s.first)) }, s.first)))));
+    if (!speakerStats(raw, r.durationSec).length) return h('div', { class: 'state' }, h('b', null, '화자 구분 결과가 없습니다'), h('p', null, '설정 › 회의에서 화자 구분을 켜고 회의록을 다시 만들면 누가 말했는지 표시됩니다.'));
+    return islands.mount(h('div', { class: 'spk-list' }), SpeakersBody, { raw, total: r.durationSec, color, seek: (sec) => seek(sec), rename: renameTo(r) });
   }
 
   // ── 용어 설명: 회의록·정리본·원본의 용어에 밑줄, 누르면 한 줄 설명 카드 (어디에 긋는지는 entities/minutes) ──────────
@@ -1315,12 +1271,7 @@ function pageMeeting(id) {
 
   // 화자 이름 정하기: 회의록·스크립트의 '화자 N'을 실제 이름으로 바꾼다
   function speakerBar(r, order, color) {
-    const generic = order.some((w) => /^화자 \d+$/.test(w));
-    return h('div', { class: 'spk-bar' },
-      h('span', { class: 'spk-bar-label' }, '화자'),
-      order.map((who) => h('button', { class: 'spk-chip', title: '눌러서 이름 바꾸기', onclick: (e) => renameSpeaker(e.currentTarget, r, who) },
-        h('i', { style: `background:${color(who)}` }), h('span', null, who), icon('i-pencil'))),
-      generic && h('span', { class: 'spk-bar-hint' }, '이름을 누르면 바꿀 수 있습니다. 회의록과 스크립트에 모두 반영됩니다.'));
+    return islands.mount(h('div', { class: 'spk-bar' }), SpeakerBarBody, { order, color, rename: renameTo(r) });
   }
 
   async function refreshDoc(r) {
@@ -1709,165 +1660,9 @@ function pageMeeting(id) {
     return wrap;
   }
 
-  // 재생 막대: 화자별 색 띠 위에서 누르거나 끌어 원하는 곳부터 듣는다.
-  // 색은 스크립트와 같게 녹취 줄 기준(다음 줄까지, 최대 30초). 화자 구분 결과를 그대로 그리면 짧은 말을 놓친 곳이 비고
-  // 줄 화자와 어긋나서(실측 2시간 회의 27%) 쓰지 않는다. 말소리는 있는데 녹취 글이 없는 구간만 빗금으로 겹쳐 그린다
-  function playerBar(r, raw, color, speech = null) {
-    const missing = speech?.missing ?? [];
-    const missingAt = (t) => missing.find((g) => t >= g.start && t < g.end);
-    const playBtn = h('button', { class: 'play', 'aria-label': '재생' }, icon('i-play'));
-    const time = h('span', { class: 'ptime' });
-    const canvas = h('canvas');
-    const head = h('div', { class: 'head' });
-    const hover = h('div', { class: 'hover', hidden: true });
-    const scrub = h('div', { class: 'scrub', role: 'slider', 'aria-label': '재생 위치', tabIndex: 0 }, canvas, head, hover);
-    const speed = h('button', { class: 'btn small ghost speed', title: '재생 속도' }, `${audio.playbackRate}×`);
-    const followBtn = h('button', { class: 'btn small ghost follow', 'aria-pressed': String(follow), title: '재생 중인 줄을 따라 화면을 옮깁니다' }, '따라가기');
-    const total = () => (Number.isFinite(audio.duration) ? audio.duration : r.durationSec);
-    const order = speakerOrder(raw);
-
-    const paint = () => {
-      const dpr = window.devicePixelRatio || 1;
-      const w = canvas.clientWidth;
-      const hh = canvas.clientHeight;
-      if (!w) return;
-      canvas.width = w * dpr;
-      canvas.height = hh * dpr;
-      const ctx = canvas.getContext('2d');
-      ctx.scale(dpr, dpr);
-      const css = getComputedStyle(document.documentElement);
-      const resolve = (v) => (v.startsWith('var(') ? css.getPropertyValue(v.slice(4, -1)) : v);
-      ctx.fillStyle = css.getPropertyValue('--panel-3');
-      ctx.beginPath();
-      ctx.roundRect(0, 0, w, hh, 4);
-      ctx.fill();
-      const T = total() || 1;
-      // 같은 사람이 이어서 말한 구간은 한 덩어리로 합쳐, 2시간짜리도 누가 언제 말했는지 읽히게 한다
-      const runs = [];
-      raw.forEach((l, i) => {
-        if (l.at === null || !l.who) return;
-        const next = raw.slice(i + 1).find((n) => n.at !== null)?.at ?? T;
-        const end = Math.min(next, l.at + 30);
-        const last = runs.at(-1);
-        if (last && last.who === l.who && l.at - last.end < 8) last.end = end;
-        else runs.push({ who: l.who, start: l.at, end });
-      });
-      for (const run of runs) {
-        ctx.fillStyle = resolve(color(run.who));
-        ctx.fillRect((run.start / T) * w, 0, Math.max(1, ((run.end - run.start) / T) * w), hh);
-      }
-      // 녹취 없음: 그 구간을 비우고 강조색 빗금
-      const accent = css.getPropertyValue('--accent').trim();
-      for (const g of missing) {
-        const x = (g.start / T) * w;
-        const gw = Math.max(3, ((g.end - g.start) / T) * w);
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(x, 0, gw, hh);
-        ctx.clip();
-        ctx.fillStyle = css.getPropertyValue('--panel');
-        ctx.fillRect(x, 0, gw, hh);
-        ctx.strokeStyle = accent;
-        ctx.lineWidth = 1.5;
-        for (let k = -hh; k < gw + hh; k += 4) {
-          ctx.beginPath();
-          ctx.moveTo(x + k, hh);
-          ctx.lineTo(x + k + hh, 0);
-          ctx.stroke();
-        }
-        ctx.restore();
-      }
-    };
-    const tick = () => {
-      const T = total() || 1;
-      head.style.left = `${(audio.currentTime / T) * 100}%`;
-      time.textContent = `${clock(audio.currentTime)} / ${clock(T)}`;
-      playBtn.replaceChildren(icon(audio.paused ? 'i-play' : 'i-pause'));
-      playBtn.setAttribute('aria-label', audio.paused ? '재생' : '일시 정지');
-      scrub.setAttribute('aria-valuenow', String(Math.round(audio.currentTime)));
-    };
-    const at = (e) => {
-      const rect = scrub.getBoundingClientRect();
-      return Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) * (total() || 0);
-    };
-    scrub.onpointerdown = (e) => {
-      scrub.setPointerCapture(e.pointerId);
-      audio.currentTime = at(e);
-      scrub.onpointermove = (ev) => (audio.currentTime = at(ev));
-    };
-    scrub.onpointerup = () => (scrub.onpointermove = showHover);
-    const showHover = (e) => {
-      hover.hidden = false;
-      const rect = scrub.getBoundingClientRect();
-      hover.style.left = `${e.clientX - rect.left}px`;
-      const t = at(e);
-      hover.textContent = missingAt(t) ? `${clock(t)} · 녹취 없음` : clock(t);
-    };
-    scrub.onpointermove = showHover;
-    scrub.onpointerleave = () => (hover.hidden = true);
-    scrub.onkeydown = (e) => {
-      if (e.key === 'ArrowRight') audio.currentTime += 5;
-      if (e.key === 'ArrowLeft') audio.currentTime -= 5;
-    };
-    playBtn.onclick = () => (audio.paused ? audio.play() : audio.pause());
-    speed.onclick = () => {
-      audio.playbackRate = SPEEDS[(SPEEDS.indexOf(audio.playbackRate) + 1) % SPEEDS.length];
-      speed.textContent = `${audio.playbackRate}×`;
-    };
-    followBtn.onclick = () => {
-      follow = !follow;
-      remember('follow', follow);
-      followBtn.setAttribute('aria-pressed', String(follow));
-      if (follow) syncPlaying(true);
-    };
-    // 녹취 없음 범례는 누를 때마다 다음 구간으로 이동한다
-    const nextMissing = () => {
-      const g = missing.find((x) => x.start > audio.currentTime + 1) ?? missing[0];
-      if (g) audio.currentTime = g.start;
-    };
-    const legend = (order.length > 1 || missing.length > 0) && h('div', { class: 'player-legend' },
-      order.length > 1 && order.slice(0, 6).map((who) => h('span', null, h('i', { style: `background:${color(who)}` }), who)),
-      missing.length > 0 && h('button', { class: 'legend-missing', title: '말소리는 있는데 녹취 글이 없는 구간입니다. 누르면 다음 구간으로 이동합니다', onclick: nextMissing }, h('i', { class: 'hatch' }), `녹취 없음 ${missing.length}곳`));
-    const el = h('div', { class: 'player' }, h('div', { class: 'player-inner' },
-      playBtn,
-      h('button', { class: 'icon-btn', 'aria-label': '10초 뒤로', title: '10초 뒤로', onclick: () => (audio.currentTime -= 10) }, icon('i-back10')),
-      h('button', { class: 'icon-btn', 'aria-label': '10초 앞으로', title: '10초 앞으로', onclick: () => (audio.currentTime += 10) }, icon('i-fwd10')),
-      scrub, time, h('div', { style: 'display:flex;gap:2px' }, speed, followBtn), legend));
-    requestAnimationFrame(paint);
-    tick();
-    return { el, tick, paint };
-  }
-
-  // 재생 중인 줄 표시: 이진 탐색으로 지금 시각 직전의 줄을 찾는다
-  function syncPlaying(force = false) {
-    player?.tick();
-    if (!lineTimes.length) return;
-    const t = audio.currentTime;
-    let lo = 0;
-    let hi = lineTimes.length - 1;
-    let idx = -1;
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
-      if (lineTimes[mid] <= t) {
-        idx = mid;
-        lo = mid + 1;
-      } else hi = mid - 1;
-    }
-    if (audio.paused && audio.currentTime === 0) idx = -1;
-    if (idx === playingIdx && !force) return;
-    lineEls[playingIdx]?.classList.remove('playing');
-    playingIdx = idx;
-    const row = lineEls[idx];
-    if (!row) return;
-    row.classList.add('playing');
-    if (follow && !audio.paused) row.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  }
-
-  const onTime = () => syncPlaying();
   // 창 크기가 바뀌면 재생 막대를 다시 칠하고, 흐름도는 가로·세로 배치가 바뀔 수 있어 다시 그린다
   let resizeTimer = null;
   const onResize = () => {
-    player?.paint();
     if (!docCache.get(id)?.flow?.flows?.length) return;
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => draw(), 250);
@@ -1984,7 +1779,6 @@ function pageMeeting(id) {
       audio.paused ? audio.play() : audio.pause();
     }
   };
-  for (const ev of ['timeupdate', 'play', 'pause', 'loadedmetadata', 'seeked']) audio.addEventListener(ev, onTime);
   window.addEventListener('resize', onResize);
   document.addEventListener('keydown', onKey);
 
@@ -2003,7 +1797,6 @@ function pageMeeting(id) {
       if (stateKey(r) !== lastKey) draw();
     },
     leave: () => {
-      for (const ev of ['timeupdate', 'play', 'pause', 'loadedmetadata', 'seeked']) audio.removeEventListener(ev, onTime);
       window.removeEventListener('resize', onResize);
       document.removeEventListener('keydown', onKey);
       closeTermCard();
