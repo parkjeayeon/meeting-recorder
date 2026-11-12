@@ -75,6 +75,7 @@ app.whenReady().then(async () => {
   const id = path.basename(meeting);
   for (const [name, code] of [
     ['home', "location.hash='#home'"],
+    ['dictations', "location.hash='#dictations'"],
     ['meetings', "location.hash='#meetings'"],
     ['import-sheet', "[...document.querySelectorAll('.page-head .btn')].find(b=>b.textContent.includes('파일 가져오기'))?.click()"],
     ['meeting', `document.getElementById('importSheet').close(); location.hash='#meeting/${id}'`],

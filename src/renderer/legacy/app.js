@@ -7,8 +7,9 @@ import { createVocabularyModel } from '../entities/vocabulary/index.ts';
 import { DictionaryPage } from '../pages/dictionary/index.ts';
 import { StatsPage } from '../pages/stats/index.ts';
 import { HomePage } from '../pages/home/index.ts';
+import { DictationsPage } from '../pages/dictations/index.ts';
 import { fmt, DAY, TIME, WEEKDAY, PROVIDER_NAME, clock, seconds, sizeLabel, dayKey, dayLabel, createSource } from '../shared/lib/index.ts'; // 숫자·시간 표시는 한 벌 (React 화면과 같이 씀)
-import { dictSummary, charsOf, markParts } from '../entities/dictation/index.ts';
+import { dictSummary, charsOf } from '../entities/dictation/index.ts';
 import { BUSY, meetState, meetTitle, progressOf, statusText, busyShort, canCompressNow } from '../entities/meeting/index.ts';
 
 const api = window.recorderApi;
@@ -135,6 +136,7 @@ function setIssue(key, issue) {
   else issues.delete(key);
   issuesRev++;
   homeSource.changed();
+  dictationsSource.changed();
   const secs = new Set([...issues.values()].map((i) => i.sec));
   $('settingsDot').hidden = issues.size === 0;
   $('permDot').hidden = !secs.has('perms');
@@ -392,6 +394,7 @@ async function loadHistory() {
   dictTotals = totals ?? null;
   statsSource.changed();
   homeSource.changed();
+  dictationsSource.changed();
   setIssue('folder', folderIssue(access));
   $('countDict').textContent = dictTotals?.count || dictations().length || '';
   $('countMeet').textContent = meetings().length || '';
@@ -432,20 +435,8 @@ api.onMeetingChanged(({ id }) => {
 api.onRecordingsChanged(() => loadHistory());
 
 
-// 교정 부호를 붙인 글. 너무 많이 고쳤으면(넣은 말 비율 > 40%) 다듬은 글만 보여 준다
-function markedText(raw, text) {
-  const m = markParts(raw, text); // 계산은 entities/dictation (React 화면과 한 벌)
-  const el = h('div', { class: 'dtext' });
-  if (!m.parts) el.textContent = m.text;
-  else for (const p of m.parts) {
-    if (p.space) el.append(' ');
-    el.append(p.op === 'eq' ? p.words : h(p.op, { title: p.op === 'del' ? '다듬기가 지운 말' : '다듬기가 넣은 말' }, p.words));
-  }
-  return { el, heavy: m.heavy };
-}
-
 // ── 라우터 ──────────────────────────────────────────────────────────────
-const ROUTES = { home: () => reactPage(HomePage, { source: homeSource, actions: homeActions }), dictations: pageDictations, meetings: pageMeetings, meeting: pageMeeting, dictionary: () => reactPage(DictionaryPage, { model: vocabulary }), stats: () => reactPage(StatsPage, { source: statsSource }) };
+const ROUTES = { home: () => reactPage(HomePage, { source: homeSource, actions: homeActions }), dictations: () => reactPage(DictationsPage, { source: dictationsSource, actions: dictationsActions }), meetings: pageMeetings, meeting: pageMeeting, dictionary: () => reactPage(DictionaryPage, { model: vocabulary }), stats: () => reactPage(StatsPage, { source: statsSource }) };
 const TITLES = { home: '홈', dictations: '받아쓰기', meetings: '회의', meeting: '회의', dictionary: '사전', stats: '통계' };
 let route = parseHash();
 let current = null; // { el, update? }
@@ -638,85 +629,8 @@ async function trashStrays(list) {
 }
 
 // ── 받아쓰기 ────────────────────────────────────────────────────────────
-let openRaw = new Set(); // 바꿀 땐 새 Set으로 (홈 창구가 바뀐 줄 안다)
+let openRaw = new Set(); // 바꿀 땐 새 Set으로 (창구가 바뀐 줄 안다)
 let showMarks = store('showMarks', true);
-
-function copyButton(text, label = '복사') {
-  const b = h('button', { class: 'icon-btn', title: label, 'aria-label': label }, icon('i-copy'));
-  b.onclick = async (e) => {
-    e.stopPropagation();
-    await api.copy(typeof text === 'function' ? await text() : text);
-    b.classList.add('ok');
-    b.replaceChildren(icon('i-check'));
-    setTimeout(() => {
-      b.classList.remove('ok');
-      b.replaceChildren(icon('i-copy'));
-    }, 1400);
-  };
-  return b;
-}
-
-function dictItem(r, { compact = false } = {}) {
-  const t = r.transcript;
-  const text = t.text ?? t.raw;
-  const { el: body, heavy } = markedText(t.raw, t.text);
-  if (!showMarks) body.classList.add('plain');
-  const meta = h('div', { class: 'dmeta' },
-    r.app && h('span', { class: 'tag' }, r.app),
-    num(seconds(r.durationSec * 1000)),
-    heavy && h('span', null, '많이 고침'),
-    !compact && t.timing?.transcribeMs !== undefined && h('span', null, '인식 ', num(seconds(t.timing.transcribeMs))),
-    !compact && t.cleanupProvider && h('span', null, `다듬기 ${PROVIDER_NAME[t.cleanupProvider] ?? t.cleanupProvider} `, num(seconds(t.timing?.cleanupMs ?? 0))),
-    t.cleanupError && h('span', { class: 'err' }, `다듬기 실패: ${t.cleanupError}`));
-  const changed = t.text && t.text !== t.raw;
-  const acts = h('div', { class: 'dacts' },
-    copyButton(text),
-    h('button', {
-      class: 'icon-btn', title: '다시 붙여넣기', 'aria-label': '다시 붙여넣기', // 창을 닫고 직전에 쓰던 앱에 붙여 넣는다
-      onclick: async () => {
-        const status = await api.repaste(text);
-        if (status !== 'pasted') toast('클립보드에 복사했습니다', '⌘V로 붙여 넣으세요');
-      },
-    }, icon('i-paste')),
-    changed && !compact && h('button', {
-      class: 'icon-btn', title: openRaw.has(r.id) ? '원문 닫기' : '원문 보기', 'aria-label': '원문',
-      onclick: () => {
-        openRaw = new Set(openRaw);
-        openRaw.has(r.id) ? openRaw.delete(r.id) : openRaw.add(r.id);
-        refresh();
-      },
-    }, icon('i-book')),
-    !compact && !r.dir && h('button', {
-      class: 'icon-btn', title: '삭제', 'aria-label': '삭제',
-      onclick: async () => {
-        if (!(await confirmBox('이 받아쓰기를 지울까요?', '기록과 통계에서 빠집니다. 되돌릴 수 없습니다.', '지우기'))) return;
-        await api.deleteDictation(r.id);
-        toast('받아쓰기를 지웠습니다');
-        loadHistory();
-      },
-    }, icon('i-trash')));
-  return h('div', { class: `ditem${r.id === freshId ? ' fresh' : ''}` },
-    h('time', null, TIME.format(new Date(r.startedAt))),
-    h('div', null, body, openRaw.has(r.id) && h('div', { class: 'draw' }, t.raw), meta),
-    acts);
-}
-
-function groupByDay(items, render, wrapClass) {
-  const out = [];
-  let key = null;
-  let box = null;
-  for (const item of items) {
-    const k = dayKey(item.startedAt);
-    if (k !== key) {
-      key = k;
-      const count = items.filter((r) => dayKey(r.startedAt) === k).length;
-      out.push(h('div', { class: 'day-head' }, dayLabel(item.startedAt), num(`${count}건`)));
-      out.push((box = h('div', { class: wrapClass })));
-    }
-    box.append(render(item));
-  }
-  return out;
-}
 
 function searchBox(placeholder, value, onInput) {
   const input = h('input', { type: 'search', placeholder, value, spellcheck: false });
@@ -724,81 +638,36 @@ function searchBox(placeholder, value, onInput) {
   return h('label', { class: 'search' }, icon('i-search'), input);
 }
 
-// 받아쓰기 기록: 최신순 30개씩 이어 받고(스크롤 끝 200px 전에 다음 묶음), 검색은 입력이 멈추고 0.3초 뒤 본체가 전체 기록에서.
-// 예전엔 화면이 받은 최근 300개만 한꺼번에 그리고 그 안에서만 찾았다 (Wispr Flow도 25개 → 10개씩 이어 받기, 검색은 전체 DB에서)
-const DICT_PAGE = 30;
-function pageDictations() {
-  let q = '';
-  let items = [];
-  let next = null;
-  let total = 0;
-  let matched = 0;
-  let loading = false;
-  let ticket = 0; // 더 새로운 요청(검색어 바뀜·새 받아쓰기)이 오면 늦게 온 답은 버린다
-  let typing = null;
-  const list = h('div');
-  const marksInput = h('input', { type: 'checkbox', checked: showMarks });
-  marksInput.onchange = () => {
-    showMarks = marksInput.checked;
+// 받아쓰기 기록 화면(React)이 읽는 창구와 명령. 목록은 화면이 본체(dictPage)에서 이어 받고, 기록(history)이 바뀌면 다시 받는다.
+// 고친 곳 표시(showMarks)·원문 펼침(openRaw)·녹음 폴더 문제는 주인인 여기 — 바꾸면 changed()
+const dictationsSource = createSource(
+  () => ({ version: history, folder: issues.get('folder') ?? null, freshId, showMarks, openRaw }),
+  () => [history, issuesRev, freshId, showMarks, openRaw],
+);
+const dictationsActions = {
+  loadPage: (query) => api.dictPage(query),
+  copy: (text) => api.copy(text),
+  repaste: async (text) => {
+    const status = await api.repaste(text);
+    if (status !== 'pasted') toast('클립보드에 복사했습니다', '⌘V로 붙여 넣으세요');
+  },
+  toggleRaw: (id) => {
+    openRaw = new Set(openRaw);
+    openRaw.has(id) ? openRaw.delete(id) : openRaw.add(id);
+    dictationsSource.changed();
+  },
+  remove: async (id) => {
+    if (!(await confirmBox('이 받아쓰기를 지울까요?', '기록과 통계에서 빠집니다. 되돌릴 수 없습니다.', '지우기'))) return;
+    await api.deleteDictation(id);
+    toast('받아쓰기를 지웠습니다');
+    loadHistory();
+  },
+  setShowMarks: (on) => {
+    showMarks = on;
     remember('showMarks', showMarks);
-    render();
-  };
-  const marks = h('label', { class: 'inline-switch', title: '다듬기가 지운 말(취소선)과 넣은 말(밑줄) 표시' }, h('span', { class: 'switch' }, marksInput, h('i')), '고친 곳 표시');
-  const count = num('');
-  const sentinel = h('div', { class: 'load-more', 'aria-live': 'polite' });
-  async function load(reset) {
-    if (loading && !reset) return;
-    const mine = ++ticket;
-    loading = true;
-    // 새 받아쓰기로 다시 그릴 때는 보던 만큼 다시 받는다 (스크롤이 위로 튀지 않게)
-    const res = await api.dictPage({ q, before: reset ? null : next, limit: reset ? Math.max(DICT_PAGE, items.length) : DICT_PAGE });
-    if (mine !== ticket) return;
-    loading = false;
-    const seen = new Set(reset ? [] : items.map((r) => r.id));
-    items = reset ? res.items : [...items, ...res.items.filter((r) => !seen.has(r.id))];
-    ({ next, total, matched } = res);
-    render();
-  }
-  function render() {
-    count.textContent = total || '';
-    if (!total && issues.has('folder')) return list.replaceChildren(folderEmpty());
-    if (!total) return list.replaceChildren(h('div', { class: 'empty' }, h('b', null, '아직 받아쓴 글이 없습니다'), '아무 입력칸에 커서를 두고 ', h('kbd', null, 'fn'), '을 꾹 누른 채 말해 보세요.'));
-    if (!items.length) return list.replaceChildren(q ? h('div', { class: 'empty' }, h('b', null, '찾는 글이 없습니다'), `"${q}"가 들어간 받아쓰기가 없습니다. 받아쓴 말·원문·앱 이름에서 전체 ${fmt.format(total)}개를 찾았습니다.`) : h('div'));
-    // 날짜별 묶음. 아직 다 받지 않은 마지막 날은 "N건+"
-    const perDay = new Map();
-    for (const r of items) perDay.set(dayKey(r.startedAt), (perDay.get(dayKey(r.startedAt)) ?? 0) + 1);
-    const lastDay = dayKey(items.at(-1).startedAt);
-    const out = [];
-    let key = null;
-    let box = null;
-    for (const r of items) {
-      const k = dayKey(r.startedAt);
-      if (k !== key) {
-        key = k;
-        out.push(h('div', { class: 'day-head' }, dayLabel(r.startedAt), num(`${perDay.get(k)}건${next && k === lastDay ? '+' : ''}`)));
-        out.push((box = h('div', { class: 'dlist' })));
-      }
-      box.append(dictItem(r));
-    }
-    sentinel.textContent = next ? `${fmt.format(items.length)} / ${fmt.format(matched)}개 · 더 불러오는 중…` : items.length > DICT_PAGE ? `${q ? '찾은' : '모든'} 받아쓰기 ${fmt.format(matched)}개를 다 보았습니다` : '';
-    list.replaceChildren(h('p', { class: 'hint dict-count' }, q ? `"${q}" ${fmt.format(matched)}개 · 전체 ${fmt.format(total)}개에서` : `전체 ${fmt.format(total)}개`), ...out, sentinel);
-  }
-  // 스크롤 끝 200px 전에 다음 묶음
-  const seeing = new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && next && load(false), { root: $('view'), rootMargin: '200px' });
-  seeing.observe(sentinel);
-  const el = h('div', { class: 'page' },
-    h('div', { class: 'page-head' }, h('h1', null, '받아쓰기', count), h('div', { class: 'head-tools' }, marks, searchBox('받아쓴 말, 앱 이름 검색 (전체)', '', (v) => {
-      clearTimeout(typing);
-      typing = setTimeout(() => {
-        q = v.trim();
-        items = [];
-        load(true);
-      }, 300);
-    }))),
-    list);
-  load(true);
-  return { el, update: () => load(true), leave: () => seeing.disconnect() };
-}
+    dictationsSource.changed();
+  },
+};
 
 // ── 회의 목록 ───────────────────────────────────────────────────────────
 // ── 회의 목록 ────────────────────────────────────────────────────────────

@@ -67,4 +67,8 @@ API 타입: `src/preload.js`에 함수를 더하면 그것만 고친다. 화면 
 - 첫 화면(사전)은 옮겼다(2026-11-12): `pages/dictionary` + `entities/vocabulary`(주인이 준 read·save, settings가 바뀌면 주인이 `changed()`) + `shared/ui`의 `Icon`. 옛 `pageDictionary`와 단어 나누기 코드는 지웠다(`vocabWords`는 창구를 읽음).
 - 통계도 옮겼다(2026-11-12): 읽기 창구 `shared/lib`의 `createSource(read, deps)` — 주인의 값 참조가 그대로면 같은 스냅샷. 표시 함수·받아쓰기 요약은 옛 코드와 한 벌.
 - 홈도 옮겼다(2026-11-12): 창구가 읽는 주인의 값 중 제자리에서 바뀌던 것(`issues` Map, `openRaw` Set)은 바뀔 때 알아채게 했다 — `issuesRev` 번호, `openRaw`는 바꿀 때 새 Set. 홈의 버튼은 주인이 준 명령(`homeActions`)만 부르고 API·알림(toast)은 주인 쪽에 둔다.
-- 다음: 받아쓰기. 받아쓰기 한 줄(`widgets/dictation-item`)에 원문 보기·지우기·인식 시간을 더하고 옛 `dictItem`을 지운다. 공통 부품(알림·확인 창)은 필요한 화면을 옮길 때 만든다.
+- 받아쓰기도 옮겼다(2026-11-12): 본체에서 받는 목록은 화면 상태(주인 없음 — 그 화면만 쓴다), 기록이 바뀐 것은 창구의 `version`으로 안다. 옮기며 밟은 함정:
+  - **거품이 안 오르는 이벤트**: 시험은 `new Event('input')`(bubbles 없음)을 보낸다. React는 문서 뿌리에서 이벤트를 받으므로 `onInput`·`onChange`가 못 받는다 → 입력칸에 직접 `addEventListener`(`SearchBox`). 사전 입력칸은 Enter 키(진짜 키, 거품 오름)라 괜찮았다.
+  - **체크 상자 `checked`**: React는 HTML 속성(`checked=""`)도 남긴다. 옛 화면처럼 속성(property)만 쓰려고 ref로 둔다.
+  - **옛 `h()`는 `false` 값을 건너뛴다**: `spellcheck: false`가 한 번도 적용되지 않았다(known-issues). 옮길 때 옛 HTML과 비교해야 이런 것이 보인다.
+- 다음: 회의 목록. 공통 부품(알림·확인 창)은 필요한 화면을 옮길 때 만든다.

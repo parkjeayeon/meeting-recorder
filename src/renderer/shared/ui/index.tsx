@@ -37,3 +37,24 @@ export function CopyButton({ copy, label = '복사' }: { readonly copy: () => un
     </button>
   );
 }
+
+/** 검색 칸 (옛 searchBox와 같은 마크업). 값은 쥐지 않는다. 입력은 칸에 직접 단 처리기로 받는다 —
+ *  React는 문서 뿌리에서 이벤트를 받으므로 거품이 안 오르는 input 이벤트(시험이 값을 넣고 보내는 것)를 놓친다 */
+export function SearchBox({ placeholder, onInput }: { readonly placeholder: string; readonly onInput: (value: string) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  const latest = useRef(onInput);
+  latest.current = onInput;
+  useEffect(() => {
+    const el = input.current!;
+    const on = () => latest.current(el.value);
+    el.addEventListener('input', on);
+    return () => el.removeEventListener('input', on);
+  }, []);
+  return (
+    <label className="search">
+      <Icon id="i-search" />
+      {/* 옛 searchBox도 spellcheck: false를 주려 했지만 h()가 false 값을 건너뛰어 맞춤법 검사는 늘 켜져 있었다 — 동작을 그대로 두려고 같게 (docs/known-issues.md) */}
+      <input ref={input} type="search" placeholder={placeholder} />
+    </label>
+  );
+}
