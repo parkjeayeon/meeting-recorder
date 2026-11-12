@@ -2,15 +2,14 @@ import { Recorder } from './recorder.js';
 import { startOnboarding } from './onboarding.js';
 import { scriptMarkdown } from '../../core/script.mts'; // 화면은 코어를 원본(.mts)에서 바로 가져다 쓴다 (Vite가 묶음)
 import { noteVariants } from '../../core/review.mts';
-import { reactPage } from '../shared/page-host/index.tsx'; // React로 옮긴 화면을 옛 라우터에 끼운다 (docs/renderer-architecture.md)
+import { reactPage, mountReact } from '../shared/page-host/index.tsx'; // React로 옮긴 화면을 옛 라우터에 끼운다 (docs/renderer-architecture.md)
 import { createVocabularyModel } from '../entities/vocabulary/index.ts';
 import { DictionaryPage } from '../pages/dictionary/index.ts';
 import { StatsPage } from '../pages/stats/index.ts';
 import { HomePage } from '../pages/home/index.ts';
 import { DictationsPage } from '../pages/dictations/index.ts';
 import { MeetingsPage } from '../pages/meetings/index.ts';
-import { ledgerRows as ledgerModel, scrollSpy } from '../widgets/meeting-ledger/index.ts';
-import { askLabel, askSecs } from '../entities/ask/index.ts';
+import { createAskStore, AskWidget } from '../features/ask/index.ts';
 import { fmt, DAY, TIME, WEEKDAY, PROVIDER_NAME, clock, seconds, sizeLabel, dayKey, dayLabel, createSource } from '../shared/lib/index.ts'; // 숫자·시간 표시는 한 벌 (React 화면과 같이 씀)
 import { dictSummary, charsOf } from '../entities/dictation/index.ts';
 import { BUSY, meetState, meetTitle, progressOf, statusText, busyShort, canCompressNow } from '../entities/meeting/index.ts';
@@ -567,11 +566,6 @@ const homeActions = {
   },
 };
 
-function speakerDots(n) {
-  if (!n) return null;
-  return h('span', { class: 'speakers', title: `화자 ${n}명` }, Array.from({ length: Math.min(n, 6) }, (_, i) => h('i', { style: `background:var(--s${i + 1})` })));
-}
-
 async function trashMeetings(list) {
   const total = list.reduce((n, m) => n + m.durationSec, 0);
   const title = list.length > 1 ? `녹음 ${list.length}개를 휴지통으로 옮길까요?` : '이 녹음을 휴지통으로 옮길까요?';
@@ -635,59 +629,24 @@ const dictationsActions = {
 };
 
 // ── 회의 목록 ────────────────────────────────────────────────────────────
-// 줄 목록의 상태: 바탕 없이 글자 + 작은 표시 (주홍은 실패만, 확인 남음은 점만)
-function rowState(r) {
-  const st = meetState(r);
-  if (st === 'busy') return h('span', { class: 'rs busy' }, h('i'), busyShort(r.minutes));
-  if (st === 'fail') return h('span', { class: 'rs fail' }, icon('i-alert'), '실패');
-  if (st === 'open') return h('span', { class: 'rs open' }, h('i'), `확인 ${r.review.open}개`);
-  if (st === 'draft') return h('span', { class: 'rs draft' }, h('i'), '마치기 전');
-  if (st === 'done') return h('span', { class: 'rs done' }, icon('i-check'), '확정');
-  return h('span', { class: 'rs' }, { none: '녹음만', short: '짧은 녹음', empty: '들린 말 없음', plain: '회의록' }[st]);
-}
-
 const goMeeting = (r, review = false) => {
   if (review) openReviewNext = r.id;
   location.hash = `#meeting/${encodeURIComponent(r.id)}`;
 };
-const stopThen = (fn) => (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  fn();
-};
-
-// 장부 줄 (질문 탭이 쓴다 — 회의 목록은 React의 widgets/meeting-ledger). 계산은 그 위젯과 한 벌
-function ledgerRows(list, { recent = false } = {}) {
-  return ledgerModel(list, { recent }).map((row) => {
-    const { r, st } = row;
-    return h('a', { class: `lrow${row.first ? ' daystart' : ''}`, href: `#meeting/${encodeURIComponent(r.id)}` },
-      row.first ? h('span', { class: `lday${row.weekend ? ' weekend' : ''}` }, row.day, h('small', null, row.small)) : h('span'),
-      h('time', { class: 'ltime' }, TIME.format(new Date(r.startedAt))),
-      h('span', { class: `ltitle${row.muted ? ' muted' : ''}` }, h('b', null, meetTitle(r)), row.sub && h('span', row.sub.why ? { class: 'why' } : null, row.sub.text)),
-      rowState(r),
-      num(clock(r.durationSec)),
-      speakerDots(r.minutes?.speakers) ?? h('span'),
-      h('span', { class: 'racts' },
-        row.redo && h('button', { class: 'icon-btn', title: st === 'fail' ? '열어서 다시 만들기' : '열어서 회의록 만들기', 'aria-label': '다시 만들기', onclick: stopThen(() => goMeeting(r)) }, icon('i-redo')),
-        row.trash && h('button', { class: 'icon-btn', title: '휴지통으로', 'aria-label': '휴지통으로', onclick: stopThen(() => trashMeetings([r])) }, icon('i-trash'))));
-  });
-}
-
 // 회의 목록 화면(React)이 읽는 창구와 명령. 갈래(meetFilter)는 주인인 여기 — 질문으로 찾기가 탭을 열고 홈이 갈래를 골라 들어온다.
-// 질문이 바뀌면(refreshAskPage) askRev를 올린다. 질문 탭 본문은 아직 여기서 그린다(askView)
+// 질문 탭은 질문으로 찾기 store를 읽는다 (질문이 바뀌면 store가 알린다)
 let meetFilter = 'all';
-let askRev = 0;
 // 닫은(없어진)·막힌 질문 탭이면 전체로
 function currentMeetFilter() {
   if (meetFilter.startsWith('ask:')) {
-    const t = askJobs.get(meetFilter.slice(4));
+    const t = askStore.get(meetFilter.slice(4));
     if (!t || t.status === 'blocked') meetFilter = 'all';
   }
   return meetFilter;
 }
 const meetingsSource = createSource(
-  () => ({ meetings: meetings(), strays, folder: issues.get('folder') ?? null, filter: currentMeetFilter(), asks: askList().filter((t) => t.status !== 'blocked') }),
-  () => [history, strays, issuesRev, meetFilter, askRev],
+  () => ({ meetings: meetings(), strays, folder: issues.get('folder') ?? null, filter: currentMeetFilter(), asks: askStore.getSnapshot().jobs.filter((t) => t.status !== 'blocked') }),
+  () => [history, strays, issuesRev, meetFilter, askStore.getSnapshot().jobs],
 );
 function setMeetFilter(id) {
   meetFilter = id;
@@ -704,435 +663,43 @@ const meetingsActions = {
   importMeeting: (paths) => importMeeting(paths ?? null),
   openMeetingStart: () => openMeetingStart(),
   filePath: (f) => api.filePath(f),
-  removeAsk: (t) => removeAsk(t),
-  askView: (t, all) => {
-    markAskSeen(t);
-    return askView(t, all);
-  },
 };
 function openMeetingsPage() {
   // 둥근 버튼의 알림·채팅에서 '보기'로 들어오면 그 질문 탭, 홈의 챙길 일에서 오면 그 갈래, 아니면 전체
   meetFilter = askPending ? `ask:${askPending}` : meetFilterPending ?? 'all';
   askPending = null;
   meetFilterPending = null;
-  return reactPage(MeetingsPage, { source: meetingsSource, actions: meetingsActions });
+  return reactPage(MeetingsPage, { source: meetingsSource, ask: askStore, actions: meetingsActions });
 }
 
-// ── 질문으로 찾기 (결정 51) ── 찾기는 메인 프로세스(src/ask.js)에서 돌고, 화면은 받은 상태만 그린다.
-// 화면을 옮기거나 창을 닫아도 찾기는 이어지고, 다시 열면 api.askList()로 그대로 이어 보여 준다
-const askJobs = new Map(); // id → 질문 (메인 프로세스가 보내 준 상태)
-let askOpen = false;
-let askJustOpened = false; // 둥근 버튼으로 막 열었을 때만 열리는 움직임 (다시 그릴 때마다 되풀이하지 않게)
-let askDraft = '';
-// 찾을 범위: 개수와 기간은 따로, 넣은 것끼리 AND. 처음엔 둘 다 비움("＋ 기간"을 누르면 최근 7일)
-let askScope = { count: null, from: '', to: '' };
-let askToast = null; // 방금 끝난 질문 (둥근 버튼 옆 알림)
-let askToastTimer = null;
+// ── 질문으로 찾기 (결정 51) ── 찾기는 메인 프로세스(src/ask.js)에서 돌고, 상태 주인은 features/ask의 store.
+// 여기는 화면 이동(회의 화면의 그 질문 탭)과 설정 같은 바깥 일만 넘긴다. 둥근 버튼·질문 창·알림은 React(AskWidget)
 let askPending = null; // 회의 화면으로 가면서 열 질문 탭
-let askNoteClosed = store('askNoteClosed', false);
+const askStore = createAskStore({
+  api,
+  viewing: (id) => route.name === 'meetings' && currentMeetFilter() === `ask:${id}`,
+  openTab: (id) => {
+    if (route.name === 'meetings') setMeetFilter(`ask:${id}`);
+    else {
+      askPending = id;
+      location.hash = '#meetings';
+    }
+  },
+  notifyError: (title, detail) => toast(title, detail, { bad: true }),
+});
+askStore.connect();
+askStore.subscribe(() => meetingsSource.changed());
 const askRoot = h('div', { class: 'ask-root' });
 document.body.append(askRoot);
-const ASK_COUNTS = [50, 100, 150];
-const ASK_EXAMPLES = ['작년 2월에 한 회의', '성능 시험 관련 회의', '올해 장애 얘기한 회의', '확인이 안 끝난 배포 회의'];
-const ASK_STAGES = [['parse', '질문을 조건으로 푸는 중'], ['search', '녹취·회의록에서 찾는 중'], ['judge', '후보를 추리는 중']];
-const askList = () => [...askJobs.values()].sort((a, b) => a.t0 - b.t0);
-const ymdOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-const shortDay = (s) => {
-  if (!s) return '';
-  const [y, m, d] = s.split('-').map(Number);
-  return y === new Date().getFullYear() ? `${m}월 ${d}일` : `${y}. ${m}. ${d}.`;
-};
-const rangeText = (from, to) => `${shortDay(from) || '처음'} – ${shortDay(to) || '오늘'}`;
-const scopeText = (sc) => [sc.count && `최근 ${sc.count}개`, (sc.from || sc.to) && rangeText(sc.from, sc.to)].filter(Boolean).join(' 그리고 ') || '모든 회의';
-function askDatePresets() {
-  const t = new Date();
-  const y = t.getFullYear();
-  const m = t.getMonth();
-  const d = (yy, mm, dd) => ymdOf(new Date(yy, mm, dd));
-  return [['최근 7일', d(y, m, t.getDate() - 6), ymdOf(t)], ['이번 달', d(y, m, 1), d(y, m + 1, 0)], ['지난달', d(y, m - 1, 1), d(y, m, 0)], ['최근 3개월', d(y, m - 2, 1), ymdOf(t)], ['올해', d(y, 0, 1), ymdOf(t)], ['작년', d(y - 1, 0, 1), d(y - 1, 11, 31)]];
-}
-
 // 이 기능이 실제로 쓸 계정 (메인 프로세스와 같은 규칙: Claude Code에 로그인돼 있으면 그것, 아니면 다듬기 계정)
 const askUsesCodex = () => providers && !providers['claude-code']?.loggedIn && (settings?.provider === 'codex' || (settings?.provider === 'auto' && providers.codex?.loggedIn));
-
-async function startAsk(text, scope = askScope) {
-  const q = text.trim();
-  if (!q) return null;
-  try {
-    const job = await api.askStart(q, { ...scope });
-    askJobs.set(job.id, job);
-    askDraft = '';
-    drawAsk();
-    refreshAskPage();
-    return job;
-  } catch (err) {
-    toast('질문을 시작하지 못했습니다', err.message, { bad: true });
-    return null;
-  }
-}
-async function removeAsk(t) {
-  askJobs.delete(t.id);
-  if (askToast?.id === t.id) askToast = null;
-  await api.askRemove(t.id);
-  drawAsk();
-  refreshAskPage();
-}
-// 찾는 도중 멈추기: 본체가 돌던 LLM 호출을 끊고 '멈춤'으로 남긴다 (탭과 질문은 남아 다시 찾을 수 있다)
-async function stopAsk(t) {
-  if (t.status !== 'running') return;
-  Object.assign(t, { status: 'stopped', stage: 'stopped', ms: Date.now() - t.t0 });
-  drawAsk();
-  refreshAskPage();
-  await api.askStop(t.id);
-}
-// 회의 화면의 그 질문 탭으로
-function goAsk(t) {
-  askToast = null;
-  if (route.name === 'meetings') setMeetFilter(`ask:${t.id}`);
-  else {
-    askPending = t.id;
-    location.hash = '#meetings';
-  }
-  drawAsk();
-}
-function markAskSeen(t) {
-  if (t.status !== 'done' || t.seen) return;
-  t.seen = true;
-  api.askSeen(t.id);
-  drawAsk();
-}
-const refreshAskPage = () => {
-  askRev++;
-  meetingsSource.changed();
+const askWidgetDeps = {
+  onMeetings: () => route.name === 'meetings',
+  usesCodex: () => Boolean(askUsesCodex()),
+  noteClosed: () => store('askNoteClosed', false),
+  closeNote: () => remember('askNoteClosed', true),
+  openSettings: (sec) => openSettings(sec),
 };
-
-api.onAsk((job) => {
-  const before = askJobs.get(job.id);
-  if (!before && job.status !== 'running') return; // 지운 질문의 늦은 소식
-  askJobs.set(job.id, job);
-  const finished = before?.status === 'running' && job.status !== 'running';
-  const viewing = route.name === 'meetings' && currentMeetFilter() === `ask:${job.id}`;
-  if (finished && job.status === 'done' && viewing) markAskSeen(job);
-  // 다 찾으면 둥근 버튼 옆에 잠깐 알림 (보고 있는 탭이면 띄우지 않음, 막힌 질문은 채팅 창에서 보이게 연다)
-  if (finished && job.status === 'blocked') {
-    askOpen = true;
-    askJustOpened = true;
-  } else if (finished && !viewing && job.status !== 'stopped') {
-    askToast = job;
-    clearTimeout(askToastTimer);
-    askToastTimer = setTimeout(() => {
-      askToast = null;
-      drawAsk();
-    }, 6000);
-  }
-  if (finished || before?.stage !== job.stage) {
-    drawAsk();
-    refreshAskPage();
-  }
-});
-// 진행 중 시간은 1초마다 글자만 바꾼다 (화면 전체를 다시 그리지 않게)
-// 찾는 동안은 5초마다 본체의 상태와 맞춘다 (소식을 하나 놓쳐도 '찾는 중'에 멈춰 있지 않게)
-let askTick = 0;
-setInterval(async () => {
-  const running = askList().filter((x) => x.status === 'running');
-  for (const t of running) for (const el of document.querySelectorAll(`[data-ask-time="${t.id}"]`)) el.textContent = askSecs(t);
-  if (!running.length || ++askTick % 5) return;
-  const fresh = new Map((await api.askList()).map((j) => [j.id, j]));
-  let moved = false;
-  for (const t of running) {
-    const j = fresh.get(t.id);
-    if (!j) {
-      askJobs.delete(t.id);
-      moved = true;
-    } else if (j.status !== t.status || j.stage !== t.stage) {
-      askJobs.set(j.id, j);
-      moved = true;
-    }
-  }
-  if (moved) {
-    drawAsk();
-    refreshAskPage();
-  }
-}, 1000);
-
-// 찾을 범위: 조건 칩. 바꿔도 이 칩 줄만 다시 그린다 (채팅 창이 깜빡이지 않게)
-let closeCondPop = null;
-document.addEventListener('mousedown', (e) => closeCondPop && !e.target.closest('.conds-bar') && closeCondPop());
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && closeCondPop) {
-    e.stopPropagation();
-    closeCondPop();
-  }
-}, true);
-function condBar() {
-  const bar = h('div', { class: 'conds-bar' });
-  let open = null; // 'count' | 'range'
-  const countChip = () => chip('count', '최근 몇 개', askScope.count ? `최근 ${askScope.count}개` : null, () => (askScope.count = null));
-  const rangeChip = () => chip('range', '기간', askScope.from || askScope.to ? rangeText(askScope.from, askScope.to) : null, () => (askScope.from = askScope.to = ''));
-  function chip(key, label, value, onClear) {
-    return h('button', { type: 'button', class: `cchip${value ? ' set' : ''}`, 'data-chip': key, 'aria-expanded': String(open === key), onclick: () => {
-      // 비어 있는 기간을 열면 최근 7일(오늘 포함)을 먼저 채운다
-      if (key === 'range' && open !== key && !askScope.from && !askScope.to) [, askScope.from, askScope.to] = askDatePresets()[0];
-      open = open === key ? null : key;
-      render();
-    } }, value ? [value, h('span', { class: 'x', role: 'button', 'aria-label': `${label} 지우기`, onclick: (e) => {
-      e.stopPropagation();
-      onClear();
-      open = null;
-      render();
-    } }, icon('i-x'))] : [icon('i-plus'), label]);
-  }
-  function render() {
-    const kids = [countChip(), rangeChip()];
-    if (open === 'count') {
-      const input = h('input', { type: 'text', inputmode: 'numeric', placeholder: '직접 입력', value: askScope.count ?? '', maxlength: 5, 'aria-label': '최근 몇 개' });
-      input.oninput = () => {
-        const v = input.value.replace(/\D/g, '').replace(/^0+/, '');
-        if (v !== input.value) input.value = v; // 숫자만
-        askScope.count = v ? Number(v) : null;
-        for (const b of bar.querySelectorAll('.cpop .opts button')) b.setAttribute('aria-pressed', String(Number(b.textContent) === askScope.count));
-        bar.querySelector('[data-chip="count"]').replaceWith(countChip());
-      };
-      input.onkeydown = (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          open = null;
-          render();
-        }
-      };
-      kids.push(h('div', { class: 'cpop' }, h('h4', null, '최근 몇 개 회의에서 찾을까요'), h('p', null, '최신 회의부터 셉니다'),
-        h('div', { class: 'opts' }, ASK_COUNTS.map((n) => h('button', { type: 'button', class: 'num', 'aria-pressed': String(askScope.count === n), onclick: () => {
-          askScope.count = n;
-          open = null;
-          render();
-        } }, String(n)))),
-        h('label', { class: 'field' }, input, '개')));
-      setTimeout(() => input.focus());
-    }
-    if (open === 'range') {
-      const today = ymdOf(new Date());
-      const from = h('input', { type: 'date', value: askScope.from, max: askScope.to || today, 'aria-label': '시작일' });
-      const to = h('input', { type: 'date', value: askScope.to, min: askScope.from || '', max: today, 'aria-label': '끝일' });
-      const sync = () => {
-        askScope.from = from.value;
-        askScope.to = to.value;
-        to.min = from.value;
-        from.max = to.value || today;
-        bar.querySelector('[data-chip="range"]').replaceWith(rangeChip());
-      };
-      from.onchange = sync;
-      to.onchange = sync;
-      kids.push(h('div', { class: 'cpop' }, h('h4', null, '언제 한 회의에서 찾을까요'),
-        h('div', { class: 'opts' }, askDatePresets().map(([label, f, t]) => h('button', { type: 'button', 'aria-pressed': String(askScope.from === f && askScope.to === t), onclick: () => {
-          askScope.from = f;
-          askScope.to = t;
-          open = null;
-          render();
-        } }, label))),
-        h('div', { class: 'dates' }, h('label', { class: 'field' }, h('small', null, '부터'), from), h('label', { class: 'field' }, h('small', null, '까지'), to))));
-    }
-    closeCondPop = open ? () => {
-      open = null;
-      render();
-    } : null;
-    bar.replaceChildren(...kids);
-  }
-  render();
-  return bar;
-}
-
-// 채팅 첫머리: 이 기능이 Codex로 돌게 되면 Claude Code를 추천한다고만 알린다 (측정: docs/measurements.md)
-function providerNote() {
-  if (!askUsesCodex() || askNoteClosed) return null;
-  return h('div', { class: 'bubble ai note' },
-    h('span', { class: 'warn-line' }, icon('i-alert'), h('b', null, '이 기능은 Claude Code를 추천해요')),
-    h('span', null, 'Claude Code에 로그인돼 있지 않아 Codex로 찾습니다. 정확도는 비슷하지만 Claude Code가 더 빠르고 사용량을 덜 씁니다.'),
-    h('div', { class: 'warn-acts' },
-      h('button', { class: 'btn small', onclick: () => openSettings('cleanup') }, '설정 › 다듬기 열기'),
-      h('button', { class: 'btn small ghost', onclick: () => {
-        askNoteClosed = true;
-        remember('askNoteClosed', true);
-        drawAsk();
-      } }, '알겠어요')));
-}
-
-// 질문 속 기간과 기간 칩이 겹치지 않을 때: 찾지 않고 이유와 고칠 방법을 보인다
-function blockedBubble(t) {
-  return h('div', { class: 'bubble ai warn' },
-    h('span', { class: 'warn-line' }, icon('i-alert'), h('b', null, '찾지 않았습니다')),
-    h('span', null, `질문의 기간(${rangeText(t.conds.from, t.conds.to)})과 기간 칩(${rangeText(t.scope.from, t.scope.to)})이 겹치지 않아요. 둘 다 맞아야 해서 이대로 찾으면 늘 0건입니다.`),
-    h('div', { class: 'warn-acts' },
-      h('button', { class: 'btn small', onclick: async () => {
-        askScope = { ...askScope, from: '', to: '' };
-        await removeAsk(t);
-        const n = await startAsk(t.q, { ...t.scope, from: '', to: '' });
-        if (n && route.name === 'meetings') goAsk(n);
-      } }, '기간 칩 빼고 질문 날짜로 찾기'),
-      h('button', { class: 'btn small ghost', onclick: async () => {
-        askDraft = t.q;
-        await removeAsk(t);
-        setTimeout(() => document.querySelector('.composer textarea')?.focus());
-      } }, '질문 고치기')));
-}
-
-function askBubbles(t) {
-  const me = h('div', { class: 'bubble me' }, t.q, h('small', null, `범위 ${scopeText(t.scope)}`));
-  if (t.status === 'blocked') return [me, blockedBubble(t)];
-  if (t.status === 'running') return [me, h('div', { class: 'bubble ai' }, h('span', { class: 'busy-line' }, h('span', { class: 'spin' }), ASK_STAGES.find(([k]) => k === t.stage)?.[1] ?? '', h('span', { class: 'num', 'data-ask-time': t.id }, askSecs(t)),
-    h('button', { class: 'btn small ghost ask-stop', onclick: () => stopAsk(t) }, '멈추기')))];
-  if (t.status === 'stopped') return [me, h('div', { class: 'bubble ai' }, h('span', null, `${askSecs(t)} 만에 멈췄습니다.`),
-    h('button', { class: 'btn small', style: 'align-self:flex-start', onclick: async () => {
-      await removeAsk(t);
-      const n = await startAsk(t.q, t.scope);
-      if (n && route.name === 'meetings') goAsk(n);
-    } }, icon('i-redo'), '다시 찾기'))];
-  if (t.status === 'error') return [me, h('div', { class: 'bubble ai warn' }, h('span', { class: 'warn-line' }, icon('i-alert'), h('b', null, askError(t).title)), h('span', null, askError(t).hint),
-    h('div', { class: 'warn-acts' }, h('button', { class: 'btn small', onclick: async () => {
-      await removeAsk(t);
-      startAsk(t.q, t.scope);
-    } }, icon('i-redo'), '다시 찾기')))];
-  return [me, h('div', { class: 'bubble ai' },
-    h('span', null, t.results.length ? `${t.results.length}건을 찾아 탭으로 모았습니다.` : '맞는 회의를 찾지 못했습니다.'),
-    t.conds && h('div', { class: 'conds' }, (t.conds.from || t.conds.to) && h('span', { class: 'cond' }, rangeText(t.conds.from, t.conds.to)), (t.conds.terms ?? []).slice(0, 3).map((x) => h('span', { class: 'cond' }, x))),
-    h('button', { class: 'btn small', style: 'align-self:flex-start', onclick: () => goAsk(t) }, route.name === 'meetings' ? '탭 보기' : '회의에서 보기', icon('i-right')))];
-}
-
-function askPanel() {
-  const ta = h('textarea', { rows: 1, placeholder: '예: 작년 2월 성능 시험 관련 회의', value: askDraft, 'aria-label': '찾을 회의' });
-  ta.oninput = () => (askDraft = ta.value);
-  // 회의 화면이면 바로 그 탭으로, 다른 화면이면 그 자리에 둔다 (다 찾으면 버튼 뱃지와 알림)
-  const send = async () => {
-    const t = await startAsk(ta.value);
-    if (t && route.name === 'meetings') goAsk(t);
-  };
-  ta.onkeydown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-      e.preventDefault();
-      send();
-    }
-    if (e.key === 'Escape') toggleAsk(false);
-  };
-  const list = askList();
-  const log = h('div', { class: 'asklog' }, providerNote(), list.length ? list.map(askBubbles)
-    : h('div', { class: 'ask-hint' }, '찾고 싶은 회의를 말로 적으세요. 기간·주제·상태를 함께 적어도 됩니다. 녹취까지 찾아 회의 화면에 탭을 만들고, 다른 화면으로 가도 계속 찾습니다.',
-      h('div', { class: 'ask-examples' }, ASK_EXAMPLES.map((x) => h('button', { type: 'button', onclick: () => {
-        askDraft = x;
-        drawAsk();
-      } }, x)))));
-  const panel = h('aside', { class: `askpanel${askJustOpened ? ' opening' : ''}`, role: 'dialog', 'aria-label': '질문으로 찾기' },
-    h('header', null, icon('i-chat'), h('span', null, '질문으로 찾기'), h('button', { class: 'icon-btn', 'aria-label': '닫기', onclick: () => toggleAsk(false) }, icon('i-x'))),
-    log,
-    h('div', { class: 'askcompose' }, h('div', { class: 'composer' }, ta, h('div', { class: 'bottom' }, condBar(), h('button', { class: 'ask-send', 'aria-label': '찾기', title: '찾기 (Enter)', onclick: send }, icon('i-send'))))));
-  requestAnimationFrame(() => {
-    log.scrollTop = log.scrollHeight;
-    if (askJustOpened) ta.focus();
-    askJustOpened = false;
-  });
-  return panel;
-}
-function toggleAsk(open = !askOpen) {
-  askOpen = open;
-  askJustOpened = open;
-  if (open) askToast = null;
-  drawAsk();
-}
-
-// 오른쪽 아래 둥근 버튼 + 채팅 창 + 알림. 어느 화면에서든 보인다
-function drawAsk() {
-  const running = askList().filter((t) => t.status === 'running');
-  const unseen = askList().filter((t) => t.status === 'done' && !t.seen).length;
-  const parts = [];
-  if (askOpen) {
-    const keep = askRoot.querySelector('.askpanel textarea') === document.activeElement;
-    parts.push(askPanel());
-    if (keep) requestAnimationFrame(() => askRoot.querySelector('.askpanel textarea')?.focus());
-  } else if (askToast) {
-    const t = askToast;
-    const bad = t.status !== 'done';
-    parts.push(h('button', { class: `fab-toast${bad ? ' bad' : ''}`, onclick: () => (bad ? toggleAsk(true) : goAsk(t)) },
-      icon(bad ? 'i-alert' : 'i-check'), h('span', null, h('b', null, askLabel(t)), t.status === 'error' ? ' 찾지 못했습니다' : t.results.length ? ` ${t.results.length}건을 찾았습니다` : ' 맞는 회의가 없습니다'), h('span', { class: 'go' }, '보기')));
-  }
-  parts.push(h('button', { class: 'fab', 'aria-label': askOpen ? '질문 창 닫기' : '질문으로 찾기', 'aria-expanded': String(askOpen), title: askOpen ? '질문 창 닫기' : running.length ? `질문으로 찾기 · ${running.length}개 찾는 중` : '질문으로 찾기', onclick: () => toggleAsk() },
-    icon(askOpen ? 'i-x' : 'i-chat'), running.length > 0 && h('span', { class: 'fab-ring' }), !askOpen && unseen > 0 && h('span', { class: 'fab-badge' }, String(unseen))));
-  askRoot.replaceChildren(...parts);
-}
-
-// 회의 목록 갈래 줄 끝의 질문 탭들
-// 질문이 실패했을 때 보일 말: 무엇이 문제인지(제목) → 어떻게 하면 되는지 → CLI가 낸 이유(작게).
-// 예전 기록에는 "Command failed: <명령줄>"이 저장돼 있어 이유로 보이지 않는다
-function askError(t) {
-  const who = PROVIDER_NAME[t.provider] ?? '다듬기 계정';
-  const raw = /^Command failed:/.test(t.error ?? '') ? null : t.error;
-  const kind = t.errorKind ?? (raw === '시간 초과' ? 'timeout' : 'other');
-  const [title, hint] = {
-    login: [`${who} 로그인이 풀렸습니다`, t.provider === 'codex' ? '터미널에서 codex login으로 다시 로그인한 뒤 다시 찾기를 누르세요.' : '터미널에서 claude를 실행해 /login으로 다시 로그인한 뒤 다시 찾기를 누르세요.'],
-    limit: [`${who} 사용 한도에 걸렸습니다`, '한도가 풀린 뒤 다시 찾기를 누르세요. 남은 사용량은 설정 › 다듬기에서 볼 수 있습니다.'],
-    timeout: ['답이 너무 늦어 멈췄습니다', '다시 찾기를 눌러 보세요. 계속 늦으면 최근 몇 개·기간으로 범위를 좁혀 보세요.'],
-  }[kind] ?? ['찾지 못했습니다', '다시 찾기를 눌러 보세요. 같은 문제가 계속되면 아래 이유를 확인하세요.'];
-  return { title, hint, detail: kind === 'timeout' ? null : raw ?? `${who}가 이유를 남기지 않고 끝났습니다` };
-}
-
-function askHead(t) {
-  const c = t.conds;
-  const conds = [h('span', { class: 'cond' }, `범위 ${scopeText(t.scope)}`)];
-  if (c?.from || c?.to) conds.push(h('span', { class: 'cond' }, `기간 ${rangeText(c.from, c.to)}`));
-  if (c?.status) conds.push(h('span', { class: 'cond' }, '상태 조건 있음'));
-  if (c?.focus === 'main') conds.push(h('span', { class: 'cond' }, '주로 다룬 회의만'));
-  if (c?.terms?.length) conds.push(h('span', { class: 'cond' }, `찾을 말 ${c.terms.slice(0, 4).join(' · ')}${c.terms.length > 4 ? ` 외 ${c.terms.length - 4}` : ''}`));
-  const steps = ASK_STAGES.filter(([k]) => k === 'parse' || !c || c.terms?.length);
-  const at = steps.findIndex(([k]) => k === t.stage);
-  return h('div', { class: 'askhead' },
-    h('div', { class: 'qline' }, icon('i-search'), h('b', null, t.q),
-      t.status === 'running' && h('button', { class: 'btn small', onclick: () => stopAsk(t) }, '멈추기'),
-      t.status !== 'running' && h('button', { class: 'btn small', onclick: () => {
-        askDraft = t.q;
-        toggleAsk(true);
-      } }, '질문 고치기'),
-      t.status !== 'running' && h('button', { class: 'btn small', onclick: async () => {
-        await removeAsk(t);
-        const n = await startAsk(t.q, t.scope);
-        if (n) goAsk(n);
-      } }, icon('i-redo'), '다시 찾기')),
-    (c || t.status === 'running') && h('div', { class: 'conds' }, c ? conds : h('span', null, '조건을 푸는 중…')), // 실패했으면 '푸는 중'을 남기지 않는다
-    t.status === 'running'
-      ? h('div', { class: 'steps' }, steps.map(([, label], i) => h('span', { class: i < at ? 'ok' : i === at ? 'now' : '' }, i < at ? icon('i-check') : i === at ? h('span', { class: 'spin' }) : h('span', { style: 'width:11px' }), label)),
-        h('span', { class: 'later' }, h('span', { 'data-ask-time': t.id }, askSecs(t)), '· 다른 화면으로 가도 계속 찾습니다'))
-      : t.status === 'error' ? (() => {
-        const e = askError(t);
-        return h('div', { class: 'ask-error', role: 'alert' }, icon('i-alert'),
-          h('div', null, h('b', null, e.title), h('p', null, e.hint), e.detail && h('p', { class: 'why' }, e.detail)));
-      })()
-        : t.status === 'stopped' ? h('div', { class: 'conds' }, `${askSecs(t)} 만에 멈췄습니다 · 다시 찾기로 처음부터 찾습니다`)
-        : h('div', { class: 'conds' }, `${t.results.length}건 · ${t.candidates ? `후보 ${t.candidates}개 중 추림 · ` : ''}${askSecs(t)} 걸림`));
-}
-
-// 질문 탭 본문: 주제로 다룬 회의 / 잠깐 언급된 회의 (조건이 기간·상태뿐이면 한 묶음), 줄마다 이유 한 줄
-function askView(t, all) {
-  if (t.status !== 'done') return h('div', null, askHead(t));
-  const byId = new Map(all.map((r) => [r.id, r]));
-  const hits = t.results.filter((x) => byId.has(x.id)); // 그 사이 지운 회의는 뺀다
-  if (!hits.length) return h('div', null, askHead(t), h('div', { class: 'empty-state' }, h('span', { class: 'empty-mark' }, icon('i-search')), h('b', null, '맞는 회의를 찾지 못했습니다'), h('p', null, '범위를 넓히거나 다른 말로 물어보세요.')));
-  const groups = hits.some((x) => x.level) ? [['ask-main', '주제로 다룬 회의', hits.filter((x) => x.level !== 'mention')], ['ask-mention', '잠깐 언급된 회의', hits.filter((x) => x.level === 'mention')]]
-    : [['ask-all', '맞는 회의', hits]];
-  const nav = h('nav', { class: 'index', 'aria-label': '바로 가기' }, h('h3', null, '바로 가기'));
-  const body = h('div');
-  for (const [id, title, list] of groups) {
-    if (!list.length) continue;
-    const rows = ledgerRows(list.map((x) => byId.get(x.id)), { recent: true });
-    rows.forEach((row, i) => {
-      const why = list[i].reason;
-      if (!why) return;
-      const old = row.querySelector('.ltitle > span');
-      const el = h('span', { class: 'reason', title: list[i].quote ? `“${list[i].quote}”` : '' }, why);
-      if (old) old.replaceWith(el);
-      else row.querySelector('.ltitle')?.append(el);
-    });
-    nav.append(h('button', { 'data-target': id }, title, num(list.length)));
-    body.append(h('section', { class: 'mix-sec', id, 'data-spy': '' }, h('div', { class: 'sec-h' }, h('h2', null, title), h('span', null, `${list.length}건`)), h('div', { class: 'ledger-month' }, rows)));
-  }
-  scrollSpy(body, nav);
-  return h('div', null, askHead(t), h('div', { class: 'mlist' }, body, nav));
-}
 
 // 녹음 파일 가져오기: 파일을 고르면(또는 끌어다 놓으면) 확인 창에서 순서·참석 인원·녹음에 담기지 않은 내용을 받고 가져온다
 let importing = false;
@@ -3823,9 +3390,9 @@ renderDictSettings(await api.dictSettings());
 renderPerms();
 renderProviders();
 await loadHistory();
-for (const job of await api.askList()) askJobs.set(job.id, job); // 창을 닫았다 열어도 찾던 질문·끝난 탭이 그대로
+askStore.load(await api.askList()); // 창을 닫았다 열어도 찾던 질문·끝난 탭이 그대로
 navigate();
-drawAsk();
+mountReact(askRoot, AskWidget, { store: askStore, deps: askWidgetDeps });
 if (info.capability === 'unsupported') toast('이 macOS에서는 상대방 소리를 녹음할 수 없습니다', '회의도 마이크만 녹음합니다.', { ms: 7000 });
 if (info.fnWarning) setIssue('fnUsage', { title: 'fn 키가 다른 동작과 겹칩니다', detail: info.fnWarning, sec: 'general', dismiss: true });
 await loadDevices();

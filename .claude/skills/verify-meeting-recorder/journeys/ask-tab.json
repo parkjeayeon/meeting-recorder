@@ -1,0 +1,21 @@
+{
+  "about": "질문 탭(React): 로그인이 풀려 실패한 질문은 무엇이 문제인지와 CLI 이유를 보이고, 질문 고치기(질문 창에 그 글), 다시 찾기(지우고 같은 질문·범위로)",
+  "env": { "STUB_MANY": "3", "STUB_ASK_MS": "100" },
+  "steps": [
+    { "go": "#meetings" },
+    { "click": "질문으로 찾기", "role": "button" },
+    { "fill": "예: 작년 2월", "value": "성능평가 로그인" },
+    { "click": "찾기", "role": "button", "exact": true },
+    { "until": "Claude Code 로그인이 풀렸습니다" },
+    { "click": "닫기", "role": "button", "within": ".askpanel" },
+    { "click": "성능평가 로그인", "within": ".chips" },
+    { "expect": { "text": "Invalid API key · Please run /login" } },
+    { "click": "질문 고치기", "role": "button", "within": ".askhead" },
+    { "expect": { "text": "질문으로 찾기" } },
+    { "click": "닫기", "role": "button", "within": ".askpanel" },
+    { "click": "다시 찾기", "role": "button", "within": ".askhead" },
+    { "expect": { "called": "askRemove" } },
+    { "expect": { "called": "askStart", "times": 2 } },
+    { "snapshot": "retried" }
+  ]
+}

@@ -1,5 +1,5 @@
 // 회의 장부(줄 목록)의 계산: 줄마다 날짜 칸·흐림·부제, 달별 묶음과 바로가기의 해·달 (회의 목록과 질문 탭이 같이 쓴다)
-import { meetState, type MeetingItem, type MeetState } from '../../entities/meeting/index.ts';
+import { meetState, type MeetingItem, type MeetState } from './model.ts';
 import { dayKey, WEEKDAY } from '../../shared/lib/index.ts';
 
 export const NO_MINUTES: readonly MeetState[] = ['fail', 'none', 'short', 'empty'];

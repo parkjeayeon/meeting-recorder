@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { MeetingItem } from '../../entities/meeting/index.ts';
-import { ledgerRows, monthGroups } from './model.ts';
+import type { MeetingItem } from './model.ts';
+import { ledgerRows, monthGroups } from './ledger.ts';
 
 const now = new Date(2026, 10, 12, 15); // 목요일
 const m = (y: number, mo: number, d: number, over: Partial<MeetingItem> = {}): MeetingItem => ({

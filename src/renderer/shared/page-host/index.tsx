@@ -42,3 +42,9 @@ export function reactPage<P extends object>(Page: ComponentType<P>, props: P, ho
     ...(hooks?.reload ? { reload: () => !gone && hooks.reload?.() } : {}),
   };
 }
+
+/** 화면 밖에 늘 떠 있는 React 부품(둥근 버튼·질문 창 등)을 옛 코드가 만든 자리(host)에 붙인다. 첫 그리기는 동기 */
+export function mountReact<P extends object>(host: HTMLElement, Part: ComponentType<P>, props: P): void {
+  const root = createRoot(host);
+  flushSync(() => root.render(<Part {...props} />));
+}
