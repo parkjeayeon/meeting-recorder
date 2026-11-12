@@ -1,5 +1,6 @@
 // 공통 화면 부품. 옛 화면 코드(legacy/app.js)의 h()·icon()과 같은 마크업을 내서 CSS·시험이 그대로 맞는다.
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import type React from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 export { glide, scrollSpy } from './scroll-spy.ts';
 
@@ -83,4 +84,26 @@ export function JobButton({ jobs, jobKey, className, icon, label, title, onClick
       <Icon id={icon} /><span>{job ? job.label : label}</span>
     </button>
   );
+}
+
+/** 값을 쥐지 않는 글자 입력칸: 처음 값은 속성으로만 넣고(HTML 속성을 남기지 않게), 입력·Enter는 직접 단 처리기로
+ *  (시험이 보내는 거품 없는 이벤트도 받는다). Enter는 한글 조합 중이면 무시. 값은 ref로 읽는다 */
+export function Field({ inputRef, initial, onInput, onEnter, ...attrs }: {
+  readonly inputRef?: { current: HTMLInputElement | null };
+  readonly initial?: string;
+  readonly onInput?: (value: string) => void;
+  readonly onEnter?: () => void;
+} & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onInput' | 'value' | 'defaultValue'>) {
+  const own = useRef<HTMLInputElement>(null);
+  const ref = inputRef ?? own;
+  useLayoutEffect(() => {
+    const el = ref.current!;
+    if (initial !== undefined) el.value = initial;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- 처음 한 번
+  useNativeEvent(ref, 'input', (el) => onInput?.(el.value));
+  useNativeEvent(ref, 'keydown', (_el, e) => {
+    const k = e as KeyboardEvent;
+    if (k.key === 'Enter' && !k.isComposing) onEnter?.();
+  });
+  return <input ref={ref} type="text" {...attrs} />;
 }

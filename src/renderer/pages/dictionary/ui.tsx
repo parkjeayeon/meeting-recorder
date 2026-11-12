@@ -1,8 +1,8 @@
 // 사전 화면 (옛 pageDictionary를 그대로 옮김: 같은 글자·같은 클래스·같은 동작).
 // 입력칸은 값을 쥐지 않는다(uncontrolled) — 시험이 el.value = …; input 이벤트로 넣는다. Enter는 한글 조합 중엔 무시.
-import { useRef, useSyncExternalStore, type KeyboardEvent } from 'react';
+import { useRef, useSyncExternalStore } from 'react';
 import type { VocabularyModel } from '../../entities/vocabulary/index.ts';
-import { Icon } from '../../shared/ui/index.tsx';
+import { Icon, useNativeEvent } from '../../shared/ui/index.tsx';
 
 export function DictionaryPage({ model }: { readonly model: VocabularyModel }) {
   const words = useSyncExternalStore(model.subscribe, model.getSnapshot);
@@ -17,9 +17,11 @@ export function DictionaryPage({ model }: { readonly model: VocabularyModel }) {
     el.value = '';
     el.focus();
   };
-  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && !e.nativeEvent.isComposing) void add();
-  };
+  // Enter는 입력칸에 직접 단 처리기로 (거품이 안 오르는 keydown도 받게 — 옛 화면처럼)
+  useNativeEvent(input, 'keydown', (_el, e) => {
+    const k = e as KeyboardEvent;
+    if (k.key === 'Enter' && !k.isComposing) void add();
+  });
   return (
     <div className="page">
       <div className="page-head">
@@ -29,7 +31,7 @@ export function DictionaryPage({ model }: { readonly model: VocabularyModel }) {
         </div>
       </div>
       <div className="add-row">
-        <input ref={input} type="text" placeholder="단어나 이름 (예: PJY, Whisper, 김신우)" spellCheck={false} onKeyDown={onKeyDown} />
+        <input ref={input} type="text" placeholder="단어나 이름 (예: PJY, Whisper, 김신우)" />
         <button className="btn primary" onClick={() => void add()}>
           <Icon id="i-plus" />
           추가

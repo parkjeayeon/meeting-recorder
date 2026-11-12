@@ -172,7 +172,7 @@ suite('확인 필요 · 항목 종류와 모양', {}, async (p) => {
   check('남은 항목 4개, 종류 표시(오인식·이름·근거 확인)', tags.length === 4 && tags.some((t) => t.includes('오인식')) && tags.some((t) => t.includes('이름')) && tags.some((t) => t.includes('근거 확인')), tags);
   const guess = await p.js(`(() => { const i = [...document.querySelectorAll('input')].find((x) => x.value === 'Memcached'); return Boolean(i); })()`);
   check('추정이 있는 항목은 고칠 말 칸에 추정이 채워짐', guess, '');
-  check('녹취에 글자가 없는 이름 항목: "확인한 내용"·"녹취에 적힌 글자"·"고칠 말" 칸', Boolean(await p.js(`__t.field('확인한 내용') && __t.field('녹취에 적힌 글자') && __t.field('고칠 말')`)), '');
+  check('녹취에 글자가 없는 이름 항목: "확인한 내용"·"녹취에 적힌 글자"·"고칠 말" 칸', await p.js(`Boolean(__t.field('확인한 내용') && __t.field('녹취에 적힌 글자') && __t.field('고칠 말'))`), ''); // 요소를 앱 밖으로 돌려받지 않게 화면 안에서 참·거짓으로 (React가 만든 요소는 넘겨받을 수 없다)
 });
 
 suite('확인 필요 · 적용(추정·직접 입력)', {}, async (p) => {

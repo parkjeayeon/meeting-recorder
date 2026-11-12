@@ -1,7 +1,6 @@
 import { Recorder } from './recorder.js';
 import { startOnboarding } from './onboarding.js';
 import { scriptMarkdown, parseScript, speakerStats, parseStamp } from '../../core/script.mts'; // 화면은 코어를 원본(.mts)에서 바로 가져다 쓴다 (Vite가 묶음)
-import { noteVariants } from '../../core/review.mts';
 import { reactPage, mountReact, createIslands } from '../shared/page-host/index.tsx'; // React로 옮긴 화면을 옛 라우터에 끼운다 (docs/renderer-architecture.md)
 import { createVocabularyModel } from '../entities/vocabulary/index.ts';
 import { DictionaryPage } from '../pages/dictionary/index.ts';
@@ -11,10 +10,10 @@ import { DictationsPage } from '../pages/dictations/index.ts';
 import { MeetingsPage } from '../pages/meetings/index.ts';
 import { createAskStore, AskWidget } from '../features/ask/index.ts';
 import { speakerOrder, termMatcher, termPieces, minutesBlocks, inlinePieces } from '../entities/minutes/index.ts';
-import { itemRange, REVIEW_KIND } from '../entities/review/index.ts';
 import { GlossaryBody, TermCardBody, ExplainAddBody } from '../features/meeting-terms/index.ts';
 import { ActionsBody, ActionsRowBody } from '../features/meeting-actions/index.ts';
 import { FlowsBody, FlowRowBody, FlowChatBody, flowSvgFile } from '../features/meeting-flow/index.ts';
+import { ReviewBody, ReviewChatBody } from '../features/meeting-review/index.ts';
 import { fmt, DAY, TIME, WEEKDAY, PROVIDER_NAME, clock, seconds, sizeLabel, dayKey, dayLabel, createSource, createJobs } from '../shared/lib/index.ts'; // 숫자·시간 표시는 한 벌 (React 화면과 같이 씀)
 import { dictSummary, charsOf } from '../entities/dictation/index.ts';
 import { BUSY, meetState, meetTitle, progressOf, statusText, busyShort, canCompressNow } from '../entities/meeting/index.ts';
@@ -770,15 +769,6 @@ const docCache = new Map(); // 회의 id → { minutes, transcript, scriptClean 
 // 탭을 옮기거나 화면을 다시 그리면 버튼이 새로 만들어져 '정리하는 중…'이 사라지고, 다시 누르면 같은 작업이 두 번 돌았다.
 const jobs = createJobs(); // `${dir}|흐름도` 같은 키 → { promise, label } (React 부품도 구독해 '… 중'을 그린다)
 const runJob = (key, label, fn) => jobs.run(key, label, fn);
-// 진행 중이면 버튼을 돌아가는 표시 + 누를 수 없게
-function markBusy(btn, key) {
-  const job = jobs.get(key);
-  if (!job) return btn;
-  btn.classList.add('busy');
-  btn.disabled = true;
-  btn.lastChild.textContent = job.label;
-  return btn;
-}
 const audio = new Audio(); // 문서 밖에 두어 화면을 다시 그려도 재생이 끊기지 않는다
 audio.preload = 'metadata';
 let audioFor = null;
@@ -1383,28 +1373,14 @@ function pageMeeting(id) {
   }
 
   // 고친 말을 다른 말로: 되돌린 뒤 새 말로 다시 적용
-  function editApplied(r, it, row) {
-    const input = h('input', { type: 'text', value: it.applied, 'aria-label': '고칠 말' });
-    const save = h('button', { class: 'btn small primary', onclick: async () => {
-      const guess = input.value.trim();
-      if (!guess || guess === it.applied) return refreshDoc(r);
-      save.classList.add('busy');
-      try {
-        await api.revertReview(r.dir, it.id);
-        await applyFixes(r, [{ id: it.id, heard: it.heard, guess }]);
-      } catch (err) {
-        toast('고치지 못했습니다', err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { bad: true });
-        refreshDoc(r);
-      }
-    } }, '적용');
-    // 값을 돌려주지 않게 블록으로: on* 처리기가 false를 돌려주면 영어·Backspace 입력이 막힌다 (한글 IME만 됨)
-    input.onkeydown = (e) => {
-      if (e.key === 'Enter' && !e.isComposing) save.click();
-    };
-    row.replaceChildren(h('span', { class: 'heard' }, it.heard), icon('i-right'), input, save, h('button', { class: 'btn small ghost', onclick: () => refreshDoc(r) }, '취소'));
-    row.classList.add('ritem-fix');
-    input.focus();
-    input.select();
+  async function reapply(r, it, guess) {
+    try {
+      await api.revertReview(r.dir, it.id);
+      await applyFixes(r, [{ id: it.id, heard: it.heard, guess }]);
+    } catch (err) {
+      toast('고치지 못했습니다', err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { bad: true });
+      refreshDoc(r);
+    }
   }
 
   async function keepItems(r, ids) {
@@ -1412,36 +1388,6 @@ function pageMeeting(id) {
     ids.forEach((i) => reviewSel.delete(i));
     toast(`${ids.length}개를 그대로 두었습니다`, '나중에 다시 열 수 있습니다');
     refreshDoc(r);
-  }
-
-  // 구간 직접 고르기: 시작·끝(mm:ss)을 넣거나 '지금 재생 위치'로. 끝을 비우면 시작부터 1분, 최대 10분
-  function redoPicker(r, it) {
-    const start = h('input', { type: 'text', inputmode: 'numeric', placeholder: '시작 12:30', 'aria-label': '시작 시각', spellcheck: false });
-    const end = h('input', { type: 'text', inputmode: 'numeric', placeholder: '끝 (비우면 1분)', 'aria-label': '끝 시각', spellcheck: false });
-    const here = (input) => h('button', { class: 'btn small ghost', title: '재생 중인 위치를 넣습니다', onclick: () => {
-      input.value = clock(Math.floor(audio.currentTime || 0));
-    } }, '지금 재생 위치');
-    const ok = (v) => /^\d{1,2}(:\d{2}){1,2}$/.test(v.trim());
-    const go = h('button', { class: 'btn small primary', onclick: () => {
-      if (!ok(start.value)) return start.focus();
-      if (end.value.trim() && !ok(end.value)) return end.focus();
-      const a = parseStamp(start.value.trim());
-      const b = end.value.trim() ? parseStamp(end.value.trim()) : a + 60;
-      if (b <= a) return toast('끝이 시작보다 뒤여야 합니다', '', { bad: true });
-      if (b - a > 600) return toast('한 번에 10분까지 다시 받아쓸 수 있습니다', '', { bad: true });
-      redoPick.delete(it.id);
-      openChat([it.id]);
-      runRedo(r, it.id, { start: a, end: b });
-    } }, '다시 받아쓰기');
-    for (const input of [start, end]) {
-      input.onkeydown = (e) => {
-        if (e.key === 'Enter' && !e.isComposing) go.click();
-      };
-    }
-    setTimeout(() => start.focus());
-    return h('div', { class: 'redo-pick' },
-      h('span', { class: 'hint', style: 'margin:0' }, '메모에 시각이 없어 구간을 모릅니다. 녹음을 들어 보고 그 구간을 넣어 주세요.'),
-      h('div', { class: 'redo-pick-row' }, start, here(start), h('span', { class: 'hint', style: 'margin:0' }, '~'), end, here(end), go));
   }
 
   async function runRedo(r, itemId, range) {
@@ -1484,331 +1430,134 @@ function pageMeeting(id) {
     setTimeout(() => document.querySelector('.chat textarea')?.focus(), 50);
   }
 
-  // 확인 필요: 항목마다 추정 적용 · 직접 고치기 · 채팅 · 그대로 두기, 여러 개 골라 한 번에
+  // 확인 필요: 그리기는 features/meeting-review. 상태(고른 항목·고쳐 쓴 말·갈래·직접 추가 글)와 파일을 바꾸는 명령은 여기.
+  // 다시 그리는 명령은 한 박자 뒤에(later) — 누른 부품의 뿌리를 그 처리 중에 내리지 않게
+  const later = (fn) => (...a) => queueMicrotask(() => fn(...a));
   function reviewView(r, doc) {
-    const box = h('div', { class: 'review' });
-    // 확인 필요 섹션이 없는 회의록: 정리할 것은 없고 직접 추가만 한다
-    const review = doc.review ?? (/^## 확인 필요/m.test(doc.minutes ?? '') ? null : { items: [] });
-    if (!review) {
-      const make = h('button', { class: 'btn primary' }, '정리하기');
-      make.onclick = async () => {
-        make.classList.add('busy'); // 흐리게 하지 않고 진행 중 표시
-        make.textContent = '정리하는 중…';
-        try {
-          await api.makeReview(r.dir);
-          refreshDoc(r);
-        } catch (err) {
-          toast('정리하지 못했습니다', err.message, { bad: true });
-          make.classList.remove('busy');
-          make.textContent = '정리하기';
-        }
-      };
-      box.append(h('div', { class: 'state' }, h('b', null, '확인 필요 항목을 하나씩 처리할 수 있게 정리합니다'), h('p', null, '회의록의 "확인 필요"를 항목별로 나누고, 고칠 말 추정이 있으면 채워 둡니다.'), h('div', { class: 'row' }, make)));
-      return box;
-    }
-    const items = review.items;
-    const open = items.filter((it) => it.status === 'open');
-    const done = items.filter((it) => it.status !== 'open');
-    const shown = reviewFilter === 'open' ? open : done;
-    for (const id of [...reviewSel]) if (!open.some((it) => it.id === id)) reviewSel.delete(id);
-    const guessOf = (it) => (guessDraft.has(it.id) ? guessDraft.get(it.id) : it.guess ?? '');
-    const sel = open.filter((it) => reviewSel.has(it.id));
-    const applicable = sel.filter((it) => it.heard && guessOf(it).trim());
-
-    const all = h('input', { type: 'checkbox', checked: open.length > 0 && sel.length === open.length, 'aria-label': '모두 고르기' });
-    all.indeterminate = sel.length > 0 && sel.length < open.length;
-    all.onchange = () => {
-      if (all.checked) open.forEach((it) => reviewSel.add(it.id));
-      else reviewSel.clear();
-      draw();
-    };
-    box.append(
-      h('div', { class: 'tab-bar' }, h('span', null, '들린 말을 고칠 말로 바꾸면 녹취·정리본·회의록에 모두 반영됩니다. 처음 고칠 때 원본을 따로 보관합니다.')),
-      h('div', { class: 'review-bar' },
-        reviewFilter === 'open' && open.length > 0 && h('label', { class: 'review-all' }, all, sel.length ? `${sel.length}개 선택` : '모두 고르기'),
-        reviewFilter === 'open' && sel.length > 0 && [
-          h('button', { class: 'btn small primary', disabled: !applicable.length, title: '고칠 말이 있는 항목만 적용됩니다', onclick: () => applyFixes(r, applicable.map((it) => ({ id: it.id, guess: guessOf(it) }))) }, icon('i-check'), `추정대로 적용${applicable.length ? ` ${applicable.length}` : ''}`),
-          h('button', { class: 'btn small', onclick: () => openChat(sel.map((it) => it.id)) }, icon('i-chat'), '채팅으로 확인'),
-          h('button', { class: 'btn small', onclick: () => keepItems(r, sel.map((it) => it.id)) }, '그대로 두기'),
-        ],
-        h('span', { style: 'flex:1' }),
-        h('div', { class: 'chips', style: 'margin:0' },
-          h('button', { class: 'chip', 'aria-pressed': String(reviewFilter === 'open'), onclick: () => { reviewFilter = 'open'; draw(); } }, '남은 것', num(open.length)),
-          h('button', { class: 'chip', 'aria-pressed': String(reviewFilter === 'done'), onclick: () => { reviewFilter = 'done'; draw(); } }, '처리함', num(done.length)))));
-
-    box.append(reviewAdd(r));
-    if (items.length) box.append(finalizePanel(r, review, open.length));
-    if (!shown.length) {
-      box.append(h('div', { class: 'empty' }, h('b', null, reviewFilter === 'open' ? '확인할 항목이 없습니다' : '아직 처리한 항목이 없습니다'), reviewFilter === 'open' && items.length ? '모두 처리했습니다.' : ''));
-      return box;
-    }
-    for (const it of shown) {
-      const atBtn = it.at && r.firstFile && h('button', { class: 'seek', title: '여기부터 듣기', onclick: () => seek(parseStamp(it.at)) }, it.at);
-      const card = h('div', { class: `ritem${reviewSel.has(it.id) ? ' on' : ''} ${it.status}` });
-      const head = h('div', { class: 'ritem-head' },
-        it.status === 'open' && h('input', { type: 'checkbox', checked: reviewSel.has(it.id), 'aria-label': '고르기', onchange: (e) => { e.target.checked ? reviewSel.add(it.id) : reviewSel.delete(it.id); draw(); } }),
-        h('span', { class: `tag kind-${it.kind}` }, it.source === 'check' ? '근거 확인' : REVIEW_KIND[it.kind] ?? '확인'), // 형식 검사가 올린 항목 (core/check.mts)
-        atBtn,
-        h('span', { class: 'ritem-note' }, it.note));
-      card.append(head);
-      if (it.status === 'open') {
-        if (it.kind === 'lost') {
-          // 유실 구간은 고칠 글자가 아니라 반복된 문장이다. 들어 보고 채팅하거나 그대로 둔다
-          if (it.heardNote) card.append(h('div', { class: 'ritem-fix muted' }, h('span', { class: 'hint', style: 'margin:0' }, '반복된 문장'), h('span', { class: 'quote' }, it.heardNote)));
-        } else if (it.heard) {
-          const input = h('input', { type: 'text', value: guessOf(it), placeholder: '고칠 말 (기억나는 대로)', spellcheck: false });
-          input.oninput = () => guessDraft.set(it.id, input.value);
-          input.onkeydown = (e) => {
-            if (e.key === 'Enter' && !e.isComposing && input.value.trim()) applyFixes(r, [{ id: it.id, guess: input.value }]);
-          };
-          card.append(h('div', { class: 'ritem-fix' },
-            h('span', { class: 'heard' }, it.heard), icon('i-right'), input,
-            h('button', { class: 'btn small primary', onclick: () => input.value.trim() && applyFixes(r, [{ id: it.id, guess: input.value }]) }, '적용')));
-          // 이름이 두 가지로 섞인 항목: 어느 쪽으로 통일할지 바로 고른다 (다른 쪽을 고른 쪽으로 모두 바꾼다)
-          const variants = noteVariants(it.note, doc.transcript ?? '').slice(0, 2);
-          if (variants.length === 2) card.append(h('div', { class: 'ritem-unify' }, h('span', { class: 'hint', style: 'margin:0' }, '한 가지로 통일'),
-            variants.map((v, k) => h('button', { class: 'btn small', onclick: () => applyFixes(r, [{ id: it.id, heard: variants[1 - k], guess: v }]) }, `모두 '${v}'(으)로`))));
-        } else {
-          // 녹취에 같은 글자가 없는 항목(이름·뜻 확인 등): LLM을 거치지 않고 바로 처리할 수 있게
-          // ① 확인한 내용을 적고 '확인됨' (녹취는 그대로, 확인을 마칠 때 회의록 문장에 반영)
-          // ② 녹취에 적힌 글자와 고칠 말을 넣어 '적용' (녹취에 그 글자가 없으면 이유를 알린다)
-          if (it.heardNote) card.append(h('div', { class: 'ritem-fix muted' }, h('span', { class: 'heard' }, it.heardNote), h('span', { class: 'hint', style: 'margin:0' }, '녹취에 이 글자 그대로는 없습니다')));
-          const what = h('input', { type: 'text', placeholder: '확인한 내용 (예: 외부 개발자, 이름은 그대로)', 'aria-label': '확인한 내용', spellcheck: false });
-          const resolve = () => applyFixes(r, [{ id: it.id, resolve: what.value.trim() || '확인함' }]);
-          what.onkeydown = (e) => {
-            if (e.key === 'Enter' && !e.isComposing) resolve();
-          };
-          card.append(h('div', { class: 'ritem-fix' }, what, h('button', { class: 'btn small primary', onclick: resolve }, icon('i-check'), '확인됨')));
-          const from = h('input', { type: 'text', placeholder: '녹취에 적힌 글자', 'aria-label': '녹취에 적힌 글자', spellcheck: false });
-          const to = h('input', { type: 'text', placeholder: '고칠 말', 'aria-label': '고칠 말', spellcheck: false });
-          const fix = () => (from.value.trim() && to.value.trim() ? applyFixes(r, [{ id: it.id, heard: from.value.trim(), guess: to.value.trim() }]) : (from.value.trim() ? to : from).focus());
-          to.onkeydown = (e) => {
-            if (e.key === 'Enter' && !e.isComposing) fix();
-          };
-          card.append(h('div', { class: 'ritem-fix ritem-pair' }, from, icon('i-right'), to, h('button', { class: 'btn small', onclick: fix }, '적용')));
-        }
-        card.append(h('div', { class: 'ritem-acts' },
-          h('button', { class: 'btn small ghost', onclick: () => openChat([it.id]) }, icon('i-chat'), '채팅'),
-          // 구간을 알면 바로, 모르면(메모에 시각도 단서도 없음) 구간을 직접 고르는 줄을 연다
-          (it.kind === 'lost' || it.kind === 'meaning') && r.firstFile && h('button', { class: 'btn small ghost', title: itemRange(it) ? '이 구간만 녹음에서 다시 받아씁니다' : '구간을 몰라 직접 고릅니다', 'aria-expanded': itemRange(it) ? null : String(redoPick.has(it.id)), onclick: () => {
-            if (!itemRange(it)) {
-              redoPick.has(it.id) ? redoPick.delete(it.id) : redoPick.add(it.id);
-              return draw();
-            }
-            openChat([it.id]);
-            runRedo(r, it.id, itemRange(it));
-          } }, icon('i-redo'), '구간 다시 받아쓰기'),
-          h('button', { class: 'btn small ghost', onclick: () => keepItems(r, [it.id]) }, it.kind === 'lost' ? '유실 그대로 두기' : '그대로 두기')));
-        if (redoPick.has(it.id) && !itemRange(it)) card.append(redoPicker(r, it));
-      } else {
-        // 확인 마치기 전까지는 처리한 항목도 다시 손볼 수 있다: 고친 말 바꾸기·되돌리기, 그대로 둔 것 다시 열기
-        const locked = Boolean(doc.review?.finalizedAt);
-        const isRedo = Boolean(it.redo?.appliedAt);
-        // 되돌리기 기능 전에 다시 받아쓴 구간은 원래 줄·녹취 구간 기록이 없어 되돌릴 수 없다 → 버튼 대신 안내
-        // (단어 항목은 기록이 없어도 고치기 전 보관본에서 바꾼 줄을 다시 찾는다)
-        const noUndo = it.status === 'applied' && isRedo && !it.redo.replaced;
-        const doneRow = h('div', { class: 'ritem-done' },
-          it.status === 'resolved' ? [h('span', { class: 'proposal-state ok', style: 'margin:0' }, icon('i-check'), '확인됨'), h('span', null, it.resolution ?? '')]
-          : it.status === 'applied' ? [isRedo ? h('span', { class: 'num' }, `${clock(it.redo.start)}~${clock(it.redo.end)} 구간`) : h('span', { class: 'heard' }, it.heard ?? it.heardNote ?? ''), icon('i-right'), h('b', null, it.applied), h('span', { class: 'hint', style: 'margin:0' }, isRedo ? `${it.count ?? 0}줄` : `${it.count ?? 0}곳 고침`)] : h('span', null, '그대로 둠'),
-          !locked && (it.status === 'kept' || it.status === 'resolved') && h('button', { class: 'btn small ghost', onclick: async () => { await api.setReviewStatus(r.dir, [it.id], 'open'); refreshDoc(r); } }, '다시 열기'),
-          !locked && it.status === 'applied' && !noUndo && !isRedo && it.heard && h('button', { class: 'btn small ghost', onclick: () => editApplied(r, it, doneRow) }, icon('i-pencil'), '고치기'),
-          !locked && it.status === 'applied' && !noUndo && h('button', { class: 'btn small ghost', onclick: () => revertItem(r, it) }, '되돌리기'),
-          !locked && noUndo && h('span', { class: 'hint', style: 'margin:0' }, '되돌리기 기능 전에 반영한 구간이라 되돌릴 수 없습니다'));
-        card.append(doneRow);
-      }
-      box.append(card);
-    }
-    return box;
-  }
-
-  // 확인 마치기: 남은 항목은 그대로 둔 것으로 하고, 채팅·이름 등 문장에 영향이 있는 결과만 회의록에 반영한다
-  // 확인 필요 › 직접 추가: 목록이 놓친 것을 말로 짚으면 녹취에서 찾아 항목으로 만든다 (그 뒤는 다른 항목과 같이 적용·채팅·되돌리기)
-  function reviewAdd(r) {
-    const key = `${r.dir}|확인추가`;
-    const input = h('textarea', { rows: 1, placeholder: '놓친 게 있나요? 예: "통신 한정성"은 "안정성"이야 · 12분쯤 나온 회사 이름이 이상해', spellcheck: false });
-    input.value = addDraft;
-    const fit = () => {
-      input.style.height = 'auto';
-      input.style.height = `${Math.min(input.scrollHeight, 140)}px`;
-    };
-    const btn = h('button', { class: 'btn small' }, icon('i-plus'), h('span', null, '확인 필요에 추가'));
-    const send = async () => {
-      const text = input.value.trim();
-      if (!text || jobs.has(key)) return;
-      try {
-        const res = await runJob(key, '녹취에서 찾는 중…', () => api.addReview(r.dir, text));
-        if (res.added.length) {
-          addDraft = '';
-          reviewFilter = 'open';
-          toast(`확인 필요에 ${res.added.length}개를 더했습니다`, res.reply);
-        } else toast('더할 항목을 찾지 못했습니다', res.reply || '녹취에서 그 말을 찾지 못했습니다. 들린 그대로 적어 보세요', { ms: 9000 });
-      } catch (err) {
-        toast('더하지 못했습니다', err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { bad: true });
-      }
-      await refreshDoc(r);
-      loadHistory();
-    };
-    input.oninput = () => {
-      addDraft = input.value;
-      fit();
-    };
-    input.onkeydown = (e) => {
-      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-        e.preventDefault();
-        send();
-      }
-    };
-    btn.onclick = send;
-    markBusy(btn, key);
-    if (jobs.has(key)) input.disabled = true;
-    requestAnimationFrame(fit);
-    return h('div', { class: 'review-add' }, input, btn);
-  }
-
-  function finalizePanel(r, review, openCount) {
-    if (review.finalizedAt) {
-      const f = review.finalize ?? {};
-      return h('div', { class: 'finalize done' }, icon('i-check'),
-        h('div', { class: 'finalize-text' }, h('b', null, '확인을 마쳤습니다'),
-          h('span', null, `고침 ${f.applied ?? 0} · 그대로 둠 ${f.kept ?? 0}${f.rewritten ? ' · 회의록의 해당 부분을 고쳐 썼습니다 (이전 회의록은 minutes.before-finalize.md로 보관)' : ' · 회의록 문장은 그대로입니다'}`)));
-    }
-    const needsRewrite = review.items.some((it) => it.chat?.length || (it.status === 'applied' && (it.kind !== 'word' || it.source === 'user' || it.source === 'inline')));
-    const go = h('button', { class: 'btn primary' }, icon('i-check'), openCount ? `남은 ${openCount}개는 그대로 두고 확인 마치기` : '확인 마치기');
-    go.onclick = async () => {
-      go.classList.add('busy'); // 흐리게 하지 않고 진행 중 표시
-      go.lastChild.textContent = needsRewrite ? '회의록에 반영하는 중…' : '마치는 중…';
-      try {
-        const res = await api.finalizeReview(r.dir);
-        toast('회의록을 확정했습니다', res.finalize?.rewritten ? '확인 결과에 맞춰 회의록의 해당 부분을 고쳤습니다' : '고친 단어는 이미 반영되어 있어 회의록 문장은 그대로입니다');
-        await refreshDoc(r);
-        loadHistory();
-      } catch (err) {
-        toast('확인을 마치지 못했습니다', err.message, { bad: true });
-        go.classList.remove('busy');
-        go.lastChild.textContent = '다시 시도';
-      }
-    };
-    return h('div', { class: 'finalize' },
-      h('div', { class: 'finalize-text' }, h('b', null, openCount ? `확인 필요 ${openCount}개 남음` : '모두 처리했습니다'),
-        h('span', null, needsRewrite ? '채팅으로 밝혀진 내용이나 고친 이름은 회의록의 해당 문장에 반영합니다. 나머지 문장은 그대로 둡니다.' : '고친 단어는 이미 녹취·정리본·회의록에 반영되어 있습니다. 마치면 회의록이 확정됩니다.')),
-      go);
+    const items = doc.review?.items ?? [];
+    for (const rid of [...reviewSel]) if (!items.some((it) => it.id === rid && it.status === 'open')) reviewSel.delete(rid);
+    const addKey = `${r.dir}|확인추가`;
+    return islands.mount(h('div', { class: 'review' }), ReviewBody, {
+      review: doc.review ?? null,
+      minutes: doc.minutes ?? '',
+      transcript: doc.transcript ?? '',
+      filter: reviewFilter,
+      selected: new Set(reviewSel),
+      guessDraft: new Map(guessDraft),
+      redoPick: new Set(redoPick),
+      addDraft,
+      seek: r.firstFile ? (sec) => seek(sec) : null,
+      now: () => audio.currentTime,
+      jobs,
+      addKey,
+      actions: {
+        setFilter: later((f) => { reviewFilter = f; draw(); }),
+        select: later((rid, on) => { on ? reviewSel.add(rid) : reviewSel.delete(rid); draw(); }),
+        selectAll: later((on) => {
+          if (on) items.filter((it) => it.status === 'open').forEach((it) => reviewSel.add(it.id));
+          else reviewSel.clear();
+          draw();
+        }),
+        setGuess: (rid, v) => guessDraft.set(rid, v),
+        apply: (fixes) => applyFixes(r, fixes),
+        keep: (ids) => keepItems(r, ids),
+        openChat: later((ids) => openChat(ids)),
+        redo: later((rid, range) => {
+          redoPick.delete(rid);
+          openChat([rid]);
+          runRedo(r, rid, range);
+        }),
+        toggleRedoPick: later((rid) => { redoPick.has(rid) ? redoPick.delete(rid) : redoPick.add(rid); draw(); }),
+        reopen: async (rid) => { await api.setReviewStatus(r.dir, [rid], 'open'); refreshDoc(r); },
+        revert: (it) => revertItem(r, it),
+        reapply: (it, guess) => reapply(r, it, guess),
+        cancelEdit: later(() => refreshDoc(r)),
+        makeReview: async () => {
+          try {
+            await api.makeReview(r.dir);
+            refreshDoc(r);
+            return true;
+          } catch (err) {
+            toast('정리하지 못했습니다', err.message, { bad: true });
+            return false;
+          }
+        },
+        setAddDraft: (text) => (addDraft = text),
+        add: async (text) => {
+          if (jobs.has(addKey)) return;
+          try {
+            const res = await runJob(addKey, '녹취에서 찾는 중…', () => api.addReview(r.dir, text));
+            if (res.added.length) {
+              addDraft = '';
+              reviewFilter = 'open';
+              toast(`확인 필요에 ${res.added.length}개를 더했습니다`, res.reply);
+            } else toast('더할 항목을 찾지 못했습니다', res.reply || '녹취에서 그 말을 찾지 못했습니다. 들린 그대로 적어 보세요', { ms: 9000 });
+          } catch (err) {
+            toast('더하지 못했습니다', err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { bad: true });
+          }
+          await refreshDoc(r);
+          loadHistory();
+        },
+        finalize: async () => {
+          try {
+            const res = await api.finalizeReview(r.dir);
+            toast('회의록을 확정했습니다', res.finalize?.rewritten ? '확인 결과에 맞춰 회의록의 해당 부분을 고쳤습니다' : '고친 단어는 이미 반영되어 있어 회의록 문장은 그대로입니다');
+            await refreshDoc(r);
+            loadHistory();
+            return true;
+          } catch (err) {
+            toast('확인을 마치지 못했습니다', err.message, { bad: true });
+            return false;
+          }
+        },
+        warn: (title) => toast(title, '', { bad: true }),
+      },
+    });
   }
 
   function chatDrawer(r, doc) {
-    const items = (doc.review?.items ?? []).filter((it) => chat.ids.includes(it.id));
-    const log = h('div', { class: 'chat-log' });
-    if (!chat.messages.length) log.append(h('p', { class: 'chat-empty' }, '기억나는 것, 그때 상황, 맞는 이름 등을 알려 주세요. 녹취 앞뒤를 같이 보고 고칠 말을 제안합니다. 기억이 안 나면 "그대로 두자"고 하면 됩니다.'));
-    for (const m of chat.messages) {
-      const textEl = h('div', { class: 'msg-text' });
-      m.text.split(/\*\*(.+?)\*\*/g).forEach((part, i) => part && textEl.append(i % 2 ? h('b', null, part) : part));
-      const bubble = h('div', { class: `msg ${m.role}` }, textEl);
-      if (m.proposals?.length) {
-        // 이미 처리한 항목(적용·그대로 둠)은 버튼 대신 결과를 보여 준다 → 같은 제안을 두 번 누르지 않게
-        const itemOf = (p) => items.find((x) => x.id === p.id);
-        const fixes = m.proposals.filter((p) => !p.keep && !p.redo && !p.resolve && itemOf(p)?.status === 'open');
-        const apply = async (list) => {
-          list.forEach((f) => chat.applying.add(f.id));
-          draw();
-          await applyFixes(r, list);
-          list.forEach((f) => chat?.applying.delete(f.id));
-          draw();
-        };
-        bubble.append(h('div', { class: 'proposals' },
-          m.proposals.map((p) => {
-            const it = itemOf(p);
-            if (p.redo) {
-              const busy = chat.redoing === p.id;
-              return h('div', { class: 'proposal' }, icon('i-redo'), h('span', null, `${clock(p.redo.start)}~${clock(p.redo.end)} 구간 다시 받아쓰기`),
-                h('button', { class: `btn small${busy ? ' busy' : ''}`, onclick: () => runRedo(r, p.id, p.redo) }, busy ? '받아쓰는 중…' : '다시 받아쓰기'));
-            }
-            const done = it && it.status !== 'open';
-            const busy = chat.applying.has(p.id);
-            if (p.resolve) {
-              return h('div', { class: `proposal${done ? ' done' : ''}` }, h('span', null, '확인됨으로: ', h('b', null, p.resolve)),
-                done ? h('span', { class: `proposal-state${it.status === 'resolved' ? ' ok' : ''}` }, it.status === 'resolved' ? [icon('i-check'), '확인됨'] : '처리함')
-                  : h('button', { class: `btn small primary${busy ? ' busy' : ''}`, onclick: () => apply([{ id: p.id, resolve: p.resolve }]) }, busy ? '처리 중…' : '확인됨으로'));
-            }
-            const state = !done ? null
-              : it.status === 'kept' ? h('span', { class: 'proposal-state' }, '그대로 둠')
-              : it.status === 'resolved' ? h('span', { class: 'proposal-state ok' }, icon('i-check'), '확인됨')
-              : h('span', { class: 'proposal-state ok' }, icon('i-check'), it.applied === p.guess || p.keep ? '적용됨' : `'${it.applied}'로 적용됨`);
-            return h('div', { class: `proposal${done ? ' done' : ''}` },
-              p.keep ? h('span', null, `${it?.heard ?? it?.heardNote ?? p.id}: 그대로 두기`) : [h('span', { class: 'heard' }, p.heard), icon('i-right'), h('b', null, p.guess)],
-              state ?? h('button', { class: `btn small${busy ? ' busy' : ''}`, 'aria-busy': String(busy), onclick: () => apply([p.keep ? { id: p.id, keep: true } : { id: p.id, heard: p.heard, guess: p.guess }]) },
-                busy ? '적용 중…' : p.keep ? '그대로 두기' : '적용'));
-          }),
-          fixes.length > 1 && h('button', { class: 'btn small primary', disabled: fixes.some((p) => chat.applying.has(p.id)), onclick: () => apply(fixes.map((p) => ({ id: p.id, heard: p.heard, guess: p.guess }))) }, `${fixes.length}개 모두 적용`)));
-      }
-      // 녹취에서 고칠 말을 찾지 못한 제안: 버리지 않고 이유와 함께. 녹취에 있는 글자로 고쳐 넣으면 적용할 수 있다
-      const unmatched = (m.unmatched ?? []).filter((p) => items.find((x) => x.id === p.id)?.status === 'open');
-      if (unmatched.length) {
-        bubble.append(h('div', { class: 'proposals' }, unmatched.map((p) => {
-          const target = h('input', { type: 'text', value: p.heard ?? '', placeholder: '녹취에 있는 글자', 'aria-label': '고칠 대상', spellcheck: false });
-          const go = h('button', { class: 'btn small', onclick: async () => {
-            const heard = target.value.trim();
-            if (!heard) return target.focus();
-            go.classList.add('busy');
-            await applyFixes(r, [{ id: p.id, heard, guess: p.guess }]);
-            draw();
-          } }, '적용');
-          target.onkeydown = (e) => {
-            if (e.key === 'Enter' && !e.isComposing) go.click();
-          };
-          return h('div', { class: 'proposal unmatched' },
-            h('div', { class: 'proposal-row' }, target, icon('i-right'), h('b', null, p.guess), go),
-            h('span', { class: 'hint', style: 'margin:0' }, p.heard ? `녹취에서 '${p.heard}'를 그대로 찾지 못했습니다. 녹취에 적힌 글자로 고치면 적용할 수 있습니다.` : '고칠 대상을 받지 못했습니다. 녹취에 적힌 글자를 넣으면 적용할 수 있습니다.'));
-        })));
-      }
-      if (m.redo && !m.redo.empty) {
-        const it = items.find((x) => x.id === m.redo.id);
-        const applied = Boolean(it?.redo?.appliedAt);
-        bubble.append(h('div', { class: 'redo-result' },
-          h('div', { class: 'redo-lines' }, m.redo.text.split('\n').map((l) => {
-            const x = /^\[([\d:]+)\]\s*(?:\[([^\]]+)\]\s*)?(.*)$/.exec(l);
-            return h('div', { class: 'redo-line' }, x ? [h('span', { class: 'num' }, x[1]), x[2] && h('b', null, x[2]), h('span', null, x[3])] : l);
-          })),
-          applied
-            ? h('div', { class: 'proposal-state ok' }, icon('i-check'), '녹취에 반영됨')
-            : h('div', { class: 'redo-acts' }, h('button', { class: 'btn small primary', onclick: (e) => { e.currentTarget.classList.add('busy'); applyRedo(r, m.redo.id); } }, '녹취에 반영'))));
-      }
-      log.append(bubble);
-    }
-    if (chat.redoing) log.append(h('div', { class: 'msg assistant busy' }, h('div', { class: 'msg-text' }, '녹음에서 그 구간을 다시 받아쓰는 중입니다… (30초 구간에 몇 초)')));
-    if (chat.busy) log.append(h('div', { class: 'msg assistant busy' }, h('div', { class: 'msg-text' }, '녹취를 보고 있습니다…')));
-    const input = h('textarea', { rows: 2, placeholder: '예: 화자 1 이름은 김민준이에요 / 그 부분은 기억 안 나요', spellcheck: false });
-    input.value = chat.draft ?? '';
-    input.oninput = () => (chat.draft = input.value); // 화면을 다시 그려도 쓰던 글이 남게
-    const send = async () => {
-      const text = input.value.trim();
-      if (!text || chat.busy) return;
-      chat.messages.push({ role: 'user', text });
-      chat.draft = '';
-      chat.busy = true;
+    const c = chat;
+    const items = (doc.review?.items ?? []).filter((it) => c.ids.includes(it.id));
+    const apply = async (list) => {
+      list.forEach((f) => c.applying.add(f.id));
       draw();
-      try {
-        const res = await api.chatReview(r.dir, chat.ids, chat.messages.map(({ role, text: t, redo }) => ({ role, text: redo?.text ? `${t}\n${redo.text}` : t })));
-        chat?.messages.push({ role: 'assistant', text: res.text, proposals: res.proposals, unmatched: res.unmatched });
-      } catch (err) {
-        chat?.messages.push({ role: 'assistant', text: `답을 받지 못했습니다: ${err.message}` });
-      }
-      if (chat) chat.busy = false;
+      await applyFixes(r, list);
+      list.forEach((f) => c.applying.delete(f.id));
       draw();
-      setTimeout(() => document.querySelector('.chat textarea')?.focus(), 30);
     };
-    input.onkeydown = (e) => {
-      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-        e.preventDefault();
-        send();
-      }
-    };
-    const drawer = h('aside', { class: 'chat', 'aria-label': '확인 필요 채팅' },
-      h('header', { class: 'chat-head' }, icon('i-chat'), h('b', null, '확인 필요 채팅'), h('span', { style: 'flex:1' }),
-        h('button', { class: 'icon-btn', 'aria-label': '닫기', onclick: () => { chat = null; draw(); } }, icon('i-x'))),
-      h('div', { class: 'chat-ctx' }, items.map((it) => h('span', { class: 'tag' }, it.at ? `${it.at} ` : '', it.heard ?? it.heardNote ?? REVIEW_KIND[it.kind]))),
-      log,
-      h('div', { class: 'chat-input' }, input, h('button', { class: 'icon-btn send', 'aria-label': '보내기', disabled: chat.busy, onclick: send }, icon('i-send'))));
-    requestAnimationFrame(() => (log.scrollTop = log.scrollHeight));
-    return drawer;
+    return islands.mount(h('aside', { class: 'chat', 'aria-label': '확인 필요 채팅' }), ReviewChatBody, {
+      items,
+      messages: [...c.messages],
+      busy: c.busy,
+      redoing: c.redoing ?? null,
+      applying: new Set(c.applying),
+      draft: c.draft ?? '',
+      setDraft: (text) => (c.draft = text), // 화면을 다시 그려도 쓰던 글이 남게
+      close: later(() => { chat = null; draw(); }),
+      apply: later(apply),
+      applyUnmatched: async (fix) => {
+        await applyFixes(r, [fix]);
+        draw();
+      },
+      redo: later((rid, range) => runRedo(r, rid, range)),
+      applyRedo: (rid) => applyRedo(r, rid),
+      send: later(async (text) => {
+        if (c.busy) return;
+        c.messages.push({ role: 'user', text });
+        c.draft = '';
+        c.busy = true;
+        draw();
+        try {
+          const res = await api.chatReview(r.dir, c.ids, c.messages.map(({ role, text: t, redo }) => ({ role, text: redo?.text ? `${t}\n${redo.text}` : t })));
+          c.messages.push({ role: 'assistant', text: res.text, proposals: res.proposals, unmatched: res.unmatched });
+        } catch (err) {
+          c.messages.push({ role: 'assistant', text: `답을 받지 못했습니다: ${err.message}` });
+        }
+        c.busy = false;
+        if (chat === c) draw();
+        setTimeout(() => document.querySelector('.chat textarea')?.focus(), 30);
+      }),
+    });
   }
 
   function speakersSelect() {

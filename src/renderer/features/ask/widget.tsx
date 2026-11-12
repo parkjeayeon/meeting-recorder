@@ -49,6 +49,15 @@ function Panel({ store, deps }: { readonly store: AskStore; readonly deps: AskWi
     if (ta.current!.value !== s.draft) ta.current!.value = s.draft;
   }, [s.draft]);
   useNativeEvent(ta, 'input', (el) => store.setDraft(el.value));
+  // 키도 입력칸에 직접 (거품이 안 오르는 keydown도 받게 — 옛 화면처럼)
+  useNativeEvent(ta, 'keydown', (_el, e) => {
+    const k = e as KeyboardEvent;
+    if (k.key === 'Enter' && !k.shiftKey && !k.isComposing) {
+      k.preventDefault();
+      void send();
+    }
+    if (k.key === 'Escape') store.toggle(false);
+  });
   // 그릴 때마다 대화 끝으로 (옛 화면도 그릴 때마다), 막 열었으면 입력칸에 포커스
   useLayoutEffect(() => {
     const id = requestAnimationFrame(() => {
@@ -100,13 +109,7 @@ function Panel({ store, deps }: { readonly store: AskStore; readonly deps: AskWi
       </div>
       <div className="askcompose">
         <div className="composer">
-          <textarea ref={ta} rows={1} placeholder="예: 작년 2월 성능 시험 관련 회의" aria-label="찾을 회의" onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              void send();
-            }
-            if (e.key === 'Escape') store.toggle(false);
-          }} />
+          <textarea ref={ta} rows={1} placeholder="예: 작년 2월 성능 시험 관련 회의" aria-label="찾을 회의" />
           <div className="bottom">
             <CondBar scope={s.scope} setScope={store.setScope} />
             <button className="ask-send" aria-label="찾기" title="찾기 (Enter)" onClick={() => void send()}><Icon id="i-send" /></button>
