@@ -13,7 +13,7 @@ import type { FlowDoc } from '../../entities/flow/index.ts';
 import type { RecorderApi } from '../../shared/api/index.ts';
 import { clock, createSource, dayLabel, PROVIDER_NAME, sizeLabel, TIME, type Jobs } from '../../shared/lib/index.ts';
 import { commit, createIslands, reactPage, type PageHandle } from '../../shared/page-host/index.tsx';
-import { el, icon } from './dom.ts';
+import { el, icon } from '../../shared/ui/index.tsx';
 import type { MeetingMenu, MeetingView, StateCard, TabBody } from './ui.tsx';
 import { MeetingPage } from './ui.tsx';
 

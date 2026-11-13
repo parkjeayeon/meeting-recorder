@@ -2,6 +2,7 @@
 import type React from 'react';
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 
+export { el, icon } from './dom.ts';
 export { glide, scrollSpy } from './scroll-spy.ts';
 export { createToaster, confirmBox } from './feedback.ts';
 export { installTooltips } from './tooltips.ts';
