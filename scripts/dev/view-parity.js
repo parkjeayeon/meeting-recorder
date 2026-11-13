@@ -93,7 +93,10 @@ const norm = (s) => s
   .replace(/fl-arrow-([a-z0-9]+)-[a-z0-9]+/g, 'fl-arrow-$1-X')
   .replace(/<option value="[0-9a-f]{64}">/g, '<option value="DEVICE">')
   .replace(/\d\d:\d\d 초기화/g, 'HH:MM 초기화')
-  .replace(/<i class="(on)?">/g, '<i>');
+  .replace(/<i class="(on)?">/g, '<i>')
+  // 손으로 쓴 index.html의 들여쓰기(줄바꿈이 든 공백만): React는 만들지 않고 화면에도 안 보인다(사용자 결정, 결정 66). 띄어쓰기 한 칸은 그대로 비교
+  .replace(/>[ \t]*\n\s*</g, '><')
+  .replace(/></g, '>\n<');
 const shoot = (root, name, env, js, hash, file) => {
   const e = { ...process.env, ...env, ROOT: root, ...(js ? { DUMP_JS: H + js } : {}) };
   try {

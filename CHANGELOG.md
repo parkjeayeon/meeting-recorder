@@ -8,6 +8,8 @@
 ## 2026-11-13
 
 ### 기능
+- **설정 창 마크업을 React로** (동작·겉모습 그대로): index.html에 손으로 쓴 설정 창 안쪽을 `features/configuration/settings/ui.tsx`(`SettingsDialogBody`)로 옮기고, `mountSettings`가 주인 코드보다 먼저 한 번 그린다(다시 그리지 않음 — 주인이 그 화면을 계속 다룬다). 다시 그리는 칸(계정·엔진·권한 목록, 사용 한도)은 다음에 React로.
+  - 확인: 화면 48·기능 46·흐름 13을 고치지 않고 통과, 설정 HTML 12가지 상태가 main과 같음(손으로 쓴 들여쓰기만 무시 — 결정 66), 설정 창 캡처 4장(라이트·다크, 설정·엔진 탭)이 main과 바이트까지 같음, 원래 마크업과 같은지 보는 단위 시험.
 - **앱 이름 뒤에 버전과 빌드 시각** (`Meeting Recorder 0.1.0 (11.13 1004).app`): Finder·Dock·메뉴에서 어떤 빌드가 깔렸는지 바로 보이게. `scripts/build-app.mjs`가 묶을 때 이름을 정하고 서명하며, `npm run install-app`은 `/Applications`의 예전 `Meeting Recorder*.app`을 지우고 새 것을 넣는다. 앱 id(`local.meetingrecorder`)·데이터 폴더(`meeting-recorder`)는 그대로라 권한·설정이 이어진다. macOS 파일 이름에 `:`를 못 써서 시각은 `1004`처럼.
   - 확인: 묶은 앱의 Info.plist(앱 id·이름)와 앱 안 package.json(이름 `meeting-recorder` 그대로), 검증 도구가 새 이름의 설치된 앱을 찾음.
   - 남은 확인: 처음 실행 때 한 번 등록하는 로그인 항목이 이름이 바뀐 앱을 따라가는지 — 설치한 뒤 시스템 설정 › 일반 › 로그인 항목에서.
