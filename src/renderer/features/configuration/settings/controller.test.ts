@@ -5,18 +5,27 @@ import { createSettingsStore } from '../../../entities/settings/index.ts';
 import { createIssueStore } from '../../../entities/issue/index.ts';
 import type { RecorderApi } from '../../../shared/api/index.ts';
 import { mountSettings } from '../index.ts';
+import * as sharedUi from '../../../shared/ui/index.tsx';
+import { mountReact } from '../../../shared/page-host/index.tsx';
+import { dayLabel, fmt, PROVIDER_NAME, remember, store, TIME } from '../../../shared/lib/index.ts';
+import { SettingsDialogBody } from './ui.tsx';
+import type { SetupComponent, UsageResult } from './types.ts';
+import legacyController from './__fixtures__/controller.js.txt?raw';
 import originalBody from './__fixtures__/dialog.html?raw';
 
 const q = <E extends HTMLElement = HTMLElement>(selector: string) => document.querySelector<E>(selector)!;
 const click = (selector: string) => q(selector).onclick!.call(q(selector), new MouseEvent('click') as PointerEvent);
 
-beforeEach(() => {
-  vi.useFakeTimers();
+function resetDocument() {
   document.body.innerHTML = new DOMParser().parseFromString(html, 'text/html').body.innerHTML;
   localStorage.clear();
   vi.stubGlobal('navigator', { mediaDevices: { enumerateDevices: vi.fn().mockResolvedValue([]), addEventListener: vi.fn() } });
   q<HTMLDialogElement>('#settings').showModal = function () { this.open = true; };
   q<HTMLDialogElement>('#settings').close = function () { this.open = false; };
+}
+beforeEach(() => {
+  vi.useFakeTimers();
+  resetDocument();
 });
 afterEach(() => {
   vi.clearAllTimers();
@@ -25,7 +34,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function mount() {
+function mount(factory = mountSettings) {
   const saved = {
     enabled: true, language: 'ko', meetingLanguage: 'en', cleanup: true, provider: 'auto',
     vocabulary: 'Whisper', minutes: true, diarize: true, diarizeReady: true,
@@ -55,7 +64,7 @@ function mount() {
   const settings = createSettingsStore(api);
   const issues = createIssueStore();
   const deps = { api: api as unknown as RecorderApi, settings, issues, toast: vi.fn(), confirm: vi.fn().mockResolvedValue(true), closePalette: vi.fn(), recordingsChanged: vi.fn(), rerunOnboarding: vi.fn() };
-  const ui = mountSettings(deps);
+  const ui = factory(deps);
   return { ui, api, settings, issues, deps, saved, providers };
 }
 
@@ -197,4 +206,271 @@ describe('mountSettings', () => {
     await vi.advanceTimersByTimeAsync(3000);
     expect(api.permStatus).toHaveBeenCalledOnce();
   });
+});
+
+
+const legacyMount: typeof mountSettings = new Function(
+  'h', 'mountReact', 'SettingsDialogBody', 'dayLabel', 'fmt', 'PROVIDER_NAME', 'remember', 'store', 'TIME', legacyController,
+)(sharedUi.el, mountReact, SettingsDialogBody, dayLabel, fmt, PROVIDER_NAME, remember, store, TIME);
+
+const settle = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
+const capture = (selector: string) => q(selector).innerHTML;
+type Mounted = ReturnType<typeof mount>;
+
+const setupCases: SetupComponent[] = [
+  { id: 'engine', name: '엔진', desc: '설명', installed: false, size: 9000000, removable: false },
+  { id: 'zero', name: '빈 모델', desc: '', installed: false, size: 0, removable: true },
+  { id: 'null', name: '크기 모름', desc: '', installed: false, size: null, removable: false, partial: true },
+  { id: 'large', name: '회의 모델', desc: '설명', installed: true, size: 3100000000, removable: true },
+  { id: 'brew', name: '설치 필요', desc: '', installed: false, size: 10, removable: false, blocker: 'brew' },
+  { id: 'token', name: '토큰 필요', desc: '', installed: false, size: 1200000000, removable: false, blocker: 'token' },
+  { id: 'failed', name: '실패', desc: '', installed: false, size: 20, removable: false, blocker: 'token', job: { error: '실패 & 재시도' } },
+  { id: 'running', name: '설치 중', desc: '', installed: false, size: 30, removable: false, job: { running: true, pct: 0.426, text: '받는 중' } },
+  { id: 'waiting', name: '기다림', desc: '', installed: true, size: 10, removable: true, job: { running: true } },
+];
+
+const scenarios: { name: string; run: (m: Mounted) => Promise<string[]> }[] = [
+  { name: 'engine actions', run: async ({ api, settings }) => {
+    await settings.refresh();
+    const outputs: string[] = [];
+    for (const state of ['ready', 'loading', 'stopped', 'no-engine', 'no-model', 'downloading', 'error', 'unknown']) {
+      api.onDictEngine.mock.calls[0]![0]({ state, received: 10000000, total: 20000000, error: '실패' });
+      outputs.push(capture('#engineActs'));
+    }
+    return outputs;
+  } },
+  { name: 'providers', run: async ({ api, settings, providers, saved }) => {
+    await settings.refresh();
+    const outputs: string[] = [];
+    for (const provider of ['auto', 'claude-code', 'codex', 'api']) {
+      saved.provider = provider;
+      api.providers.mockResolvedValue({ ...providers,
+        'claude-code': { installed: true, loggedIn: provider === 'claude-code', account: '<계정>' } as typeof providers['claude-code'],
+        codex: { installed: provider !== 'auto', loggedIn: provider === 'codex' },
+        api: { installed: provider !== 'codex', loggedIn: provider === 'api' },
+      });
+      await settings.refreshProviders();
+      outputs.push(capture('#providers'));
+    }
+    return outputs;
+  } },
+  { name: 'usage', run: async ({ ui, api, settings, providers }) => {
+    await settings.refresh();
+    api.providers.mockResolvedValue({ ...providers, codex: { installed: true, loggedIn: true } });
+    await settings.refreshProviders();
+    const outputs = [capture('[data-usage="codex"]')];
+    let resolve!: (value: Record<string, UsageResult>) => void;
+    api.usage.mockImplementation(() => new Promise((done) => { resolve = done; }));
+    ui.open('cleanup');
+    await settle();
+    outputs.push(capture('[data-usage="codex"]'));
+    resolve({ codex: { ok: false, error: '<오류>' } });
+    await settle();
+    outputs.push(capture('[data-usage="codex"]'));
+    q<HTMLButtonElement>('[data-usage="codex"] button').click();
+    outputs.push(capture('[data-usage="codex"]'));
+    resolve({ codex: { ok: true, fetchedAt: new Date(Date.now() - 120000).toISOString(), credits: '1234.9', via: 'llm', windows: [
+      { kind: 'session', model: null, resetsAt: null, usedPercent: 81.4, resetsText: '2시간 뒤' },
+      { kind: 'week', model: null, resetsText: null, usedPercent: 80, resetsAt: new Date(Date.now() + 3600000).toISOString() },
+      { kind: 'model-week', model: '모델', resetsText: null, usedPercent: 103, resetsAt: new Date(Date.now() + 86400000).toISOString() },
+      { kind: 'limit', model: null, resetsText: null, usedPercent: 0, resetsAt: new Date(Date.now() + 3 * 86400000).toISOString() },
+    ] } });
+    await settle();
+    outputs.push(capture('[data-usage="codex"]'));
+    q<HTMLButtonElement>('[data-usage="codex"] button').click();
+    outputs.push(capture('[data-usage="codex"]'));
+    resolve({ codex: { ok: true, fetchedAt: new Date().toISOString(), credits: 'unlimited', windows: [] } });
+    await settle();
+    outputs.push(capture('[data-usage="codex"]'));
+    return outputs;
+  } },
+  { name: 'permissions', run: async ({ ui, api, settings, saved }) => {
+    await settings.refresh();
+    const outputs: string[] = [];
+    for (const status of ['granted', 'unsupported', 'not-determined', 'unknown', 'denied']) {
+      api.permStatus.mockResolvedValue({ microphone: status, inputMonitoring: status, accessibility: status, systemAudio: status });
+      for (const required of [false, true]) {
+        saved.meetingSystemAudio = required;
+        await ui.refreshPermissions();
+        outputs.push(capture('#permList'));
+      }
+    }
+    return outputs;
+  } },
+  { name: 'setup components', run: async ({ ui, api, settings }) => {
+    await settings.refresh();
+    ui.open();
+    const outputs: string[] = [];
+    for (const list of [[], setupCases, setupCases.map((c) => ({ ...c, job: null }))]) {
+      api.onSetup.mock.calls[0]![0](list);
+      outputs.push(capture('#compList'));
+    }
+    return outputs;
+  } },
+  { name: 'accounts', run: async ({ api, settings, providers }) => {
+    await settings.refresh();
+    const outputs: string[] = [];
+    for (const info of [{ installed: false, loggedIn: false }, { installed: true, loggedIn: false }, { installed: true, loggedIn: true }, { installed: true, loggedIn: true, account: '<계정>' }]) {
+      api.providers.mockResolvedValue({ ...providers, 'claude-code': info, codex: info });
+      await click('#connRefresh');
+      outputs.push(capture('#connAccounts'));
+    }
+    return outputs;
+  } },
+];
+
+describe('settings region DOM parity with the pre-migration controller snapshot', () => {
+  it.each(scenarios)('$name', async ({ run }) => {
+    vi.setSystemTime(new Date('2026-11-13T03:00:00Z'));
+    const expected = await run(mount(legacyMount));
+    vi.clearAllTimers();
+    resetDocument();
+    vi.setSystemTime(new Date('2026-11-13T03:00:00Z'));
+    const builder = vi.spyOn(sharedUi, 'el');
+    expect(await run(mount())).toEqual(expected);
+    expect(builder).not.toHaveBeenCalled();
+  });
+});
+
+it('recreates every region on rebuild while keeping permission busy mutations on the current button', async () => {
+  const { ui, api, settings, providers } = mount();
+  await settings.refresh();
+  const engine = q('#engineActs button');
+  await settings.refresh();
+  expect(q('#engineActs button')).not.toBe(engine);
+  api.providers.mockResolvedValue({ ...providers, codex: { installed: true, loggedIn: true } });
+  await settings.refreshProviders();
+  const radio = q<HTMLInputElement>('input[value="codex"]');
+  radio.checked = true;
+  radio.dispatchEvent(new Event('change'));
+  await settle();
+  expect(settings.getSnapshot().saved.provider).toBe('codex');
+  await settings.refreshProviders();
+  const nextRadio = q<HTMLInputElement>('input[value="codex"]');
+  expect(nextRadio).not.toBe(radio);
+  expect(nextRadio.checked).toBe(true);
+  expect(nextRadio.hasAttribute('checked')).toBe(false);
+  const usage = q('[data-usage="codex"] > div');
+  ui.open('cleanup');
+  await settle();
+  expect(q('[data-usage="codex"] > div')).not.toBe(usage);
+  await ui.refreshPermissions();
+  const permission = q<HTMLButtonElement>('#permList button');
+  let resolve!: (status: Record<string, string>) => void;
+  api.permRequest.mockImplementation(() => new Promise((done) => { resolve = done; }));
+  permission.click();
+  expect(q('#permList button')).toBe(permission);
+  expect(permission.className).toBe('btn small primary busy');
+  expect(permission.textContent).toBe('기다리는 중…');
+  expect(permission.disabled).toBe(false);
+  expect(api.permRequest).toHaveBeenCalledExactlyOnceWith('microphone');
+  resolve({ microphone: 'denied', inputMonitoring: 'granted', accessibility: 'granted', systemAudio: 'denied' });
+  await settle();
+  expect(q('#permList button')).not.toBe(permission);
+  expect(q('#permList button').className).toBe('btn small primary');
+  ui.open();
+  const setup = api.onSetup.mock.calls[0]![0];
+  setup(setupCases);
+  const component = q('#compList .comp');
+  setup(setupCases);
+  expect(q('#compList .comp')).not.toBe(component);
+  await click('#connRefresh');
+  const account = q('#connAccounts .account');
+  await click('#connRefresh');
+  expect(q('#connAccounts .account')).not.toBe(account);
+});
+
+it('notifies permission issues after each appended row without resetting earlier busy buttons', async () => {
+  const { ui, api, settings, issues, saved } = mount();
+  await settings.refresh();
+  saved.meetingSystemAudio = true;
+  api.permStatus.mockResolvedValue({ microphone: 'denied', inputMonitoring: 'denied', accessibility: 'denied', systemAudio: 'denied' });
+  api.permRequest.mockImplementation(() => new Promise(() => {}));
+  const rowCounts: number[] = [];
+  let first: HTMLButtonElement | undefined;
+  issues.subscribe(() => {
+    rowCounts.push(q('#permList').children.length);
+    if (!first) {
+      first = q<HTMLButtonElement>('#permList button');
+      first.click();
+    }
+  });
+  await ui.refreshPermissions();
+  expect(rowCounts).toEqual([1, 2, 3, 4]);
+  expect(q('#permList button')).toBe(first);
+  expect(first!.textContent).toBe('기다리는 중…');
+  expect(first!.className).toBe('btn small primary busy');
+});
+
+it('recreates usage children on the same host and ignores refresh while busy', async () => {
+  const { api, settings, providers } = mount();
+  await settings.refresh();
+  api.providers.mockResolvedValue({ ...providers, codex: { installed: true, loggedIn: true } });
+  await settings.refreshProviders();
+  const host = q('[data-usage="codex"]');
+  const first = host.firstChild;
+  let resolve!: (value: Record<string, UsageResult>) => void;
+  api.usage.mockImplementation(() => new Promise((done) => { resolve = done; }));
+  const refresh = q<HTMLButtonElement>('[data-usage="codex"] button');
+  refresh.click();
+  expect(q('[data-usage="codex"]')).toBe(host);
+  expect(host.firstChild).not.toBe(first);
+  refresh.click();
+  expect(api.usage).toHaveBeenCalledExactlyOnceWith({ force: true });
+  resolve({ codex: { ok: true, fetchedAt: new Date().toISOString(), windows: [
+    { kind: 'session', model: null, usedPercent: 90, resetsAt: null, resetsText: null },
+  ] } });
+  await settle();
+  const previous = new Set(host.querySelectorAll('*'));
+  q<HTMLButtonElement>('[data-usage="codex"] button').click();
+  expect(q('[data-usage="codex"]')).toBe(host);
+  expect([...host.querySelectorAll('*')].some((node) => previous.has(node))).toBe(false);
+  expect(q<HTMLButtonElement>('[data-usage="codex"] button').disabled).toBe(true);
+  q<HTMLButtonElement>('[data-usage="codex"] button').click();
+  expect(api.usage).toHaveBeenCalledTimes(2);
+  resolve({});
+  await settle();
+});
+
+it('runs native engine and setup button actions with the original awaits and arguments', async () => {
+  const { ui, api, settings, deps } = mount();
+  await settings.refresh();
+  q<HTMLButtonElement>('#engineActs button').click();
+  expect(q('.set-tab[data-sec="engine"]').getAttribute('aria-current')).toBe('true');
+  await settle();
+  const setup = api.onSetup.mock.calls[0]![0];
+  setup(setupCases);
+  const rows = q('#compList').children;
+  (rows[0]!.querySelector('button') as HTMLButtonElement).click();
+  expect(api.setupInstall).toHaveBeenCalledExactlyOnceWith('engine');
+  (rows[6]!.querySelector('button') as HTMLButtonElement).click();
+  expect(api.setupInstall).toHaveBeenLastCalledWith('failed');
+  (rows[4]!.querySelector('button') as HTMLButtonElement).click();
+  expect(api.openExternal).toHaveBeenCalledExactlyOnceWith('https://brew.sh');
+  deps.confirm.mockResolvedValueOnce(false);
+  (rows[3]!.querySelector('button') as HTMLButtonElement).click();
+  expect(api.setupRemove).not.toHaveBeenCalled();
+  await settle();
+  expect(api.setupRemove).not.toHaveBeenCalled();
+  api.dictSettings.mockClear();
+  (rows[3]!.querySelector('button') as HTMLButtonElement).click();
+  expect(api.setupRemove).not.toHaveBeenCalled();
+  await settle();
+  expect(deps.confirm).toHaveBeenLastCalledWith('회의 모델을(를) 지울까요?', '3.1GB를 확보합니다. 필요하면 언제든 다시 받을 수 있습니다.', '지우기');
+  expect(api.setupRemove).toHaveBeenCalledExactlyOnceWith('large');
+  expect(deps.toast).toHaveBeenCalledWith('회의 모델을(를) 지웠습니다');
+  expect(api.dictSettings).toHaveBeenCalledOnce();
+  api.setupRemove.mockRejectedValueOnce(new Error('remove failed'));
+  (rows[3]!.querySelector('button') as HTMLButtonElement).click();
+  await settle();
+  expect(deps.toast).toHaveBeenLastCalledWith('지우지 못했습니다', 'remove failed', { bad: true });
+  (rows[5]!.querySelector('.link') as HTMLButtonElement).click();
+  expect(q('.set-tab[data-sec="accounts"]').getAttribute('aria-current')).toBe('true');
+  await settle();
+  ui.open('engine');
+  await settle();
+  setup(setupCases);
+  q<HTMLButtonElement>('#compList .comp-note.bad .link').click();
+  expect(q('.set-tab[data-sec="accounts"]').getAttribute('aria-current')).toBe('true');
+  await settle();
 });
