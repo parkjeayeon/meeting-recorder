@@ -15,6 +15,7 @@ import { createIssueStore } from '../entities/issue/index.ts';
 import { createSettingsStore } from '../entities/settings/index.ts';
 import { mountSettings, startOnboarding } from '../features/configuration/index.ts';
 import { mountPalette } from '../features/palette/index.ts';
+import { mountImportMeeting } from '../features/import-meeting/index.ts';
 import { createHistoryStore, createRouter } from '../app/index.ts';
 
 const api = window.recorderApi;
@@ -285,7 +286,7 @@ const meetingsActions = {
   trash: (list) => trashMeetings(list),
   trashStrays: (list) => trashStrays(list),
   reveal: (dir) => api.reveal(dir),
-  importMeeting: (paths) => importMeeting(paths ?? null),
+  importMeeting: (paths) => importMeetingHandle.open(paths ?? null),
   openMeetingStart: () => recording.openStart(),
   filePath: (f) => api.filePath(f),
 };
@@ -330,67 +331,7 @@ const askWidgetDeps = {
 };
 
 // 녹음 파일 가져오기: 파일을 고르면(또는 끌어다 놓으면) 확인 창에서 순서·참석 인원·녹음에 담기지 않은 내용을 받고 가져온다
-const IMPORT_SPEAKER_CHOICES = ['', '2', '3', '4', '5', '6', '7', '8'];
-const importSpeakerLabel = (v) => (v ? `${v}명` : '자동');
-function importSegPick(box, attr, value) {
-  for (const b of box.querySelectorAll('button')) b.setAttribute('aria-checked', String(b.dataset[attr] === value));
-}
-let importing = false;
-let importPaths = [];
-let importSpeakers = '';
-async function importMeeting(paths = null) {
-  if (importing) return;
-  const picked = await api.pickAudio(paths);
-  const files = picked?.files;
-  if (!files?.length) return;
-  importPaths = files.map((f) => f.path);
-  $('importOrder').textContent = files.length > 1 ? `이름 순서대로 이어 붙여 회의 하나로 만듭니다` : '';
-  $('importFiles').replaceChildren(...files.map((f) => h('li', null, f.name, f.durationSec ? h('span', { class: 'num' }, clock(f.durationSec)) : null)));
-  const box = $('importSpeakers');
-  box.replaceChildren(...IMPORT_SPEAKER_CHOICES.map((v) => h('button', { type: 'button', role: 'radio', 'data-n': v, onclick: () => { importSpeakers = v; importSegPick(box, 'n', v); } }, importSpeakerLabel(v))));
-  importSpeakers = '';
-  importSegPick(box, 'n', '');
-  $('importNotes').value = '';
-  // 회의 날짜: 짐작한 시각을 채우고 어디서 짐작했는지 알린다 (고칠 수 있다)
-  const at = new Date(picked.guess?.at ?? Date.now());
-  const p2 = (n) => String(n).padStart(2, '0');
-  $('importDate').value = `${at.getFullYear()}-${p2(at.getMonth() + 1)}-${p2(at.getDate())}`;
-  $('importTime').value = `${p2(at.getHours())}:${p2(at.getMinutes())}`;
-  const today = new Date();
-  $('importDate').max = `${today.getFullYear()}-${p2(today.getMonth() + 1)}-${p2(today.getDate())}`;
-  $('importWhenSrc').textContent = { name: '파일 이름에서 읽었습니다', mtime: '파일 시각으로 짐작했습니다 · 다르면 고쳐 주세요', now: '녹음 시각을 알 수 없어 지금으로 넣었습니다 · 고쳐 주세요' }[picked.guess?.source] ?? '';
-  $('importWhenSrc').classList.toggle('warn', picked.guess?.source !== 'name');
-  $('importSheet').showModal();
-  $('importYes').focus();
-}
-$('importNo').onclick = () => $('importSheet').close();
-$('importClose').onclick = () => $('importSheet').close();
-$('importSheet').addEventListener('click', (e) => e.target === $('importSheet') && $('importSheet').close());
-$('importYes').onclick = async () => {
-  if (importing) return;
-  const startedAt = new Date(`${$('importDate').value}T${$('importTime').value || '00:00'}`);
-  if (!$('importDate').value || Number.isNaN(startedAt.getTime())) return toast('회의 날짜를 넣어 주세요', '', { bad: true });
-  if (startedAt.getTime() > Date.now() + 60e3) return toast('아직 오지 않은 시각입니다', '회의를 시작한 날짜와 시각을 넣어 주세요', { bad: true });
-  if (startedAt.getFullYear() < 2000) return toast('날짜를 확인해 주세요', '2000년 이후 날짜만 넣을 수 있습니다', { bad: true });
-  importing = true;
-  const btn = $('importYes');
-  btn.classList.add('busy');
-  btn.lastChild.textContent = '가져오는 중…';
-  try {
-    const r = await api.importMeeting(importPaths, { notes: $('importNotes').value.trim(), speakers: importSpeakers || null, startedAt: startedAt.toISOString() });
-    $('importSheet').close();
-    toast(r.count > 1 ? `녹음 파일 ${r.count}개를 이어 붙여 가져왔습니다` : '녹음 파일을 가져왔습니다', '받아쓰기와 회의록을 만들기 시작합니다', {
-      action: '보기', onAction: () => (location.hash = `#meeting/${encodeURIComponent(r.id)}`),
-    });
-    loadHistory();
-  } catch (err) {
-    toast('가져오지 못했습니다', err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''), { bad: true, ms: 8000 });
-  } finally {
-    importing = false;
-    btn.classList.remove('busy');
-    btn.lastChild.textContent = '가져오기';
-  }
-};
+const importMeetingHandle = mountImportMeeting({ api, toast, historyChanged: () => { loadHistory(); } });
 
 // ── 회의 상세 ───────────────────────────────────────────────────────────
 const docCache = new Map(); // 회의 id → { minutes, transcript, scriptClean }
