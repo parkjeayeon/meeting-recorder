@@ -1,6 +1,6 @@
 // 옮긴 화면의 HTML이 main과 같은지 상태마다 찍어 비교한다 (docs/testing.md) — 회의 페이지(#view), 홈의 문제 알림, 위 막대·사이드바·회의 시작 창·가져오기 창, ⌘K 빠른 검색, 설정 창과 사이드바, 처음 설정(#onboard).
-//   git worktree add --detach /tmp/wt-main main && ln -s "$PWD/node_modules" /tmp/wt-main/node_modules && (cd /tmp/wt-main && npm run build:ts && npm run build:renderer)
-//   npm run build:renderer && node scripts/dev/view-parity.js /tmp/wt-main /tmp/parity [이름 일부]
+//   git worktree add --detach ~/.cache/mr-wt-main main && ln -s "$PWD/node_modules" ~/.cache/mr-wt-main/node_modules && (cd ~/.cache/mr-wt-main && npm run build:ts && npm run build:renderer)
+//   npm run build:renderer && node scripts/dev/view-parity.js ~/.cache/mr-wt-main /tmp/parity [이름 일부]
 // 같은 상태를 두 쪽에서 연달아 찍는다(가짜 기록의 시각이 지금 기준이라). 다르면 <이름>.diff를 남기고 끝에 실패로 끝난다.
 const { execFileSync } = require('child_process');
 const fs = require('fs');

@@ -11,6 +11,15 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.resolve(process.env.ROOT ?? path.join(__dirname, '../..'));
+// 기준 폴더가 없거나(재시작하면 /tmp가 비워진다) 파일을 못 찾으면 Electron이 화면에 에러 창을 띄운다 — 창 없이 이유만 찍고 끝낸다
+process.on('uncaughtException', (e) => {
+  console.error('찍지 못함:', e.message);
+  process.exit(1);
+});
+if (!fs.existsSync(path.join(root, 'scripts/dev/stub-preload.js'))) {
+  console.error(`찍지 못함: 기준 폴더가 없습니다 (${root})`);
+  process.exit(1);
+}
 const [hashArg, out] = process.argv.slice(-2);
 let meetingDir = null;
 if (process.env.DUMP_MEETING) {

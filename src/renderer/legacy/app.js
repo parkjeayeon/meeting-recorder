@@ -15,6 +15,7 @@ import { createIssueStore } from '../entities/issue/index.ts';
 import { createSettingsStore } from '../entities/settings/index.ts';
 import { mountSettings, startOnboarding } from '../features/configuration/index.ts';
 import { mountPalette } from '../features/palette/index.ts';
+import { createHistoryStore } from '../app/index.ts';
 
 const api = window.recorderApi;
 const settingsStore = createSettingsStore(api);
@@ -284,11 +285,21 @@ api.onCommand(enqueue);
 api.onFnStatus((s) => issues.set('fn', s.ok ? null : { title: 'fn 키를 감지하지 못합니다', detail: s.reason, action: '권한 보기', onAction: () => openSettings('perms'), sec: 'perms' }));
 
 // ── 기록 데이터 ─────────────────────────────────────────────────────────
-let history = [];
-let strays = []; // 녹음 폴더에 있지만 목록에 안 나오는 폴더 (recordings:stray)
+const history = createHistoryStore(api);
+history.subscribe(() => {
+  statsSource.changed();
+  homeSource.changed();
+  dictationsSource.changed();
+  meetingsSource.changed();
+  issues.set('folder', folderIssue(history.getSnapshot().access));
+  $('countDict').textContent = history.getSnapshot().totals?.count || dictations().length || '';
+  $('countMeet').textContent = meetings().length || '';
+  refresh();
+});
+const loadHistory = () => history.reload();
 let freshId = null;
-const dictations = () => history.filter((r) => r.mode === 'memo' && r.transcript?.raw);
-const meetings = () => history.filter((r) => r.mode === 'meeting');
+const dictations = () => history.getSnapshot().rows.filter((r) => r.mode === 'memo' && r.transcript?.raw);
+const meetings = () => history.getSnapshot().rows.filter((r) => r.mode === 'meeting');
 
 // macOS가 녹음 폴더(기본은 문서 폴더 안) 접근을 막으면 목록이 비어 보인다. 녹음이 사라진 게 아니라고 알린다
 const FOLDER_DENIED = new Set(['EPERM', 'EACCES']);
@@ -305,21 +316,6 @@ function folderIssue(access) {
     onAction: () => api.permOpenSettings('files'),
     sec: 'general',
   };
-}
-
-async function loadHistory() {
-  const [list, access, stray, totals] = await Promise.all([api.history(), api.recordingsAccess(), api.strayFolders(), api.dictStats()]);
-  history = list;
-  strays = stray ?? [];
-  dictTotals = totals ?? null;
-  statsSource.changed();
-  homeSource.changed();
-  dictationsSource.changed();
-  meetingsSource.changed();
-  issues.set('folder', folderIssue(access));
-  $('countDict').textContent = dictTotals?.count || dictations().length || '';
-  $('countMeet').textContent = meetings().length || '';
-  refresh();
 }
 
 api.onMinutes(({ id, status, offline }) => {
@@ -353,7 +349,7 @@ api.onMeetingChanged(({ id }) => {
   if (route.name === 'meeting' && route.arg === id) current?.reload?.();
   loadHistory();
 });
-api.onRecordingsChanged(() => loadHistory());
+history.connect();
 
 
 // ── 라우터 ──────────────────────────────────────────────────────────────
@@ -450,10 +446,9 @@ function refresh() {
 }
 
 // ── 홈 ───────────────────────────────────────────────────────────────
-let dictTotals = null; // 본체가 전체 받아쓰기 기록으로 계산한 통계 (dict:stats)
-// 통계 화면(React)이 읽는 창구: 주인은 여기(history·dictTotals), 둘이 바뀌는 loadHistory에서 changed()
-const statsSource = createSource(() => ({ dictations: dictations(), totals: dictTotals, meetings: meetings() }), () => [history, dictTotals]);
-// 받아쓰기 요약 (계산은 entities/dictation — 통계 화면과 한 벌). 본체 전체 통계(dictTotals)가 있으면 그것으로
+// 통계 화면(React)이 읽는 창구: 주인은 app/history(rows·totals), 둘이 바뀌는 history 구독에서 changed()
+const statsSource = createSource(() => ({ dictations: dictations(), totals: history.getSnapshot().totals, meetings: meetings() }), () => [history.getSnapshot().rows, history.getSnapshot().totals]);
+// 받아쓰기 요약 (계산은 entities/dictation — 통계 화면과 한 벌). 본체 전체 통계(totals)가 있으면 그것으로
 
 // 홈: 왼쪽은 할 일(만드는 중 → 챙길 일 → 최근 회의), 오른쪽은 살펴볼 것(시작하기 → 녹음 공간 → 최근 받아쓰기).
 // 처음 만들 땐 회의가 없어 안내 카드뿐이었다 — 이제는 쌓인 회의에서 손이 갈 곳을 먼저 보인다
@@ -462,11 +457,11 @@ function openMeetings(filter) {
   meetFilterPending = filter;
   location.hash = '#meetings';
 }
-// 홈 화면(React)이 읽는 창구와 명령. 주인은 여기: 기록(history·dictTotals·strays)은 loadHistory, 문제는 issues 구독에서 changed().
+// 홈 화면(React)이 읽는 창구와 명령. 기록(rows·totals·strays)은 history 구독, 문제는 issues 구독에서 changed().
 // freshId·showMarks·openRaw는 바뀐 뒤 refresh()가 다시 그려 deps로 알아챈다 (openRaw는 바꿀 때 새 Set)
 const homeSource = createSource(
-  () => ({ meetings: meetings(), dictations: dictations(), totals: dictTotals, issues: issues.getSnapshot().entries, strayCount: strays.length, freshId, showMarks, openRaw }),
-  () => [history, dictTotals, strays, issues.getSnapshot().revision, freshId, showMarks, openRaw],
+  () => ({ meetings: meetings(), dictations: dictations(), totals: history.getSnapshot().totals, issues: issues.getSnapshot().entries, strayCount: history.getSnapshot().strays.length, freshId, showMarks, openRaw }),
+  () => [history.getSnapshot().rows, history.getSnapshot().totals, history.getSnapshot().strays, issues.getSnapshot().revision, freshId, showMarks, openRaw],
 );
 const homeActions = {
   openSettings: (sec) => openSettings(sec),
@@ -506,11 +501,11 @@ let openRaw = new Set(); // 바꿀 땐 새 Set으로 (창구가 바뀐 줄 안�
 let showMarks = store('showMarks', true);
 
 
-// 받아쓰기 기록 화면(React)이 읽는 창구와 명령. 목록은 화면이 본체(dictPage)에서 이어 받고, 기록(history)이 바뀌면 다시 받는다.
+// 받아쓰기 기록 화면(React)이 읽는 창구와 명령. 목록은 화면이 본체(dictPage)에서 이어 받고, 기록(rows)이 바뀌면 다시 받는다.
 // 고친 곳 표시(showMarks)·원문 펼침(openRaw)·녹음 폴더 문제는 주인인 여기 — 바꾸면 changed()
 const dictationsSource = createSource(
-  () => ({ version: history, folder: issues.get('folder') ?? null, freshId, showMarks, openRaw }),
-  () => [history, issues.getSnapshot().revision, freshId, showMarks, openRaw],
+  () => ({ version: history.getSnapshot().rows, folder: issues.get('folder') ?? null, freshId, showMarks, openRaw }),
+  () => [history.getSnapshot().rows, issues.getSnapshot().revision, freshId, showMarks, openRaw],
 );
 const dictationsActions = {
   loadPage: (query) => api.dictPage(query),
@@ -554,8 +549,8 @@ function currentMeetFilter() {
   return meetFilter;
 }
 const meetingsSource = createSource(
-  () => ({ meetings: meetings(), strays, folder: issues.get('folder') ?? null, filter: currentMeetFilter(), asks: askStore.getSnapshot().jobs.filter((t) => t.status !== 'blocked') }),
-  () => [history, strays, issues.getSnapshot().revision, meetFilter, askStore.getSnapshot().jobs],
+  () => ({ meetings: meetings(), strays: history.getSnapshot().strays, folder: issues.get('folder') ?? null, filter: currentMeetFilter(), asks: askStore.getSnapshot().jobs.filter((t) => t.status !== 'blocked') }),
+  () => [history.getSnapshot().rows, history.getSnapshot().strays, issues.getSnapshot().revision, meetFilter, askStore.getSnapshot().jobs],
 );
 function setMeetFilter(id) {
   meetFilter = id;
@@ -687,7 +682,7 @@ let openReviewNext = null; // 알림에서 '확인하기'로 들어오면 확인
 // 회의 페이지: 그리기는 pages/meeting(MeetingPage), 페이지 상태·명령·⌘F는 같은 곳의 주인(meetingPage). 앱 전체의 것만 여기서 넘긴다
 const meetingDeps = {
   api,
-  records: () => history,
+  records: () => history.getSnapshot().rows,
   docs: docCache,
   toast,
   confirm: (title, text, yes) => confirmBox(title, text, yes),

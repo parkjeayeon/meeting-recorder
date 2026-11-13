@@ -101,16 +101,16 @@ STUB_MINUTES=offline npx electron scripts/dev/screens.js /tmp/mr-screens # 인�
 ## 옮긴 화면이 옛 화면과 같은지 — 캡처 픽셀 + `#view` HTML
 React로 화면을 옮기면 main과 나란히 찍어 비교한다. 캡처는 창 크기만큼만 보이고 가짜 데이터 기본값에선 안 그려지는 갈래(만드는 중 카드, 교정 부호 등)가 있으므로, 화면 HTML도 데이터를 바꿔 가며 비교한다.
 ```bash
-git worktree add --detach /tmp/wt-main main && ln -s "$PWD/node_modules" /tmp/wt-main/node_modules
-cp scripts/dev/stub-preload.js /tmp/wt-main/scripts/dev/          # 가짜 데이터 갈래를 새로 더했으면
-(cd /tmp/wt-main && npm run build:ts && npm run build:renderer)
-npx electron scripts/dev/screens.js /tmp/shots-after; ( cd /tmp/wt-main && npx electron scripts/dev/screens.js /tmp/shots-base )   # DARK=1로 한 번 더
+git worktree add --detach ~/.cache/mr-wt-main main && ln -s "$PWD/node_modules" ~/.cache/mr-wt-main/node_modules   # /tmp는 Mac을 재시작하면 비워진다
+cp scripts/dev/stub-preload.js ~/.cache/mr-wt-main/scripts/dev/          # 가짜 데이터 갈래를 새로 더했으면
+(cd ~/.cache/mr-wt-main && npm run build:ts && npm run build:renderer)
+npx electron scripts/dev/screens.js /tmp/shots-after; ( cd ~/.cache/mr-wt-main && npx electron scripts/dev/screens.js /tmp/shots-base )   # DARK=1로 한 번 더
 STUB_DICTS=3 STUB_HISTORY_DICTS=1 STUB_MANY=12 STUB_BUSY=1 STUB_DICT_EDITS=1 STUB_FOLDER=denied npx electron scripts/dev/dump-view.js '#home' /tmp/after.html
-ROOT=/tmp/wt-main STUB_DICTS=3 … npx electron scripts/dev/dump-view.js '#home' /tmp/base.html && diff /tmp/base.html /tmp/after.html
-git worktree remove --force /tmp/wt-main
+ROOT=~/.cache/mr-wt-main STUB_DICTS=3 … npx electron scripts/dev/dump-view.js '#home' /tmp/base.html && diff /tmp/base.html /tmp/after.html
+git worktree remove --force ~/.cache/mr-wt-main
 ```
 화면 밖에 떠 있는 둥근 버튼·질문 창은 `DUMP_SEL=.ask-root`로. 확인 필요를 아직 나누지 않은 회의록('정리하기')은 `DUMP_NO_REVIEW=1`. 흐름도는 `DUMP_FLOW=<flow.json>`(띠·메모·바뀐 경위가 많은 흐름)과 `W=900`(좁으면 여러 줄로 접힘)으로. 옛 코드는 `style="fill:…"`을 글자 그대로, React는 `fill: …;`로 쓴다 — 비교 전에 맞춘다. 회의 화면은 `DUMP_MEETING=1`(예시 회의를 임시로 만들고 흐름도·액션까지, `plain`이면 없이)과 주소 `'#meeting/{id}'`로. body에 붙는 것(용어 카드·설명 추가)은 `DUMP_JS`에서 그 요소를 복사해 상자(`#dumpbox`)에 넣고 `DUMP_SEL='#dumpbox'`로 — 자리(style)까지 비교된다. 흐름도 화살표 id(`fl-arrow-…`)는 그릴 때마다 무작위라 비교 전에 맞춘다(`sed -E 's/fl-arrow-f1-[a-z0-9]+/fl-arrow-X/g'`). 누른 뒤의 모습은 `DUMP_JS='…'`로(예: 원문 펼치기, 검색어 넣기, 끝까지 스크롤, 질문을 돌려 질문 탭 열기). 그 코드가 던지면 이유를 찍고 끝난다. 가짜 기록의 시각은 지금 시각 기준이라 두 쪽을 같은 분 안에 찍는다. zsh에서는 환경 변수 여럿을 변수 하나(`$A`)에 담아 넘기면 나뉘지 않는다(한 변수의 값이 됨) — 낱낱이 적는다. 줄 수가 상태마다 똑같이 나오면 의심한다.
-회의 페이지는 상태 37가지(탭 여섯·확인 필요 처리와 채팅·메뉴·⌘F·용어 카드·만드는 중·실패·짧은 녹음·멈춤·지워진 회의·압축 안내 …)를 `node scripts/dev/view-parity.js /tmp/wt-main /tmp/parity [이름 일부]`로 한 번에 찍어 비교한다 — 같은 상태를 두 쪽에서 연달아 찍고, 다르면 `<이름>.diff`를 남기며 실패로 끝난다. 버튼을 못 찾으면 '찍지 못함'으로 실패한다(같은 모습을 두 번 찍고 통과하지 않게). 설정 창(여섯 탭·언어·다듬기·토큰 보기·폴더 막힘, 사이드바 포함)과 처음 설정(아홉 단계·누른 뒤 셋)도 같은 도구로 — 이름에 `설정 ·`·`처음 설정 ·`. 찍을 때마다 바뀌는 값(마이크 장치 id, 사용 한도 초기화 시각, 실제 마이크를 따르는 막대)은 비교 전에 맞춘다. 처음 설정은 `DUMP_NO_MIC`(덤프 창의 마이크 권한 거절)로 찍는다 — 마이크 단계가 주변 소리에 따라 갈리지 않게. 홈의 문제 알림 차례는 `홈 ·` 상태로.
+회의 페이지는 상태 37가지(탭 여섯·확인 필요 처리와 채팅·메뉴·⌘F·용어 카드·만드는 중·실패·짧은 녹음·멈춤·지워진 회의·압축 안내 …)를 `node scripts/dev/view-parity.js ~/.cache/mr-wt-main /tmp/parity [이름 일부]`로 한 번에 찍어 비교한다 — 같은 상태를 두 쪽에서 연달아 찍고, 다르면 `<이름>.diff`를 남기며 실패로 끝난다. 버튼을 못 찾으면 '찍지 못함'으로 실패한다(같은 모습을 두 번 찍고 통과하지 않게). 설정 창(여섯 탭·언어·다듬기·토큰 보기·폴더 막힘, 사이드바 포함)과 처음 설정(아홉 단계·누른 뒤 셋)도 같은 도구로 — 이름에 `설정 ·`·`처음 설정 ·`. 찍을 때마다 바뀌는 값(마이크 장치 id, 사용 한도 초기화 시각, 실제 마이크를 따르는 막대)은 비교 전에 맞춘다. 처음 설정은 `DUMP_NO_MIC`(덤프 창의 마이크 권한 거절)로 찍는다 — 마이크 단계가 주변 소리에 따라 갈리지 않게. 홈의 문제 알림 차례는 `홈 ·` 상태로.
 HTML 차이는 React 껍데기(`<div style="display: contents;">`) 한 겹뿐이어야 한다(그 밖에 알고 둔 것: React는 `<input>`의 `type`을 맨 뒤에 쓴다 — 속성 순서뿐). 캡처 비교는 같은 브랜치끼리도 회의 화면·움직이는 표시(`STUB_BUSY`의 진행 막대)에서 몇 픽셀 흔들릴 수 있다 — 같은 쪽을 두 번 찍어 흔들림인지 먼저 본다. 화면 배율을 바꾸면 기준을 다시 찍는다.
 
 가짜 API는 `src/preload.js`의 함수 이름을 읽어 같은 모양을 만들므로, 새 IPC를 추가하면 자동으로 따라온다. 예시 값이 필요한 함수만 `stub-preload.js`의 `impl`에 넣는다.
