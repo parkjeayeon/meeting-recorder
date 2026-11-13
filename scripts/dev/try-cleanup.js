@@ -8,9 +8,11 @@ const os = require('os');
 const path = require('path');
 
 const src = fs.readFileSync(path.join(__dirname, '../../src/cleanup.js'), 'utf8');
-const system = src.match(/const SYSTEM = `([\s\S]*?)`;/)[1];
+const grab = (name) => src.match(new RegExp(`const ${name} = \`([\\s\\S]*?)\`;`))[1];
+const minChars = Number(src.match(/const ORGANIZE_MIN_CHARS = (\d+);/)[1]);
 const text = process.argv.slice(2).join(' ').trim() || fs.readFileSync(0, 'utf8').trim();
 if (!text) throw new Error('다듬을 글을 넣어 주세요');
+const system = grab('SYSTEM').replace('{{ORGANIZE}}', text.length >= minChars ? grab('ORGANIZE') : grab('LIST_ONLY')); // 앱과 같은 기준: 짧으면 정리 규칙을 넣지 않는다
 const bin = ['/opt/homebrew/bin/claude', '/usr/local/bin/claude', path.join(os.homedir(), '.local/bin/claude'), path.join(os.homedir(), '.claude/local/claude')].find((p) => fs.existsSync(p));
 if (!bin) throw new Error('Claude Code(claude)를 찾지 못했습니다');
 const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'mr-try-cleanup-')); // 설정 파일·CLAUDE.md를 읽지 않게 빈 폴더에서
