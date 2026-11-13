@@ -11,6 +11,8 @@
 - **main을 새로 받으면 화면이 묶이지 않음** (`Could not resolve '../shared/lib/index.ts'`) — 원인: `.gitignore`의 `lib/`(빌드 결과 폴더용)가 `src/renderer/shared/lib/`까지 가려, 통계 화면을 옮길 때 만든 `shared/lib/index.ts`가 커밋되지 않았다. 내 작업 폴더엔 파일이 있어 시험·설치는 통과했다. 고친 방법: 규칙을 루트만 가리는 `/lib/`로, 파일을 커밋. 확인: main을 새로 꺼낸 작업 폴더에서 화면 묶기·타입 검사·단위 시험 통과, 같은 규칙에 가려진 다른 폴더 없음.
 
 ### 기능
+- **설정·처음 설정 옮기기 3단계 — 저장된 설정·계정 정보의 주인을 entities/settings로** (동작·겉모습 그대로): 옛 `let settings`·`let providers`·`renderDictSettings`·`saveDict`·`renderProviders`를 `createSettingsStore`(`refresh`·`save`·`refreshProviders`, 본체 소식 둘은 `connect`에서 한 번)로. 구독자가 바뀐 종류(설정·엔진·계정)를 받아 옛 그리기 함수가 돌던 그 자리에서 같은 DOM을 그린다. 녹음기·회의 시작 창·질문 계정·사전·회의 페이지(`refreshSettings`)가 모두 store를 읽는다.
+  - 확인: 화면 48·기능 46·흐름 13을 고치지 않고 통과, HTML 63가지 상태가 main과 같음, 단위 시험 210건(store 7건 추가).
 - **설정·처음 설정 옮기기 2단계 — 문제 알림의 주인을 entities/issue로** (동작·겉모습 그대로): 옛 `app.js`의 `issues` Map·`issuesRev`·`setIssue`를 `createIssueStore`(넣은 차례·제목과 설명이 같으면 그대로·바꾸면 자리 그대로·지웠다 넣으면 맨 뒤)로. 옛 코드는 구독해서 홈·받아쓰기·회의 목록 창구와 설정 점을 그 자리에서 바꾼다. 부르는 곳 없던 `folderEmpty`·`dictStats`·`searchBox` 삭제.
   - 확인: 화면 48·기능 46·흐름 13을 고치지 않고 통과, HTML 63가지 상태(홈의 문제 알림 둘 추가)가 main과 같음, 단위 시험 203건(store 4건 추가).
   - 검증 도구: 처음 설정 마이크 단계는 실제 주변 소리에 따라 '잘 들립니다'와 '말해 보세요'가 갈려 main과 비교가 흔들렸다 — `dump-view.js`의 `DUMP_NO_MIC`(덤프 창에서만 마이크 권한 거절)로 늘 같은 갈래. 소리를 듣는 갈래는 설치본에서 확인.

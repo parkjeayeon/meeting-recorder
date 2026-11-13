@@ -14,8 +14,10 @@ import { fmt, TIME, PROVIDER_NAME, clock, sizeLabel, dayLabel, createSource, cre
 import { createToaster, confirmBox, installTooltips } from '../shared/ui/index.tsx';
 import { statusText } from '../entities/meeting/index.ts';
 import { createIssueStore } from '../entities/issue/index.ts';
+import { createSettingsStore } from '../entities/settings/index.ts';
 
 const api = window.recorderApi;
+const settingsStore = createSettingsStore(api);
 const $ = (id) => document.getElementById(id);
 const SVGNS = 'http://www.w3.org/2000/svg';
 
@@ -114,7 +116,6 @@ let liveTimer;
 let recordingMode = null;
 let liveClock = { elapsedMs: 0, at: Date.now(), paused: false }; // 회의 일시정지를 반영한 녹음 시간 (기준은 메인 프로세스)
 const liveElapsed = () => (liveClock.paused ? liveClock.elapsedMs : liveClock.elapsedMs + Date.now() - liveClock.at);
-let settings = null;
 
 function setLive(state, text = '') {
   const live = $('live');
@@ -205,7 +206,7 @@ async function run({ action, mode }) {
         mode,
         deviceId: $('micSelect').value || undefined,
         echoCancellation: $('echo').checked,
-        includeSystem: mode === 'meeting' && Boolean(settings?.meetingSystemAudio),
+        includeSystem: mode === 'meeting' && Boolean(settingsStore.getSnapshot().saved?.meetingSystemAudio),
       });
       warnings.forEach((w) => toast('녹음 경고', w, { bad: true, ms: 7000 }));
       setRecording(mode);
@@ -227,7 +228,7 @@ async function run({ action, mode }) {
   if (action === 'cancel' && wasMode === 'meeting') toast('회의 녹음을 취소했습니다', '녹음은 저장하지 않았습니다');
   if (!result) return;
   const savedSec = Math.max(0, ...Object.values(result.files ?? {}).map((f) => f.durationSec ?? 0));
-  if (wasMode === 'meeting' && savedSec >= 10) toast('회의 녹음을 저장했습니다', settings?.minutes ? '회의록을 만들기 시작합니다' : '');
+  if (wasMode === 'meeting' && savedSec >= 10) toast('회의 녹음을 저장했습니다', settingsStore.getSnapshot().saved?.minutes ? '회의록을 만들기 시작합니다' : '');
   loadHistory();
   // 권한이 없으면 macOS는 에러 없이 완전한 무음(0)을 넘겨준다
   if (result.files.system && peakDb.system < -150) {
@@ -253,9 +254,9 @@ function openMeetingStart() {
   const box = $('startSpeakers');
   box.replaceChildren(...SPEAKER_CHOICES.map((v) => h('button', { type: 'button', role: 'radio', 'data-n': v, onclick: () => { startSpeakers = v; segPick(box, 'n', v); } }, speakerLabel(v))));
   segPick(box, 'n', startSpeakers);
-  const kind = settings?.meetingSystemAudio ? 'online' : 'offline';
+  const kind = settingsStore.getSnapshot().saved?.meetingSystemAudio ? 'online' : 'offline';
   segPick($('startKind'), 'kind', kind);
-  $('startMinutes').checked = Boolean(settings?.minutes);
+  $('startMinutes').checked = Boolean(settingsStore.getSnapshot().saved?.minutes);
   $('meetStart').showModal();
   $('startYes').focus();
 }
@@ -266,9 +267,9 @@ $('meetStart').addEventListener('click', (e) => e.target === $('meetStart') && $
 $('startYes').onclick = async () => {
   const online = $('startKind').querySelector('[aria-checked="true"]')?.dataset.kind === 'online';
   const patch = {};
-  if (online !== Boolean(settings?.meetingSystemAudio)) patch.meetingSystemAudio = online;
-  if ($('startMinutes').checked !== Boolean(settings?.minutes)) patch.minutes = $('startMinutes').checked;
-  if (Object.keys(patch).length) await saveDict(patch);
+  if (online !== Boolean(settingsStore.getSnapshot().saved?.meetingSystemAudio)) patch.meetingSystemAudio = online;
+  if ($('startMinutes').checked !== Boolean(settingsStore.getSnapshot().saved?.minutes)) patch.minutes = $('startMinutes').checked;
+  if (Object.keys(patch).length) await settingsStore.save(patch);
   remember('startSpeakers', startSpeakers);
   api.setSpeakers(startSpeakers || null);
   startedFromSheet = true;
@@ -599,7 +600,10 @@ askStore.subscribe(() => meetingsSource.changed());
 const askRoot = h('div', { class: 'ask-root' });
 document.body.append(askRoot);
 // 이 기능이 실제로 쓸 계정 (메인 프로세스와 같은 규칙: Claude Code에 로그인돼 있으면 그것, 아니면 다듬기 계정)
-const askUsesCodex = () => providers && !providers['claude-code']?.loggedIn && (settings?.provider === 'codex' || (settings?.provider === 'auto' && providers.codex?.loggedIn));
+const askUsesCodex = () => {
+  const { saved: settings, providers } = settingsStore.getSnapshot();
+  return providers && !providers['claude-code']?.loggedIn && (settings?.provider === 'codex' || (settings?.provider === 'auto' && providers.codex?.loggedIn));
+};
 const askWidgetDeps = {
   onMeetings: () => route.name === 'meetings',
   usesCodex: () => Boolean(askUsesCodex()),
@@ -687,7 +691,7 @@ const meetingDeps = {
   toast,
   confirm: (title, text, yes) => confirmBox(title, text, yes),
   loadHistory: () => loadHistory(),
-  renderDictSettings: (s) => renderDictSettings(s),
+  refreshSettings: () => settingsStore.refresh(),
   replaceRoute: (hash) => replaceRoute(hash),
   canGoBack: () => navIndex > 0,
   setCrumbs: (title) => setCrumbs(title),
@@ -702,9 +706,8 @@ const meetingDeps = {
 };
 
 // ── 사전 ────────────────────────────────────────────────────────────────
-// 사전 단어 목록: 상태 주인은 여기(settings), React 사전 화면(pages/dictionary)은 이 창구로 읽고 쓴다.
-// settings를 바꾸는 곳은 renderDictSettings 하나 — 끝에서 vocabulary.changed()를 불러 사전 화면이 다시 읽게 한다
-const vocabulary = createVocabularyModel({ read: () => settings?.vocabulary ?? '', save: (v) => saveDict({ vocabulary: v }) });
+// 사전은 저장된 설정을 읽고, 설정을 그린 끝에서 changed()로 다시 알린다
+const vocabulary = createVocabularyModel({ read: () => settingsStore.getSnapshot().saved?.vocabulary ?? '', save: (v) => settingsStore.save({ vocabulary: v }) });
 const vocabWords = () => vocabulary.getSnapshot();
 
 // ── 통계 ────────────────────────────────────────────────────────────────
@@ -836,7 +839,7 @@ function openSettings(sec = 'general') {
   }
   if (sec === 'perms') renderPerms();
   if (sec === 'engine') api.setupStatus().then(renderSetup);
-  if (sec === 'cleanup') renderProviders(true).then(() => loadUsage());
+  if (sec === 'cleanup') settingsStore.refreshProviders(true).then(() => loadUsage());
   if (sec === 'accounts') {
     for (const r of $('settings').querySelectorAll('[data-result]')) r.textContent = '';
     renderConnections();
@@ -880,29 +883,6 @@ function renderEngine(engine) {
     title: '받아쓰기를 쓸 수 없습니다', detail: text, sec: 'engine',
     action: '설치하기', onAction: () => openSettings('engine'),
   } : null);
-}
-
-let providers = null;
-async function renderProviders(fresh = false) {
-  providers = await api.providers({ fresh });
-  const box = $('providers');
-  box.replaceChildren();
-  const rows = [
-    ['auto', '자동', '로그인된 계정 중 가장 빠른 것'],
-    ['claude-code', 'Claude Code', providers['claude-code']],
-    ['codex', 'Codex', providers.codex],
-    ['api', 'Anthropic API 키', providers.api],
-  ];
-  for (const [id, name, info] of rows) {
-    const usable = typeof info === 'string' || info.loggedIn;
-    const who = typeof info === 'string' ? info : !info.installed ? '설치 안 됨' : info.loggedIn ? info.account ?? (id === 'api' ? '키 저장됨' : '로그인됨') : id === 'api' ? '키 없음 · 계정·토큰에서 입력' : '로그인 필요';
-    const input = h('input', { type: 'radio', name: 'provider', value: id, checked: settings.provider === id, disabled: !usable });
-    input.onchange = () => saveDict({ provider: id });
-    box.append(h('label', { class: `choice${usable ? '' : ' off'}` }, input, h('b', null, name), h('span', { class: 'who' }, who)));
-    if (USAGE_IDS.includes(id) && info.loggedIn) box.append(h('div', { class: 'usage', 'data-usage': id }));
-  }
-  drawUsage();
-  renderSideCleanup();
 }
 
 // ── 사용 한도: 로그인된 Claude Code·Codex가 얼마나 남았는지 (설정 › 다듬기를 열 때, 5분 안이면 저장해 둔 값) ──
@@ -961,6 +941,7 @@ function drawUsage() {
 }
 
 function renderSideCleanup() {
+  const { saved: settings, providers } = settingsStore.getSnapshot();
   if (!settings || !providers) return;
   let label;
   if (!settings.cleanup) label = '꺼짐';
@@ -970,59 +951,79 @@ function renderSideCleanup() {
   issues.set('cleanup', label === '계정 없음' ? { title: '다듬기에 쓸 계정이 없습니다', detail: 'Claude Code·Codex에 로그인하거나 API 키를 넣으세요. 그 전까지는 들린 그대로 입력합니다.', action: '계정 연결', onAction: () => openSettings('accounts'), sec: 'accounts' } : null);
 }
 
-function renderDictSettings(s) {
-  settings = s;
-  $('minutesAuto').checked = s.minutes;
-  $('diarizeOn').checked = s.diarize;
-  const dl = $('diarizeLine');
-  if (!s.diarizeReady) {
-    dl.textContent = '화자 구분 엔진(pyannote)이 설치되어 있지 않습니다. 설정 › 엔진에서 설치하세요.';
-    dl.className = 'bad';
-  } else if (!s.hasHfToken) {
-    dl.textContent = 'Hugging Face 토큰이 필요합니다. 계정·토큰에서 넣어 주세요.';
-    dl.className = 'bad';
-  } else {
-    dl.textContent = '누가 말했는지 구분합니다 (pyannote community-1, 이 Mac 안에서 처리).';
-    dl.className = '';
+// 옛 그리기가 돌던 자리에서 동기로 그린다
+settingsStore.subscribe((change) => {
+  if (change === 'settings') {
+    const s = settingsStore.getSnapshot().saved;
+    $('minutesAuto').checked = s.minutes;
+    $('diarizeOn').checked = s.diarize;
+    const dl = $('diarizeLine');
+    if (!s.diarizeReady) {
+      dl.textContent = '화자 구분 엔진(pyannote)이 설치되어 있지 않습니다. 설정 › 엔진에서 설치하세요.';
+      dl.className = 'bad';
+    } else if (!s.hasHfToken) {
+      dl.textContent = 'Hugging Face 토큰이 필요합니다. 계정·토큰에서 넣어 주세요.';
+      dl.className = 'bad';
+    } else {
+      dl.textContent = '누가 말했는지 구분합니다 (pyannote community-1, 이 Mac 안에서 처리).';
+      dl.className = '';
+    }
+    const dState = !s.diarize ? ['', '꺼짐'] : !s.diarizeReady ? ['bad', '설치 필요'] : s.hasHfToken ? ['ok', '준비됨'] : ['bad', '토큰 필요'];
+    setEngine('engDiarize', ...dState);
+    issues.set('hf', s.diarize && s.diarizeReady && !s.hasHfToken ? {
+      title: '화자 구분에 Hugging Face 토큰이 필요합니다', detail: '토큰을 넣기 전까지 회의 스크립트에 화자가 표시되지 않습니다.',
+      action: '토큰 넣기', onAction: () => openSettings('accounts'), sec: 'accounts',
+    } : null);
+    $('meetingSystem').checked = s.meetingSystemAudio;
+    $('dictEnabled').checked = s.enabled;
+    $('dictLanguage').value = s.language;
+    $('sideLanguage').value = s.language;
+    $('meetLanguage').value = s.meetingLanguage ?? s.language;
+    $('dictCleanup').checked = s.cleanup;
+    $('countWords').textContent = vocabWords().length || '';
+    renderEngine(s.engine);
+    renderSideCleanup();
+    vocabulary.changed();
+  } else if (change === 'engine') {
+    renderEngine(settingsStore.getSnapshot().engine);
+  } else if (change === 'providers') {
+    const providers = settingsStore.getSnapshot().providers;
+    const box = $('providers');
+    box.replaceChildren();
+    const rows = [
+      ['auto', '자동', '로그인된 계정 중 가장 빠른 것'],
+      ['claude-code', 'Claude Code', providers['claude-code']],
+      ['codex', 'Codex', providers.codex],
+      ['api', 'Anthropic API 키', providers.api],
+    ];
+    for (const [id, name, info] of rows) {
+      const usable = typeof info === 'string' || info.loggedIn;
+      const who = typeof info === 'string' ? info : !info.installed ? '설치 안 됨' : info.loggedIn ? info.account ?? (id === 'api' ? '키 저장됨' : '로그인됨') : id === 'api' ? '키 없음 · 계정·토큰에서 입력' : '로그인 필요';
+      const input = h('input', { type: 'radio', name: 'provider', value: id, checked: settingsStore.getSnapshot().saved.provider === id, disabled: !usable });
+      input.onchange = () => settingsStore.save({ provider: id });
+      box.append(h('label', { class: `choice${usable ? '' : ' off'}` }, input, h('b', null, name), h('span', { class: 'who' }, who)));
+      if (USAGE_IDS.includes(id) && info.loggedIn) box.append(h('div', { class: 'usage', 'data-usage': id }));
+    }
+    drawUsage();
+    renderSideCleanup();
   }
-  const dState = !s.diarize ? ['', '꺼짐'] : !s.diarizeReady ? ['bad', '설치 필요'] : s.hasHfToken ? ['ok', '준비됨'] : ['bad', '토큰 필요'];
-  setEngine('engDiarize', ...dState);
-  issues.set('hf', s.diarize && s.diarizeReady && !s.hasHfToken ? {
-    title: '화자 구분에 Hugging Face 토큰이 필요합니다', detail: '토큰을 넣기 전까지 회의 스크립트에 화자가 표시되지 않습니다.',
-    action: '토큰 넣기', onAction: () => openSettings('accounts'), sec: 'accounts',
-  } : null);
-  $('meetingSystem').checked = s.meetingSystemAudio;
-  $('dictEnabled').checked = s.enabled;
-  $('dictLanguage').value = s.language;
-  $('sideLanguage').value = s.language;
-  $('meetLanguage').value = s.meetingLanguage ?? s.language;
-  $('dictCleanup').checked = s.cleanup;
-  $('countWords').textContent = vocabWords().length || '';
-  renderEngine(s.engine);
-  renderSideCleanup();
-  vocabulary.changed();
-}
+});
 
-async function saveDict(patch) {
-  renderDictSettings(await api.dictSaveSettings(patch));
-  if ('apiKey' in patch || 'provider' in patch || 'cleanup' in patch) renderProviders();
-}
-
-$('dictEnabled').onchange = (e) => saveDict({ enabled: e.target.checked });
-$('dictLanguage').onchange = (e) => saveDict({ language: e.target.value });
+$('dictEnabled').onchange = (e) => settingsStore.save({ enabled: e.target.checked });
+$('dictLanguage').onchange = (e) => settingsStore.save({ language: e.target.value });
 // 왼쪽 아래 받아쓰기 언어 (설정 › 받아쓰기의 언어와 같은 값)
 $('sideLanguage').onchange = async (e) => {
-  await saveDict({ language: e.target.value });
+  await settingsStore.save({ language: e.target.value });
   toast('받아쓰기 언어를 바꿨습니다', `${e.target.selectedOptions[0].textContent} · 다음 fn 받아쓰기부터`);
 };
-$('meetLanguage').onchange = (e) => saveDict({ meetingLanguage: e.target.value });
+$('meetLanguage').onchange = (e) => settingsStore.save({ meetingLanguage: e.target.value });
 // 떠 있는 막대에서 받아쓰기 언어를 바꾸면 왼쪽 아래·설정 화면도 같이
-api.onDictSettings?.((s) => renderDictSettings(s));
-$('dictCleanup').onchange = (e) => saveDict({ cleanup: e.target.checked });
-$('minutesAuto').onchange = (e) => saveDict({ minutes: e.target.checked });
-$('diarizeOn').onchange = (e) => saveDict({ diarize: e.target.checked });
+settingsStore.connect();
+$('dictCleanup').onchange = (e) => settingsStore.save({ cleanup: e.target.checked });
+$('minutesAuto').onchange = (e) => settingsStore.save({ minutes: e.target.checked });
+$('diarizeOn').onchange = (e) => settingsStore.save({ diarize: e.target.checked });
 $('meetingSystem').onchange = async (e) => {
-  await saveDict({ meetingSystemAudio: e.target.checked });
+  await settingsStore.save({ meetingSystemAudio: e.target.checked });
   renderPerms();
 };
 $('openDir').onclick = () => api.openRecordings();
@@ -1039,7 +1040,7 @@ $('chooseDir').onclick = async () => {
     const r = await api.chooseRecordings();
     if (!r) return;
     showRecordingsDir(r.dir, (await api.info()).defaultRecordingsDir);
-    renderDictSettings(await api.dictSettings()); // 새 폴더에 있던 사전이 합쳐졌을 수 있다
+    await settingsStore.refresh(); // 새 폴더에 있던 사전이 합쳐졌을 수 있다
     toast('녹음 폴더를 바꿨습니다', r.total ? (r.moved ? `기존 녹음 ${r.moved}개를 옮겼습니다${r.skipped ? ` · ${r.skipped}개는 같은 이름이 있거나 옮기지 못해 남겨 두었습니다` : ''}` : '기존 녹음은 원래 폴더에 남겨 두었습니다') : tilde(r.dir));
     docCache.clear();
     loadHistory();
@@ -1059,7 +1060,6 @@ $('resetDir').onclick = async () => {
   }
 };
 
-api.onDictEngine(renderEngine);
 api.onDictStage(({ stage }) => showStage(stage));
 
 api.onDictResult((r) => {
@@ -1102,7 +1102,7 @@ const PERMS = [
   { kind: 'microphone', name: '마이크', what: '내 목소리 녹음' },
   { kind: 'inputMonitoring', name: '입력 모니터링', what: 'fn 키 감지' },
   { kind: 'accessibility', name: '손쉬운 사용', what: '받아쓴 글을 커서 위치에 입력' },
-  { kind: 'systemAudio', name: '시스템 오디오 녹음', what: '화상 회의 상대방 소리 녹음', optional: () => !settings?.meetingSystemAudio },
+  { kind: 'systemAudio', name: '시스템 오디오 녹음', what: '화상 회의 상대방 소리 녹음', optional: () => !settingsStore.getSnapshot().saved?.meetingSystemAudio },
 ];
 
 async function requestPerm(kind, btn) {
@@ -1169,7 +1169,7 @@ function renderSetup(list) {
         try {
           await api.setupRemove(c.id);
           toast(`${c.name}을(를) 지웠습니다`);
-          renderDictSettings(await api.dictSettings());
+          await settingsStore.refresh();
         } catch (err) {
           toast('지우지 못했습니다', err.message, { bad: true });
         }
@@ -1187,7 +1187,7 @@ function renderSetup(list) {
   }
   $('compTotal').textContent = `앱 폴더 사용량 ${gb(total)} · ~/Library/Application Support/meeting-recorder`;
   // 설치가 끝나면 화자 구분·엔진 상태를 다시 읽는다
-  if (setupWasRunning && !running) api.dictSettings().then(renderDictSettings);
+  if (setupWasRunning && !running) void settingsStore.refresh();
   setupWasRunning = running;
 }
 const setupListeners = new Set();
@@ -1210,7 +1210,7 @@ async function renderConnections(status) {
     const has = s.app || s.cli || s.env;
     const pill = block.querySelector('[data-state]');
     pill.textContent = SOURCE_TEXT[kind](s);
-    pill.className = `pill ${has ? 'ok' : kind === 'hf' && settings?.diarize ? 'bad' : ''}`;
+    pill.className = `pill ${has ? 'ok' : kind === 'hf' && settingsStore.getSnapshot().saved?.diarize ? 'bad' : ''}`;
     block.querySelector('[data-clear]').disabled = !s.app;
     block.querySelector('[data-verify]').disabled = !has;
   }
@@ -1242,8 +1242,8 @@ for (const block of $('settings').querySelectorAll('.conn-block[data-kind]')) {
     show(true, '저장했습니다. 확인 중…');
     const r = await api.verifyToken(kind);
     show(r.ok, r.message);
-    renderDictSettings(await api.dictSettings());
-    renderProviders(true);
+    await settingsStore.refresh();
+    settingsStore.refreshProviders(true);
   };
   block.querySelector('[data-save]').onclick = save;
   input.onkeydown = (e) => {
@@ -1257,8 +1257,8 @@ for (const block of $('settings').querySelectorAll('.conn-block[data-kind]')) {
   block.querySelector('[data-clear]').onclick = async () => {
     await renderConnections(await api.clearToken(kind));
     show(true, '지웠습니다.');
-    renderDictSettings(await api.dictSettings());
-    renderProviders(true);
+    await settingsStore.refresh();
+    settingsStore.refreshProviders(true);
   };
 }
 for (const b of $('settings').querySelectorAll('[data-link]')) b.onclick = () => api.openExternal(b.dataset.link);
@@ -1281,9 +1281,9 @@ const onboardingCtx = {
     updateMicHint();
   },
   onDone: async () => {
-    renderDictSettings(await api.dictSettings());
+    await settingsStore.refresh();
     renderPerms();
-    renderProviders(true);
+    settingsStore.refreshProviders(true);
     location.hash = '#home';
     loadHistory();
     toast('준비가 끝났습니다', 'fn을 꾹 누른 채 말해 보세요');
@@ -1301,9 +1301,9 @@ api.appReady(); // 보여 줄 화면이 정해졌으니 창을 띄운다
 
 const info = await api.info();
 showRecordingsDir(info.recordingsDir, info.defaultRecordingsDir);
-renderDictSettings(await api.dictSettings());
+await settingsStore.refresh();
 renderPerms();
-renderProviders();
+settingsStore.refreshProviders();
 await loadHistory();
 askStore.load(await api.askList()); // 창을 닫았다 열어도 찾던 질문·끝난 탭이 그대로
 navigate();

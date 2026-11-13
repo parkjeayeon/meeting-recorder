@@ -1,5 +1,5 @@
 // 사전 단어 목록 (설정의 vocabulary 글자 하나에서 읽는다). 받아쓰기·회의 녹취의 Whisper 힌트로 쓰인다.
-// 상태 주인은 아직 옛 화면 코드(legacy/app.js의 settings)다 — 이 창구는 사본을 들지 않고, 주인이 준 read·save로 읽고 쓴다.
+// 이 창구는 사본을 들지 않고, 앱이 넘긴 read·save로 설정 주인(entities/settings)을 읽고 쓴다.
 // 주인은 settings가 바뀔 때마다 changed()를 부른다. 스냅샷은 글자가 바뀔 때만 새 배열이라 React가 쓸데없이 다시 그리지 않는다.
 export interface VocabularyModel {
   /** React useSyncExternalStore용: 바뀌면 알림, 해제 함수를 돌려준다 */

@@ -47,7 +47,7 @@ export interface MeetingDeps {
   readonly confirm: (title: string, text: string, yes: string) => Promise<boolean>;
   readonly loadHistory: () => Promise<void>;
   /** 사전 개수·목록을 다시 그린다 (확인 필요가 사전에 단어를 넣거나 뺐을 때) */
-  readonly renderDictSettings: (s: Awaited<ReturnType<RecorderApi['dictSettings']>>) => void;
+  readonly refreshSettings: () => Promise<void>;
   readonly replaceRoute: (hash: string) => void;
   readonly canGoBack: () => boolean;
   readonly setCrumbs: (title: string) => void;
@@ -589,7 +589,7 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
       } else toast(applied.length ? `${applied.length}개를 고쳤습니다` : `${kept}개를 그대로 두었습니다`,
         applied.length ? `녹취·정리본·회의록에서 ${applied.reduce((n, it) => n + (it.count ?? 0), 0)}곳을 바꿨습니다${words.length ? ` · 사전에 추가: ${words.join(', ')}` : ''}` : '',
         words.length ? { action: '사전 보기', onAction: () => (location.hash = '#dictionary'), ms: 7000 } : {});
-      if (words.length) deps.renderDictSettings(await api.dictSettings()); // 사전 개수·목록도 바로
+      if (words.length) await deps.refreshSettings(); // 사전 개수·목록도 바로
       await refreshDoc(r);
     } catch (err) {
       toast('적용하지 못했습니다', (err as Error).message, { bad: true });
@@ -604,7 +604,7 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
       const again = res.reapplied?.length ? `같은 줄을 나중에 고친 ${res.reapplied.length}개는 다시 적용했습니다` : '';
       const reopened = res.reopened?.length ? `${res.reopened.length}개는 고칠 곳이 없어져 다시 확인 전으로 열었습니다` : '';
       toast('되돌렸습니다', [res.removedWord && `사전에서 '${res.removedWord}'를 뺐습니다`, again, reopened].filter(Boolean).join(' · ') || '항목을 다시 확인 전으로 열었습니다');
-      if (res.removedWord) deps.renderDictSettings(await api.dictSettings());
+      if (res.removedWord) await deps.refreshSettings();
     } catch (err) {
       toast('되돌리지 못했습니다', errText(err), { bad: true });
     }
