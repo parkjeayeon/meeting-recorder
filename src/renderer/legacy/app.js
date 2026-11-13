@@ -1,4 +1,4 @@
-import { Recorder } from './recorder.js';
+import { Recorder } from '../features/recording/index.ts';
 import { reactPage, mountReact } from '../shared/page-host/index.tsx'; // React로 옮긴 화면을 옛 라우터에 끼운다 (docs/renderer-architecture.md)
 import { createVocabularyModel } from '../entities/vocabulary/index.ts';
 import { DictionaryPage } from '../pages/dictionary/index.ts';
