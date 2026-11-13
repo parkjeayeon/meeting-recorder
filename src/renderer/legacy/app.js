@@ -10,7 +10,8 @@ import { MeetingsPage } from '../pages/meetings/index.ts';
 import { createAskStore, AskWidget } from '../features/ask/index.ts';
 import { meetingPage } from '../pages/meeting/index.ts';
 import { createPlayback } from '../features/meeting-player/index.ts';
-import { fmt, TIME, PROVIDER_NAME, clock, sizeLabel, dayLabel, createSource, createJobs } from '../shared/lib/index.ts'; // 숫자·시간 표시는 한 벌 (React 화면과 같이 씀)
+import { fmt, TIME, PROVIDER_NAME, clock, sizeLabel, dayLabel, createSource, createJobs, store, remember } from '../shared/lib/index.ts'; // 숫자·시간 표시는 한 벌 (React 화면과 같이 씀)
+import { createToaster, confirmBox, installTooltips } from '../shared/ui/index.tsx';
 import { dictSummary, charsOf } from '../entities/dictation/index.ts';
 import { statusText } from '../entities/meeting/index.ts';
 
@@ -45,86 +46,11 @@ function icon(id) {
 
 const num = (text) => h('span', { class: 'num' }, String(text));
 
-// 아이콘만 있는 버튼: 마우스를 올리거나 키보드로 옮겨 오면 잠깐 뒤 무슨 버튼인지 글로 보인다 (화면 전체에 하나, 새로 그린 버튼에도).
-// 글은 자세한 설명(title)이 있으면 그것, 없으면 이름(aria-label). macOS 기본 말풍선과 겹치지 않게 보이는 동안 title을 잠시 뗀다
-const hoverTip = h('div', { class: 'hover-tip', role: 'tooltip', 'aria-hidden': 'true' });
-document.body.append(hoverTip);
-let tipFor = null;
-let tipTimer = null;
-const ICON_ONLY = 'button, [role="button"], a.icon-btn';
-function tipTarget(node) {
-  const el = node?.closest?.(ICON_ONLY);
-  if (!el || el.closest('.no-tip') || (el.textContent ?? '').trim()) return null; // 글자가 있는 버튼은 이미 무슨 버튼인지 보인다
-  return el.getAttribute('title') || el.dataset.tip || el.getAttribute('aria-label') ? el : null;
-}
-function showHoverTip(el) {
-  const text = el.dataset.tip || el.getAttribute('title') || el.getAttribute('aria-label');
-  if (el.hasAttribute('title')) {
-    el.dataset.tip = el.getAttribute('title');
-    el.removeAttribute('title');
-  }
-  // 설정·⌘K 같은 대화상자는 맨 위층에 떠서 본문의 툴팁이 가려진다 → 그 대화상자 안에서 띄운다
-  const host = el.closest('dialog[open]') ?? document.body;
-  if (hoverTip.parentNode !== host) host.append(hoverTip);
-  hoverTip.textContent = text;
-  hoverTip.classList.add('show');
-  const r = el.getBoundingClientRect();
-  const t = hoverTip.getBoundingClientRect();
-  const below = r.bottom + 8 + t.height < innerHeight;
-  hoverTip.style.top = `${below ? r.bottom + 8 : r.top - 8 - t.height}px`;
-  hoverTip.style.left = `${Math.min(innerWidth - t.width - 8, Math.max(8, r.left + r.width / 2 - t.width / 2))}px`;
-}
-function hideHoverTip() {
-  clearTimeout(tipTimer);
-  hoverTip.classList.remove('show');
-  if (tipFor?.dataset.tip && !tipFor.hasAttribute('title')) tipFor.setAttribute('title', tipFor.dataset.tip); // 다음에 이 버튼을 바꾼 코드가 title을 읽어도 그대로
-  tipFor = null;
-}
-const armHoverTip = (el, ms) => {
-  if (el === tipFor) return;
-  hideHoverTip();
-  if (!el) return;
-  tipFor = el;
-  tipTimer = setTimeout(() => el.isConnected && tipFor === el && showHoverTip(el), ms);
-};
-document.addEventListener('mouseover', (e) => armHoverTip(tipTarget(e.target), 400));
-document.addEventListener('mouseout', (e) => tipFor && !tipFor.contains(e.relatedTarget) && hideHoverTip());
-document.addEventListener('focusin', (e) => e.target.matches?.(':focus-visible') && armHoverTip(tipTarget(e.target), 250));
-document.addEventListener('focusout', () => hideHoverTip());
-document.addEventListener('mousedown', () => hideHoverTip(), true);
-document.addEventListener('scroll', () => hideHoverTip(), true);
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && hoverTip.classList.contains('show')) hideHoverTip();
-});
+installTooltips();
 const FULL = new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
 
 
-
-function store(key, fallback) {
-  try {
-    return JSON.parse(localStorage.getItem(key)) ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
-function remember(key, value) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {}
-}
-
-// ── 토스트 (잠깐 보여 주는 알림) ─────────────────────────────────────────
-function toast(title, detail = '', { bad = false, action = null, onAction = null, ms = 4200 } = {}) {
-  const el = h('div', { class: `toast${bad ? ' bad' : ''}`, role: 'status' }, h('b', null, title), detail && h('span', null, detail));
-  const close = () => {
-    el.classList.add('out');
-    setTimeout(() => el.remove(), 200);
-  };
-  if (action) el.append(h('button', { onclick: () => { onAction?.(); close(); } }, action));
-  $('toasts').append(el);
-  setTimeout(close, ms);
-  if (bad) api.log(`${title} ${detail}`);
-}
+const toast = createToaster((m) => api.log(m));
 
 // ── 확인해야 할 문제 (권한·엔진·토큰): 홈 맨 위와 설정 점으로 계속 보인다 ─────────
 const issues = new Map(); // key → { title, detail, action, onAction, sec }
@@ -800,25 +726,6 @@ const vocabulary = createVocabularyModel({ read: () => settings?.vocabulary ?? '
 const vocabWords = () => vocabulary.getSnapshot();
 
 // ── 통계 ────────────────────────────────────────────────────────────────
-// ── 확인 창 ─────────────────────────────────────────────────────────────
-function confirmBox(title, text, yes) {
-  const dlg = $('confirm');
-  $('confirmTitle').textContent = title;
-  $('confirmText').textContent = text;
-  $('confirmYes').textContent = yes;
-  dlg.showModal();
-  $('confirmNo').focus();
-  return new Promise((resolve) => {
-    const done = (v) => {
-      dlg.close();
-      resolve(v);
-    };
-    $('confirmYes').onclick = () => done(true);
-    $('confirmNo').onclick = () => done(false);
-    dlg.oncancel = () => resolve(false);
-  });
-}
-
 // ── ⌘K 빠른 검색 ────────────────────────────────────────────────────────
 let paletteItems = [];
 let paletteSel = 0;

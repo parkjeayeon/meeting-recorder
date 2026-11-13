@@ -1,4 +1,4 @@
-// 회의 페이지를 옮긴 뒤 #view HTML이 main과 같은지 상태마다 찍어 비교한다 (docs/testing.md).
+// 옮긴 화면의 HTML이 main과 같은지 상태마다 찍어 비교한다 (docs/testing.md) — 회의 페이지(#view), 설정 창과 사이드바, 처음 설정(#onboard).
 //   git worktree add --detach /tmp/wt-main main && ln -s "$PWD/node_modules" /tmp/wt-main/node_modules && (cd /tmp/wt-main && npm run build:ts && npm run build:renderer)
 //   npm run build:renderer && node scripts/dev/view-parity.js /tmp/wt-main /tmp/parity [이름 일부]
 // 같은 상태를 두 쪽에서 연달아 찍는다(가짜 기록의 시각이 지금 기준이라). 다르면 <이름>.diff를 남기고 끝에 실패로 끝난다.
@@ -17,14 +17,30 @@ const need = (x, what) => { if (!x) throw new Error('없음: ' + what); return x
 const btn = (t, r = document) => need($$('button', r).find((b) => b.textContent.trim() === t || b.getAttribute('aria-label') === t), t);
 const tab = (t) => need($$('.tabs .tab').find((b) => b.textContent.trim().startsWith(t)), '탭 ' + t).click();
 const wait = (ms = 400) => new Promise((r) => setTimeout(r, ms));
-const keep = (s) => { const b = document.createElement('div'); b.id = 'dumpbox'; b.innerHTML = need(document.querySelector(s), s).outerHTML; document.body.append(b); };
+const keep = (...ss) => { const b = document.createElement('div'); b.id = 'dumpbox'; b.innerHTML = ss.map((s) => need(document.querySelector(s), s).outerHTML).join(''); document.body.append(b); };
+const settings = async (sec) => { need(document.getElementById('openSettings'), '설정').click(); await wait(); need($$('.set-tab').find((b) => b.dataset.sec === sec), '설정 ' + sec).click(); await wait(1200); };
 const type = (s, v) => { const e = need(document.querySelector(s), s); e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); return e; };
 const enter = (e) => e.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
 `;
 const M = { DUMP_MEETING: '1' };
 const MANY = { STUB_MANY: '12', STUB_BUSY: '1' };
 const at = (i) => `#meeting/2026-${['11-01', '10-31', '10-30', '', '10-28', '', '', '10-25', '10-24'][i]}_${String(i).padStart(2, '0')}-00-00_meeting`;
+const BOX = { DUMP_SEL: '#dumpbox' };
+const OB = (step) => ({ OB_STEP: step, DUMP_SEL: '#onboard' });
+const SETTINGS = ['general', 'cleanup', 'meeting', 'engine', 'accounts', 'perms'].map((sec) => [`설정 · ${sec}`, BOX, `await settings('${sec}'); keep('#settings', '.side')`, '#home']);
+const ONBOARDING = ['welcome', 'permissions', 'token', 'engine', 'account', 'mic', 'fnkey', 'practice', 'done'].map((step) => [`처음 설정 · ${step}`, OB(step), `await wait(1200)`, '#home']);
 const STATES = [
+  ...SETTINGS,
+  ['설정 · 사이드바만', BOX, `keep('.side')`, '#home'],
+  ['설정 · 언어 바꾸기', BOX, `const sel = need(document.getElementById('sideLanguage'), '언어'); sel.value = 'en'; sel.dispatchEvent(new Event('change', { bubbles: true })); await wait(1000); await settings('general'); keep('#settings', '.side', '#toasts')`, '#home'],
+  ['설정 · 다듬기 Codex 고르기', BOX, `await settings('cleanup'); need(document.querySelector('input[name=provider][value=codex]'), 'codex').click(); await wait(1000); keep('#settings', '.side')`, '#home'],
+  ['설정 · 회의 녹취 언어', BOX, `await settings('meeting'); const sel = need(document.getElementById('meetLanguage'), '회의 언어'); sel.value = 'ja'; sel.dispatchEvent(new Event('change', { bubbles: true })); await wait(1000); keep('#settings', '.side')`, '#home'],
+  ['설정 · 토큰 보기', BOX, `await settings('accounts'); need(document.querySelector('.conn-block[data-kind=hf] [data-toggle]'), '토큰 보기').click(); await wait(); keep('#settings')`, '#home'],
+  ['설정 · 폴더 막힘 사이드바', { ...BOX, STUB_FOLDER: 'denied' }, `await settings('perms'); keep('#settings', '.side')`, '#home'],
+  ...ONBOARDING,
+  ['처음 설정 · welcome 다음', OB('welcome'), `await wait(1200); btn('시작하기').click(); await wait(1200)`, '#home'],
+  ['처음 설정 · 토큰 쓰기', OB('token'), `await wait(1200); type('#onboard input', 'hf_test'); await wait()`, '#home'],
+  ['처음 설정 · 연습 쓰기', OB('practice'), `await wait(1200); type('#onboard textarea', '안녕하세요'); await wait()`, '#home'],
   ['회의록', M],
   ['확인 필요 탭', M, `tab('확인 필요')`],
   ['액션 탭', M, `tab('액션')`],
@@ -64,7 +80,12 @@ const STATES = [
   ['압축 안내 그대로 두기', MANY, `btn('그대로 두기').click()`, at(0)],
 ];
 
-const norm = (s) => s.replace(/fl-arrow-([a-z0-9]+)-[a-z0-9]+/g, 'fl-arrow-$1-X');
+// 찍을 때마다 바뀌는 값: 흐름도 화살표 id, 창마다 새로 섞이는 마이크 장치 id, 지금 시각 기준인 사용 한도 초기화 시각, 실제 마이크 소리를 따르는 처음 설정 막대(on)
+const norm = (s) => s
+  .replace(/fl-arrow-([a-z0-9]+)-[a-z0-9]+/g, 'fl-arrow-$1-X')
+  .replace(/<option value="[0-9a-f]{64}">/g, '<option value="DEVICE">')
+  .replace(/\d\d:\d\d 초기화/g, 'HH:MM 초기화')
+  .replace(/<i class="(on)?">/g, '<i>');
 const shoot = (root, name, env, js, hash, file) => {
   const e = { ...process.env, ...env, ROOT: root, ...(js ? { DUMP_JS: H + js } : {}) };
   try {

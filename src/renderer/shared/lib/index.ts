@@ -59,3 +59,4 @@ export function createSource<T>(read: () => T, deps: () => readonly unknown[]): 
 }
 
 export { createJobs, type Job, type Jobs } from './jobs.ts';
+export { store, remember } from './storage.ts';

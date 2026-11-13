@@ -3,6 +3,8 @@ import type React from 'react';
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 export { glide, scrollSpy } from './scroll-spy.ts';
+export { createToaster, confirmBox } from './feedback.ts';
+export { installTooltips } from './tooltips.ts';
 
 /** SVG 묶음(index.html의 <symbol id="i-…">)의 아이콘 하나 */
 export function Icon({ id }: { readonly id: string }) {
