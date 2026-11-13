@@ -15,7 +15,7 @@ import { createIssueStore } from '../entities/issue/index.ts';
 import { createSettingsStore } from '../entities/settings/index.ts';
 import { mountSettings, startOnboarding } from '../features/configuration/index.ts';
 import { mountPalette } from '../features/palette/index.ts';
-import { createHistoryStore } from '../app/index.ts';
+import { createHistoryStore, createRouter } from '../app/index.ts';
 
 const api = window.recorderApi;
 const settingsStore = createSettingsStore(api);
@@ -67,7 +67,7 @@ issues.subscribe(() => {
   $('settingsDot').hidden = list.length === 0;
   $('permDot').hidden = !secs.has('perms');
   $('accountsDot').hidden = !secs.has('accounts');
-  if (route.name === 'home') refresh();
+  if (router.route().name === 'home') router.refresh();
 });
 
 
@@ -294,7 +294,7 @@ history.subscribe(() => {
   issues.set('folder', folderIssue(history.getSnapshot().access));
   $('countDict').textContent = history.getSnapshot().totals?.count || dictations().length || '';
   $('countMeet').textContent = meetings().length || '';
-  refresh();
+  router.refresh();
 });
 const loadHistory = () => history.reload();
 let freshId = null;
@@ -346,104 +346,22 @@ api.onMinutes(({ id, status, offline }) => {
 // 파일이 바뀌면(앱 밖에서 고친 경우 포함) 열려 있는 회의와 목록을 다시 읽는다
 api.onMeetingChanged(({ id }) => {
   docCache.delete(id);
-  if (route.name === 'meeting' && route.arg === id) current?.reload?.();
+  if (router.route().name === 'meeting' && router.route().arg === id) router.current()?.reload?.();
   loadHistory();
 });
 history.connect();
 
 
 // ── 라우터 ──────────────────────────────────────────────────────────────
-const ROUTES = { home: () => reactPage(HomePage, { source: homeSource, actions: homeActions }), dictations: () => reactPage(DictationsPage, { source: dictationsSource, actions: dictationsActions }), meetings: openMeetingsPage, meeting: (mid) => meetingPage(mid, meetingDeps), dictionary: () => reactPage(DictionaryPage, { model: vocabulary }), stats: () => reactPage(StatsPage, { source: statsSource }) };
-const TITLES = { home: '홈', dictations: '받아쓰기', meetings: '회의', meeting: '회의', dictionary: '사전', stats: '통계' };
-let route = parseHash();
-let current = null; // { el, update? }
-
-function parseHash() {
-  const [name, ...rest] = location.hash.slice(1).split('/');
-  return { name: ROUTES[name] ? name : 'home', arg: rest.length ? decodeURIComponent(rest.join('/')) : null };
-}
-
-// 뒤로·앞으로: 해시 이동마다 window.history.state에 순번을 붙여 지금 어디쯤인지 안다
-let navIndex = 0;
-let navMax = 0;
-let navStarted = false;
-function trackHistory() {
-  const idx = window.history.state?.idx;
-  if (typeof idx === 'number') navIndex = idx;
-  else if (!navStarted) window.history.replaceState({ idx: 0 }, ''); // 앱을 연 첫 화면
-  else {
-    navIndex += 1;
-    navMax = navIndex; // 새로 이동하면 앞으로 갈 곳은 사라진다
-    window.history.replaceState({ idx: navIndex }, '');
-  }
-  navMax = Math.max(navMax, navIndex);
-  navStarted = true;
-  $('navBack').disabled = navIndex <= 0;
-  $('navFwd').disabled = navIndex >= navMax;
-}
-$('navBack').onclick = () => window.history.back();
-$('navFwd').onclick = () => window.history.forward();
-document.addEventListener('keydown', (e) => {
-  if (!e.metaKey || e.target.closest?.('input, textarea')) return;
-  if (e.key === '[') {
-    e.preventDefault();
-    if (navIndex > 0) window.history.back();
-  } else if (e.key === ']') {
-    e.preventDefault();
-    if (navIndex < navMax) window.history.forward();
-  }
-});
-// 마우스 옆 버튼(뒤로·앞으로)
-window.addEventListener('mouseup', (e) => {
-  if (e.button === 3 && navIndex > 0) window.history.back();
-  if (e.button === 4 && navIndex < navMax) window.history.forward();
-});
-api.onSwipe?.((dir) => {
-  if (dir === 'left' && navIndex > 0) window.history.back();
-  if (dir === 'right' && navIndex < navMax) window.history.forward();
-});
-
-// 지운 회의에서 벗어날 때는 기록을 바꿔치워 뒤로 가기로 다시 오지 않게 한다
-function replaceRoute(hash) {
-  window.history.replaceState({ idx: navIndex }, '', hash);
-  navigate();
-}
-
-function navigate() {
-  trackHistory();
-  route = parseHash();
-  const navName = route.name === 'meeting' ? 'meetings' : route.name;
-  for (const a of document.querySelectorAll('.nav a.nav-item')) {
-    if (a.dataset.route === navName) a.setAttribute('aria-current', 'page');
-    else a.removeAttribute('aria-current');
-  }
-  current?.leave?.();
-  current = ROUTES[route.name](route.arg);
-  $('view').replaceChildren(current.el);
-  $('view').scrollTop = 0;
-  setCrumbs();
-}
-window.addEventListener('hashchange', navigate);
-
-function setCrumbs(title) {
-  const crumbs = $('crumbs');
-  crumbs.replaceChildren();
-  if (route.name === 'meeting') {
-    crumbs.append(h('a', { href: '#meetings' }, '회의'), icon('i-right'), h('b', null, title ?? ''));
-  } else crumbs.append(h('b', null, TITLES[route.name]));
-}
-
-// 데이터가 바뀌면 지금 화면만 다시 그린다 (스크롤 위치와 입력칸은 지킨다)
-function refresh() {
-  if (!current) return;
-  const top = $('view').scrollTop;
-  if (current.update) current.update();
-  else {
-    current = ROUTES[route.name](route.arg);
-    $('view').replaceChildren(current.el);
-  }
-  $('view').scrollTop = top;
-}
+const router = createRouter({
+  home: { title: '홈', mount: () => reactPage(HomePage, { source: homeSource, actions: homeActions }) },
+  dictations: { title: '받아쓰기', mount: () => reactPage(DictationsPage, { source: dictationsSource, actions: dictationsActions }) },
+  meetings: { title: '회의', mount: openMeetingsPage },
+  meeting: { title: '회의', mount: (mid) => meetingPage(mid, meetingDeps) },
+  dictionary: { title: '사전', mount: () => reactPage(DictionaryPage, { model: vocabulary }) },
+  stats: { title: '통계', mount: () => reactPage(StatsPage, { source: statsSource }) },
+}, { api });
+router.connect();
 
 // ── 홈 ───────────────────────────────────────────────────────────────
 // 통계 화면(React)이 읽는 창구: 주인은 app/history(rows·totals), 둘이 바뀌는 history 구독에서 changed()
@@ -458,7 +376,7 @@ function openMeetings(filter) {
   location.hash = '#meetings';
 }
 // 홈 화면(React)이 읽는 창구와 명령. 기록(rows·totals·strays)은 history 구독, 문제는 issues 구독에서 changed().
-// freshId·showMarks·openRaw는 바뀐 뒤 refresh()가 다시 그려 deps로 알아챈다 (openRaw는 바꿀 때 새 Set)
+// freshId·showMarks·openRaw는 바뀐 뒤 router.refresh()가 다시 그려 deps로 알아챈다 (openRaw는 바꿀 때 새 Set)
 const homeSource = createSource(
   () => ({ meetings: meetings(), dictations: dictations(), totals: history.getSnapshot().totals, issues: issues.getSnapshot().entries, strayCount: history.getSnapshot().strays.length, freshId, showMarks, openRaw }),
   () => [history.getSnapshot().rows, history.getSnapshot().totals, history.getSnapshot().strays, issues.getSnapshot().revision, freshId, showMarks, openRaw],
@@ -581,9 +499,9 @@ function openMeetingsPage() {
 let askPending = null; // 회의 화면으로 가면서 열 질문 탭
 const askStore = createAskStore({
   api,
-  viewing: (id) => route.name === 'meetings' && currentMeetFilter() === `ask:${id}`,
+  viewing: (id) => router.route().name === 'meetings' && currentMeetFilter() === `ask:${id}`,
   openTab: (id) => {
-    if (route.name === 'meetings') setMeetFilter(`ask:${id}`);
+    if (router.route().name === 'meetings') setMeetFilter(`ask:${id}`);
     else {
       askPending = id;
       location.hash = '#meetings';
@@ -601,7 +519,7 @@ const askUsesCodex = () => {
   return providers && !providers['claude-code']?.loggedIn && (settings?.provider === 'codex' || (settings?.provider === 'auto' && providers.codex?.loggedIn));
 };
 const askWidgetDeps = {
-  onMeetings: () => route.name === 'meetings',
+  onMeetings: () => router.route().name === 'meetings',
   usesCodex: () => Boolean(askUsesCodex()),
   noteClosed: () => store('askNoteClosed', false),
   closeNote: () => remember('askNoteClosed', true),
@@ -688,9 +606,9 @@ const meetingDeps = {
   confirm: (title, text, yes) => confirmBox(title, text, yes),
   loadHistory: () => loadHistory(),
   refreshSettings: () => settingsStore.refresh(),
-  replaceRoute: (hash) => replaceRoute(hash),
-  canGoBack: () => navIndex > 0,
-  setCrumbs: (title) => setCrumbs(title),
+  replaceRoute: (hash) => router.replace(hash),
+  canGoBack: () => router.canGoBack(),
+  setCrumbs: (title) => router.setCrumbs(title),
   takeOpenReview: (mid) => {
     if (openReviewNext !== mid) return false;
     openReviewNext = null;
@@ -797,7 +715,7 @@ settingsUi.refreshPermissions();
 settingsStore.refreshProviders();
 await loadHistory();
 askStore.load(await api.askList()); // 창을 닫았다 열어도 찾던 질문·끝난 탭이 그대로
-navigate();
+router.navigate();
 mountReact(askRoot, AskWidget, { store: askStore, deps: askWidgetDeps });
 if (info.capability === 'unsupported') toast('이 macOS에서는 상대방 소리를 녹음할 수 없습니다', '회의도 마이크만 녹음합니다.', { ms: 7000 });
 if (info.fnWarning) issues.set('fnUsage', { title: 'fn 키가 다른 동작과 겹칩니다', detail: info.fnWarning, sec: 'general', dismiss: true });
