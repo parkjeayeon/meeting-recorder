@@ -9,7 +9,7 @@ const dictation = require('./dictation');
 const { complete, parseJson } = require('./cleanup');
 const sandbox = require('./sandbox');
 const glossary = require('./glossary');
-const { nameSpeakers, writeFileAtomic, writeJsonAtomic, copyFileAtomic, cleanGuess, inlineGuesses, toReviewItems, noteVariants, stampFor, locateHeard, searchKeys, checkMinutes } = require('../lib/core/index.mjs'); // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
+const { nameSpeakers, writeFileAtomic, writeJsonAtomic, copyFileAtomic, cleanGuess, inlineGuesses, toReviewItems, noteVariants, stampFor, locateHeard, searchKeys, checkMinutes, smoothTurns } = require('../lib/core/index.mjs'); // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
 
 const LONG_TIMEOUT_MS = 10 * 60 * 1000; // 1시간짜리 회의도 여유 있게
 const SPEAKER = { mic: '나', system: '상대방' };
@@ -457,6 +457,7 @@ const NEAREST_SPEAKER_SEC = 2; // 겹치는 화자가 없으면 이 안에 있�
 // 녹취 구간마다 가장 많이 겹치는 화자를 붙이고, 처음 말한 순서대로 "화자 1, 2…"로 부른다
 // names: 이미 정한 번호(화자 구분 결과 → '화자 N')를 이어 쓸 때 넘긴다 (구간 다시 받아쓰기)
 function assignSpeakers(lines, turns, names = new Map()) {
+  turns = smoothTurns(turns); // 같은 사람 말 중간에 몇 초만 다른 사람으로 잡힌 조각을 되돌린다 (src/core/turns.mts)
   for (const line of lines) {
     let best = null;
     let bestOverlap = 0;
@@ -1421,4 +1422,4 @@ function makeCleanScript(dir) {
 module.exports = {
   minutesSystem,
   decodeTo16k,
-  findLoops, nameSpeakers, makeMinutes, canResume, addCheckItems, makeCleanScript, renameSpeaker, diarizeAvailable, readReview, makeReview, addReview, applyReview, setReviewStatus, chatReview, finalizeReview, retranscribeRange, applyRetranscribe, speakerTurns, revertReview, markReviewItems };
+  findLoops, nameSpeakers, buildTranscript, makeMinutes, canResume, addCheckItems, makeCleanScript, renameSpeaker, diarizeAvailable, readReview, makeReview, addReview, applyReview, setReviewStatus, chatReview, finalizeReview, retranscribeRange, applyRetranscribe, speakerTurns, revertReview, markReviewItems };

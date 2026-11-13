@@ -34,7 +34,7 @@ def load_wav(path):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("wav")
-    parser.add_argument("--speakers", type=int, default=None)
+    parser.add_argument("--speakers", type=int, default=None)  # 참석 인원 (최대)
     args = parser.parse_args()
 
     started = time.time()
@@ -43,7 +43,8 @@ def main():
     pipeline.to(torch.device(device))
 
     waveform, rate = load_wav(args.wav)
-    options = {"num_speakers": args.speakers} if args.speakers else {}
+    # 참석 인원은 "최대"로 넘긴다: "정확히 N명"이면 거의 말하지 않은 사람 몫을 채우려고 많이 말한 사람의 목소리를 둘로 나눴다 (2026-11-13 회의)
+    options = {"max_speakers": args.speakers} if args.speakers else {}
     output = pipeline({"waveform": waveform, "sample_rate": rate}, **options)
 
     annotation = getattr(output, "exclusive_speaker_diarization", None) or getattr(output, "speaker_diarization", output)
