@@ -18,3 +18,6 @@ eval-runs/
 
 # 검증 조작 도구(scripts/dev/verify/drive.js)의 증거 — 가짜 데이터지만 실행마다 쌓이므로 올리지 않는다
 verify-runs/
+
+# 작업 중 기록(시험 기록·화면 비교 결과·설계 문서) — /tmp는 재시작하면 비워진다
+.work/

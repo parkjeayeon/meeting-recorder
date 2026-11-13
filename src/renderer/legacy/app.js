@@ -1,54 +1,18 @@
 import { mountRecording } from '../features/recording/index.ts';
-import { reactPage, mountReact } from '../shared/page-host/index.tsx'; // React로 옮긴 화면을 옛 라우터에 끼운다 (docs/renderer-architecture.md)
-import { createVocabularyModel } from '../entities/vocabulary/index.ts';
-import { DictionaryPage } from '../pages/dictionary/index.ts';
-import { StatsPage } from '../pages/stats/index.ts';
-import { HomePage } from '../pages/home/index.ts';
-import { DictationsPage } from '../pages/dictations/index.ts';
-import { MeetingsPage } from '../pages/meetings/index.ts';
-import { createAskStore, AskWidget } from '../features/ask/index.ts';
-import { meetingPage } from '../pages/meeting/index.ts';
-import { createPlayback } from '../features/meeting-player/index.ts';
-import { clock, sizeLabel, createSource, createJobs, store, remember } from '../shared/lib/index.ts'; // 숫자·시간 표시는 한 벌 (React 화면과 같이 씀)
+import { mountReact } from '../shared/page-host/index.tsx';
+import { AskWidget } from '../features/ask/index.ts';
+import { remember } from '../shared/lib/index.ts';
 import { createToaster, confirmBox, installTooltips } from '../shared/ui/index.tsx';
 import { createIssueStore } from '../entities/issue/index.ts';
 import { createSettingsStore } from '../entities/settings/index.ts';
 import { mountSettings, startOnboarding } from '../features/configuration/index.ts';
 import { mountPalette } from '../features/palette/index.ts';
 import { mountImportMeeting } from '../features/import-meeting/index.ts';
-import { createHistoryStore, createRouter } from '../app/index.ts';
+import { createHistoryStore, createRouter, createSession, createMeeting, createPages } from '../app/index.ts';
 
 const api = window.recorderApi;
 const settingsStore = createSettingsStore(api);
 const $ = (id) => document.getElementById(id);
-const SVGNS = 'http://www.w3.org/2000/svg';
-
-// 작은 DOM 도우미: h('div', { class: 'x', onclick }, 자식...)
-function h(tag, props, ...kids) {
-  const el = document.createElement(tag);
-  for (const [k, v] of Object.entries(props ?? {})) {
-    if (v === null || v === undefined || v === false) continue;
-    if (k === 'class') el.className = v;
-    else if (k.startsWith('on')) el[k] = v;
-    else if (k in el && !k.startsWith('aria') && !k.startsWith('data')) el[k] = v;
-    else el.setAttribute(k, v === true ? '' : v);
-  }
-  el.append(...kids.flat(Infinity).filter((k) => k !== null && k !== undefined && k !== false));
-  return el;
-}
-
-// replaceChildren은 false/null도 글자로 넣으므로 조건부 자식을 걸러서 넘긴다
-const fill = (el, ...kids) => el.replaceChildren(...kids.flat(Infinity).filter((k) => k !== null && k !== undefined && k !== false));
-
-function icon(id) {
-  const svg = document.createElementNS(SVGNS, 'svg');
-  const use = document.createElementNS(SVGNS, 'use');
-  use.setAttribute('href', `#${id}`);
-  svg.append(use);
-  return svg;
-}
-
-const num = (text) => h('span', { class: 'num' }, String(text));
 
 installTooltips();
 const FULL = new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
@@ -84,7 +48,7 @@ const recording = mountRecording({
   readInput: () => ({ deviceId: $('micSelect').value || undefined, echoCancellation: $('echo').checked }),
   openSettings: (sec) => openSettings(sec),
   historyChanged: () => { loadHistory(); },
-  dictationFinished: (id) => { freshId = id; loadHistory(); },
+  dictationFinished: (id) => { session.freshId = id; loadHistory(); },
 });
 api.onFnStatus((s) => issues.set('fn', s.ok ? null : { title: 'fn 키를 감지하지 못합니다', detail: s.reason, action: '권한 보기', onAction: () => openSettings('perms'), sec: 'perms' }));
 
@@ -101,7 +65,7 @@ history.subscribe(() => {
   router.refresh();
 });
 const loadHistory = () => history.reload();
-let freshId = null;
+const session = createSession();
 const dictations = () => history.getSnapshot().rows.filter((r) => r.mode === 'memo' && r.transcript?.raw);
 const meetings = () => history.getSnapshot().rows.filter((r) => r.mode === 'meeting');
 
@@ -122,256 +86,30 @@ function folderIssue(access) {
   };
 }
 
-api.onMinutes(({ id, status, offline }) => {
-  if (status === 'done') {
-    docCache.delete(id);
-    // 회의록은 바로 쓸 수 있는 초안이다. 확인할 항목이 있으면 같이 알린다
-    api.history().then((list) => {
-      const r = list.find((m) => m.id === id);
-      const open = r?.review?.open ?? 0;
-      toast('회의록 초안을 만들었습니다', open ? `확인 필요 ${open}개 · 확인하면 회의록을 확정합니다` : r ? clock(r.durationSec) : '', {
-        action: open ? '확인하기' : '열기', ms: 10000,
-        onAction: () => {
-          if (open) openReviewNext = id;
-          location.hash = `#meeting/${encodeURIComponent(id)}`;
-        },
-      });
-    });
-  }
-  if (status === 'short') toast('회의 녹음을 저장했습니다', '10초 미만이라 회의록은 만들지 않았습니다');
-  if (status === 'error') {
-    toast(offline ? '인터넷 연결이 없어 회의록을 쓰지 못했습니다' : '회의록을 만들지 못했습니다', offline ? '녹취는 저장했습니다. 연결되면 이어서 씁니다' : '', {
-      bad: true, action: '보기', onAction: () => (location.hash = `#meeting/${encodeURIComponent(id)}`),
-    });
-  }
-  loadHistory();
-});
-
-// 파일이 바뀌면(앱 밖에서 고친 경우 포함) 열려 있는 회의와 목록을 다시 읽는다
-api.onMeetingChanged(({ id }) => {
-  docCache.delete(id);
-  if (router.route().name === 'meeting' && router.route().arg === id) router.current()?.reload?.();
-  loadHistory();
-});
+const meeting = createMeeting({ api, history, settingsStore, router: () => router, toast, confirm: confirmBox, fullDate: (d) => FULL.format(d) });
 history.connect();
 
 
 // ── 라우터 ──────────────────────────────────────────────────────────────
-const router = createRouter({
-  home: { title: '홈', mount: () => reactPage(HomePage, { source: homeSource, actions: homeActions }) },
-  dictations: { title: '받아쓰기', mount: () => reactPage(DictationsPage, { source: dictationsSource, actions: dictationsActions }) },
-  meetings: { title: '회의', mount: openMeetingsPage },
-  meeting: { title: '회의', mount: (mid) => meetingPage(mid, meetingDeps) },
-  dictionary: { title: '사전', mount: () => reactPage(DictionaryPage, { model: vocabulary }) },
-  stats: { title: '통계', mount: () => reactPage(StatsPage, { source: statsSource }) },
-}, { api });
+const pages = createPages({
+  api, history, issues, settingsStore, session, router: () => router, meeting, recording,
+  openSettings: (sec) => openSettings(sec),
+  importMeeting: (paths) => importMeetingHandle.open(paths),
+  toast, confirm: confirmBox, dictations, meetings,
+});
+const router = createRouter(pages.routes, { api });
 router.connect();
 
-// ── 홈 ───────────────────────────────────────────────────────────────
-// 통계 화면(React)이 읽는 창구: 주인은 app/history(rows·totals), 둘이 바뀌는 history 구독에서 changed()
-const statsSource = createSource(() => ({ dictations: dictations(), totals: history.getSnapshot().totals, meetings: meetings() }), () => [history.getSnapshot().rows, history.getSnapshot().totals]);
-// 받아쓰기 요약 (계산은 entities/dictation — 통계 화면과 한 벌). 본체 전체 통계(totals)가 있으면 그것으로
-
-// 홈: 왼쪽은 할 일(만드는 중 → 챙길 일 → 최근 회의), 오른쪽은 살펴볼 것(시작하기 → 녹음 공간 → 최근 받아쓰기).
-// 처음 만들 땐 회의가 없어 안내 카드뿐이었다 — 이제는 쌓인 회의에서 손이 갈 곳을 먼저 보인다
-let meetFilterPending = null; // 홈에서 회의 화면으로 가면서 고를 갈래
-function openMeetings(filter) {
-  meetFilterPending = filter;
-  location.hash = '#meetings';
-}
-// 홈 화면(React)이 읽는 창구와 명령. 기록(rows·totals·strays)은 history 구독, 문제는 issues 구독에서 changed().
-// freshId·showMarks·openRaw는 바뀐 뒤 router.refresh()가 다시 그려 deps로 알아챈다 (openRaw는 바꿀 때 새 Set)
-const homeSource = createSource(
-  () => ({ meetings: meetings(), dictations: dictations(), totals: history.getSnapshot().totals, issues: issues.getSnapshot().entries, strayCount: history.getSnapshot().strays.length, freshId, showMarks, openRaw }),
-  () => [history.getSnapshot().rows, history.getSnapshot().totals, history.getSnapshot().strays, issues.getSnapshot().revision, freshId, showMarks, openRaw],
-);
-const homeActions = {
-  openSettings: (sec) => openSettings(sec),
-  openMeetingStart: () => recording.openStart(),
-  openMeetings,
-  dismissIssue: (key) => issues.set(key, null),
-  copy: (text) => api.copy(text),
-  repaste: async (text) => {
-    const status = await api.repaste(text);
-    if (status !== 'pasted') toast('클립보드에 복사했습니다', '⌘V로 붙여 넣으세요');
-  },
-};
-
-async function trashMeetings(list) {
-  const total = list.reduce((n, m) => n + m.durationSec, 0);
-  const title = list.length > 1 ? `녹음 ${list.length}개를 휴지통으로 옮길까요?` : '이 녹음을 휴지통으로 옮길까요?';
-  if (!(await confirmBox(title, `녹음 폴더째(총 ${clock(total)}) 휴지통으로 옮깁니다. Finder 휴지통에서 되살릴 수 있습니다.`, '휴지통으로'))) return;
-  let failed = 0;
-  for (const m of list) await api.trashMeeting(m.dir).catch(() => failed++);
-  toast(failed ? `${list.length - failed}개를 옮기고 ${failed}개는 옮기지 못했습니다` : `${list.length}개를 휴지통으로 옮겼습니다`, failed ? '회의록을 만드는 중인 녹음은 옮길 수 없습니다' : '', { bad: Boolean(failed) });
-  loadHistory();
-}
-
-
-async function trashStrays(list) {
-  const bytes = list.reduce((n, f) => n + f.bytes, 0);
-  const title = list.length > 1 ? `폴더 ${list.length}개를 휴지통으로 옮길까요?` : `'${list[0].id}' 폴더를 휴지통으로 옮길까요?`;
-  if (!(await confirmBox(title, `폴더째(총 ${sizeLabel(bytes)}) 휴지통으로 옮깁니다. Finder 휴지통에서 되살릴 수 있습니다.`, '휴지통으로'))) return;
-  let failed = 0;
-  for (const f of list) await api.trashMeeting(f.dir).catch(() => failed++);
-  toast(failed ? `${list.length - failed}개를 옮기고 ${failed}개는 옮기지 못했습니다` : `${list.length}개를 휴지통으로 옮겼습니다`, '', { bad: Boolean(failed) });
-  loadHistory();
-}
-
-// ── 받아쓰기 ────────────────────────────────────────────────────────────
-let openRaw = new Set(); // 바꿀 땐 새 Set으로 (창구가 바뀐 줄 안다)
-let showMarks = store('showMarks', true);
-
-
-// 받아쓰기 기록 화면(React)이 읽는 창구와 명령. 목록은 화면이 본체(dictPage)에서 이어 받고, 기록(rows)이 바뀌면 다시 받는다.
-// 고친 곳 표시(showMarks)·원문 펼침(openRaw)·녹음 폴더 문제는 주인인 여기 — 바꾸면 changed()
-const dictationsSource = createSource(
-  () => ({ version: history.getSnapshot().rows, folder: issues.get('folder') ?? null, freshId, showMarks, openRaw }),
-  () => [history.getSnapshot().rows, issues.getSnapshot().revision, freshId, showMarks, openRaw],
-);
-const dictationsActions = {
-  loadPage: (query) => api.dictPage(query),
-  copy: (text) => api.copy(text),
-  repaste: async (text) => {
-    const status = await api.repaste(text);
-    if (status !== 'pasted') toast('클립보드에 복사했습니다', '⌘V로 붙여 넣으세요');
-  },
-  toggleRaw: (id) => {
-    openRaw = new Set(openRaw);
-    openRaw.has(id) ? openRaw.delete(id) : openRaw.add(id);
-    dictationsSource.changed();
-  },
-  remove: async (id) => {
-    if (!(await confirmBox('이 받아쓰기를 지울까요?', '기록과 통계에서 빠집니다. 되돌릴 수 없습니다.', '지우기'))) return;
-    await api.deleteDictation(id);
-    toast('받아쓰기를 지웠습니다');
-    loadHistory();
-  },
-  setShowMarks: (on) => {
-    showMarks = on;
-    remember('showMarks', showMarks);
-    dictationsSource.changed();
-  },
-};
-
-// ── 회의 목록 ────────────────────────────────────────────────────────────
-const goMeeting = (r, review = false) => {
-  if (review) openReviewNext = r.id;
-  location.hash = `#meeting/${encodeURIComponent(r.id)}`;
-};
-// 회의 목록 화면(React)이 읽는 창구와 명령. 갈래(meetFilter)는 주인인 여기 — 질문으로 찾기가 탭을 열고 홈이 갈래를 골라 들어온다.
-// 질문 탭은 질문으로 찾기 store를 읽는다 (질문이 바뀌면 store가 알린다)
-let meetFilter = 'all';
-// 닫은(없어진)·막힌 질문 탭이면 전체로
-function currentMeetFilter() {
-  if (meetFilter.startsWith('ask:')) {
-    const t = askStore.get(meetFilter.slice(4));
-    if (!t || t.status === 'blocked') meetFilter = 'all';
-  }
-  return meetFilter;
-}
-const meetingsSource = createSource(
-  () => ({ meetings: meetings(), strays: history.getSnapshot().strays, folder: issues.get('folder') ?? null, filter: currentMeetFilter(), asks: askStore.getSnapshot().jobs.filter((t) => t.status !== 'blocked') }),
-  () => [history.getSnapshot().rows, history.getSnapshot().strays, issues.getSnapshot().revision, meetFilter, askStore.getSnapshot().jobs],
-);
-function setMeetFilter(id) {
-  meetFilter = id;
-  $('view').scrollTop = 0;
-  meetingsSource.changed();
-}
-const meetingsActions = {
-  setFilter: setMeetFilter,
-  openMeeting: (r) => goMeeting(r),
-  openReview: (r) => goMeeting(r, true),
-  trash: (list) => trashMeetings(list),
-  trashStrays: (list) => trashStrays(list),
-  reveal: (dir) => api.reveal(dir),
-  importMeeting: (paths) => importMeetingHandle.open(paths ?? null),
-  openMeetingStart: () => recording.openStart(),
-  filePath: (f) => api.filePath(f),
-};
-function openMeetingsPage() {
-  // 둥근 버튼의 알림·채팅에서 '보기'로 들어오면 그 질문 탭, 홈의 챙길 일에서 오면 그 갈래, 아니면 전체
-  meetFilter = askPending ? `ask:${askPending}` : meetFilterPending ?? 'all';
-  askPending = null;
-  meetFilterPending = null;
-  return reactPage(MeetingsPage, { source: meetingsSource, ask: askStore, actions: meetingsActions });
-}
-
-// ── 질문으로 찾기 (결정 51) ── 찾기는 메인 프로세스(src/ask.js)에서 돌고, 상태 주인은 features/ask의 store.
-// 여기는 화면 이동(회의 화면의 그 질문 탭)과 설정 같은 바깥 일만 넘긴다. 둥근 버튼·질문 창·알림은 React(AskWidget)
-let askPending = null; // 회의 화면으로 가면서 열 질문 탭
-const askStore = createAskStore({
-  api,
-  viewing: (id) => router.route().name === 'meetings' && currentMeetFilter() === `ask:${id}`,
-  openTab: (id) => {
-    if (router.route().name === 'meetings') setMeetFilter(`ask:${id}`);
-    else {
-      askPending = id;
-      location.hash = '#meetings';
-    }
-  },
-  notifyError: (title, detail) => toast(title, detail, { bad: true }),
-});
-askStore.connect();
-askStore.subscribe(() => meetingsSource.changed());
-const askRoot = h('div', { class: 'ask-root' });
-document.body.append(askRoot);
-// 이 기능이 실제로 쓸 계정 (메인 프로세스와 같은 규칙: Claude Code에 로그인돼 있으면 그것, 아니면 다듬기 계정)
-const askUsesCodex = () => {
-  const { saved: settings, providers } = settingsStore.getSnapshot();
-  return providers && !providers['claude-code']?.loggedIn && (settings?.provider === 'codex' || (settings?.provider === 'auto' && providers.codex?.loggedIn));
-};
-const askWidgetDeps = {
-  onMeetings: () => router.route().name === 'meetings',
-  usesCodex: () => Boolean(askUsesCodex()),
-  noteClosed: () => store('askNoteClosed', false),
-  closeNote: () => remember('askNoteClosed', true),
-  openSettings: (sec) => openSettings(sec),
-};
+const { statsSource, homeSource } = pages.createHome();
+const { dictationsSource } = pages.createDictations();
+const { meetingsSource } = pages.createMeetings();
+const { askStore, askRoot, askWidgetDeps } = pages.createAsk();
 
 // 녹음 파일 가져오기: 파일을 고르면(또는 끌어다 놓으면) 확인 창에서 순서·참석 인원·녹음에 담기지 않은 내용을 받고 가져온다
 const importMeetingHandle = mountImportMeeting({ api, toast, historyChanged: () => { loadHistory(); } });
 
-// ── 회의 상세 ───────────────────────────────────────────────────────────
-const docCache = new Map(); // 회의 id → { minutes, transcript, scriptClean }
-
-// 오래 걸리는 LLM 작업(흐름도 만들기·다시 만들기, 액션 찾기)을 회의별로 기억한다.
-// 탭을 옮기거나 화면을 다시 그리면 버튼이 새로 만들어져 '정리하는 중…'이 사라지고, 다시 누르면 같은 작업이 두 번 돌았다.
-const jobs = createJobs(); // `${dir}|흐름도` 같은 키 → { promise, label } (React 부품도 구독해 '… 중'을 그린다)
-const audio = new Audio(); // 문서 밖에 두어 화면을 다시 그려도 재생이 끊기지 않는다
-audio.preload = 'metadata';
-// 재생 상태(시각·멈춤·속도·따라가기)를 재생 막대와 스크립트가 같이 구독한다 (features/meeting-player)
-const playback = createPlayback(audio, { initial: store('follow', true), save: (on) => remember('follow', on) });
-
-let openReviewNext = null; // 알림에서 '확인하기'로 들어오면 확인 필요 탭을 연다
-
-// 회의 페이지: 그리기는 pages/meeting(MeetingPage), 페이지 상태·명령·⌘F는 같은 곳의 주인(meetingPage). 앱 전체의 것만 여기서 넘긴다
-const meetingDeps = {
-  api,
-  records: () => history.getSnapshot().rows,
-  docs: docCache,
-  toast,
-  confirm: (title, text, yes) => confirmBox(title, text, yes),
-  loadHistory: () => loadHistory(),
-  refreshSettings: () => settingsStore.refresh(),
-  replaceRoute: (hash) => router.replace(hash),
-  canGoBack: () => router.canGoBack(),
-  setCrumbs: (title) => router.setCrumbs(title),
-  takeOpenReview: (mid) => {
-    if (openReviewNext !== mid) return false;
-    openReviewNext = null;
-    return true;
-  },
-  playback,
-  jobs,
-  fullDate: (d) => FULL.format(d),
-};
-
-// ── 사전 ────────────────────────────────────────────────────────────────
-// 사전은 저장된 설정을 읽고, 설정을 그린 끝에서 changed()로 다시 알린다
-const vocabulary = createVocabularyModel({ read: () => settingsStore.getSnapshot().saved?.vocabulary ?? '', save: (v) => settingsStore.save({ vocabulary: v }) });
-const vocabWords = () => vocabulary.getSnapshot();
+meeting.initialize();
+const { vocabulary, vocabWords } = pages.createDictionary();
 
 // ── 통계 ────────────────────────────────────────────────────────────────
 // ── ⌘K 빠른 검색 ────────────────────────────────────────────────────────
@@ -397,7 +135,7 @@ document.addEventListener('keydown', (e) => {
 const settingsUi = mountSettings({
   api, settings: settingsStore, issues, toast, confirm: confirmBox,
   closePalette: () => { if ($('palette').open) $('palette').close(); },
-  recordingsChanged: () => { docCache.clear(); loadHistory(); },
+  recordingsChanged: () => { meeting.docs.clear(); loadHistory(); },
   rerunOnboarding: async () => {
     startOnboarding(onboardingCtx, { ...(await api.onboardingGet()), step: 'welcome' });
   },
