@@ -1,4 +1,4 @@
-// 옛 라우터(legacy/app.js의 ROUTES)에 React 화면을 끼우는 이음새.
+// 라우터(app/router.ts)에 React 화면을 끼우는 이음새.
 // 옛 화면 함수는 { el, update?, leave?, reload? }를 돌려준다. reactPage가 React 화면을 같은 모양으로 감싼다:
 //   ROUTES = { …, dictionary: pageDictionary, … }  →  { …, dictionary: () => reactPage(DictionaryPage, { model }), … }
 // 화면 하나를 옮기는 일은 ROUTES의 그 자리 한 줄과, 그 화면이 읽는 상태의 창구(model)뿐이다.
@@ -14,7 +14,7 @@ import type { ComponentType } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 
-/** 옛 라우터가 화면 함수에서 받는 모양 (legacy/app.js navigate()·refresh()가 쓴다) */
+/** 라우터가 화면 함수에서 받는 모양 (app/router.ts의 navigate()·refresh()가 쓴다) */
 export interface PageHandle {
   readonly el: HTMLElement;
   readonly update?: () => void;

@@ -8,7 +8,10 @@ import { Recorder } from './capture.ts';
 import type { RecordingMode } from './capture.ts';
 
 export interface RecordingDeps {
-  readonly api: RecorderApi;
+  readonly api: Omit<RecorderApi, 'onDictStage' | 'onDictResult'> & {
+    readonly onDictStage: (handler: (stage: { stage: string }) => void) => void;
+    readonly onDictResult: (handler: (result: { status: string; error?: string; id?: string | null }) => void) => void;
+  };
   readonly settings: SettingsStore;
   readonly issues: IssueStore;
   readonly toast: ReturnType<typeof createToaster>;

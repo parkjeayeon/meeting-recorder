@@ -7,7 +7,7 @@ const path = require('path');
 const dirs = ['src/renderer', 'src/overlay'];
 const bad = /\bon(keydown|keypress|keyup)\s*(=|:)\s*(\([^)]*\)|[a-z]+)\s*=>(?!\s*\{)/;
 const found = [];
-// 하위 폴더까지, .ts·.tsx도 (옛 화면 코드는 src/renderer/legacy/로 옮겼다 — 맨 위만 보면 검사가 조용히 꺼진다)
+// 하위 폴더까지, .ts·.tsx도 (맨 위만 보면 검사가 조용히 꺼진다)
 let scanned = 0;
 for (const d of dirs) {
   for (const f of fs.readdirSync(d, { recursive: true }).map(String).filter((n) => /\.(js|ts|tsx)$/.test(n) && !n.endsWith('.d.ts'))) {
@@ -15,8 +15,8 @@ for (const d of dirs) {
     fs.readFileSync(path.join(d, f), 'utf8').split('\n').forEach((line, i) => bad.test(line) && found.push(`${d}/${f}:${i + 1}  ${line.trim()}`));
   }
 }
-if (!fs.readdirSync('src/renderer', { recursive: true }).map(String).some((n) => /(^|\/)app\.(js|ts|tsx)$/.test(n))) {
-  console.error('키보드 처리기 검사: 화면 본체(app.js)를 찾지 못했습니다 — 검사 대상 경로를 맞춰 주세요');
+if (!fs.readdirSync('src/renderer', { recursive: true }).map(String).some((n) => n === 'app/boot.ts')) {
+  console.error('키보드 처리기 검사: 화면 본체(app/boot.ts)를 찾지 못했습니다 — 검사 대상 경로를 맞춰 주세요');
   process.exit(1);
 }
 if (found.length) {
