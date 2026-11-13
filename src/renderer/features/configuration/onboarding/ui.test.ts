@@ -32,7 +32,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function mount(step: string) {
+function mount(step: string, initialMic = '') {
   const api = {
     onboardingSet: vi.fn(), onboardingFnTest: vi.fn(), focusApp: vi.fn(),
     permStatus: vi.fn().mockResolvedValue({ microphone: 'denied', inputMonitoring: 'denied', accessibility: 'denied' }),
@@ -51,7 +51,7 @@ function mount(step: string) {
   };
   const ctx: OnboardingCtx = {
     api: api as unknown as RecorderApi, toast: vi.fn(), setupListeners: new Set(), fnListeners: new Set(), tapListeners: new Set(),
-    getMic: () => '', setMic: vi.fn(), onDone: vi.fn(),
+    getMic: () => initialMic, setMic: vi.fn(), onDone: vi.fn(),
   };
   startOnboarding(ctx, { step });
   return { api, ctx };
@@ -59,7 +59,7 @@ function mount(step: string) {
 
 describe('onboarding legacy HTML parity', () => {
   for (const step of ['welcome', 'permissions', 'token', 'engine', 'account', 'mic', 'fnkey', 'practice', 'done']) {
-    it(step, async () => {
+    it(step === 'mic' ? '마이크 장치를 실제 옵션으로 표시한다' : step, async () => {
       mount(step);
       await flush();
       expect(html()).toMatchSnapshot();
@@ -154,15 +154,20 @@ describe('onboarding control lifetime', () => {
     expect(q('.ob-result').textContent).toBe('');
   });
 
-  it('retains mic controls and native change; meter updates do not blur or scroll', async () => {
-    mount('mic');
+  it('저장된 마이크 선택값을 복원하고 변경·다시 그리기 뒤에도 컨트롤과 선택값을 유지한다', async () => {
+    const { ctx } = mount('mic', 'wired');
     await flush();
     const select = q<HTMLSelectElement>('select');
     const bars = q('.ob-meter');
     const note = q('.ob-result');
-    expect(select.innerHTML).toBe('<option value="">시스템 기본값</option>[object HTMLOptionElement],[object HTMLOptionElement]');
-    expect(select.childNodes[1]!.nodeType).toBe(Node.TEXT_NODE);
-    select.value = 'missing';
+    expect(select.innerHTML).toBe('<option value="">시스템 기본값</option><option value="wired">내장</option><option value="bt">AirPods</option>');
+    expect(select.value).toBe('wired');
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenLastCalledWith({ audio: { deviceId: { exact: 'wired' } } });
+    select.value = 'bt';
+    select.dispatchEvent(new Event('change'));
+    await flush();
+    expect(ctx.setMic).toHaveBeenCalledWith('bt');
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenLastCalledWith({ audio: { deviceId: { exact: 'bt' } } });
     select.focus();
     q('.ob-main').scrollTop = 63;
     const tick = vi.mocked(requestAnimationFrame).mock.calls[0]![0];
@@ -172,23 +177,27 @@ describe('onboarding control lifetime', () => {
     await vi.advanceTimersByTimeAsync(20000);
     expect(q('select')).toBe(select);
     expect(q('.ob-meter')).toBe(bars);
-    expect(q('.ob-result')).toBe(note);
-    expect(select.selectedIndex).toBe(-1);
+    expect(q('.ob-content .ob-result:last-child')).toBe(note);
+    expect(note.textContent).toContain('소리가 들리지 않습니다');
+    expect(select.value).toBe('bt');
+    expect(select.selectedOptions[0]!.textContent).toBe('AirPods');
     expect(q('.ob-main').scrollTop).toBe(0);
     expect(document.activeElement).not.toBe(select);
   });
 
-  it('keeps the stray empty text node when no mic devices are listed', async () => {
+  it('마이크 장치가 없으면 빈 텍스트 노드 없이 시스템 기본값 옵션만 표시한다', async () => {
     vi.mocked(navigator.mediaDevices.enumerateDevices).mockResolvedValue([]);
     mount('mic');
     await flush();
     const select = q<HTMLSelectElement>('select');
     expect(select.innerHTML).toBe('<option value="">시스템 기본값</option>');
-    expect(select.childNodes).toHaveLength(2);
-    expect(select.childNodes[1]!.nodeType).toBe(Node.TEXT_NODE);
-    expect(select.childNodes[1]!.textContent).toBe('');
+    expect(select.childNodes).toHaveLength(1);
+    expect(select.options).toHaveLength(1);
+    expect(select.value).toBe('');
     await vi.advanceTimersByTimeAsync(20000);
-    expect(select.childNodes).toHaveLength(2);
+    expect(q('select')).toBe(select);
+    expect(select.childNodes).toHaveLength(1);
+    expect(select.value).toBe('');
   });
 
   it('blur and scroll reset apply to non-input controls on fn redraw', () => {
@@ -202,7 +211,7 @@ describe('onboarding control lifetime', () => {
     expect(q('.ob-key.fn').className).toBe('ob-key fn down ok');
   });
 
-  it('a previous instance can finish verification and draw last after rerun', async () => {
+  it('다시 시작한 뒤 이전 토큰 확인 응답이 늦게 와도 현재 화면을 다시 그리지 않는다', async () => {
     const { api, ctx } = mount('token');
     await flush();
     let resolve!: (r: { ok: boolean; message: string }) => void;
@@ -213,25 +222,50 @@ describe('onboarding control lifetime', () => {
     q<HTMLInputElement>('input').value = 'draft';
     startOnboarding(ctx, { step: 'fnkey' });
     expect(q('h1').textContent).toBe('fn 키를 눌러 보세요');
+    const currentTitle = q('h1');
+    const currentHtml = html();
+    const back = q<HTMLButtonElement>('.ob-back');
+    back.focus();
+    q('.ob-main').scrollTop = 45;
     resolve({ ok: false, message: '이전 확인 완료' });
     await flush();
-    expect(q('h1').textContent).toBe('화자 구분 준비');
-    expect(q<HTMLInputElement>('input').value).toBe('draft');
-    expect(q('.ob-result').textContent).toBe('이전 확인 완료');
+    expect(q('h1')).toBe(currentTitle);
+    expect(html()).toBe(currentHtml);
+    expect(document.querySelector('input')).toBeNull();
+    expect(document.activeElement).toBe(back);
+    expect(q('.ob-main').scrollTop).toBe(45);
     ctx.fnListeners.forEach((listener) => listener({ down: true }));
     expect(q('h1').textContent).toBe('fn 키를 눌러 보세요');
+    expect(q('.ob-key.fn').className).toBe('ob-key fn down ok');
   });
 
-  it('a previous mic timer can redraw after rerun while its rAF keeps running', async () => {
+  it('다시 시작하면 이전 마이크와 타이머를 정리하고 늦은 프레임도 화면을 그리지 않는다', async () => {
+    const stop = vi.fn();
+    const close = vi.fn();
+    vi.mocked(navigator.mediaDevices.getUserMedia).mockResolvedValue({ getTracks: () => [{ stop }] } as unknown as MediaStream);
+    vi.stubGlobal('AudioContext', class {
+      close = close;
+      createAnalyser() { return { fftSize: 0, getFloatTimeDomainData: vi.fn() }; }
+      createMediaStreamSource() { return { connect: vi.fn() }; }
+    });
     const { ctx } = mount('mic');
     await flush();
     const tick = vi.mocked(requestAnimationFrame).mock.calls[0]![0];
+    expect(vi.getTimerCount()).toBe(1);
     startOnboarding(ctx, { step: 'welcome' });
+    expect(stop).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+    const currentTitle = q('h1');
+    const currentHtml = html();
+    vi.mocked(requestAnimationFrame).mockClear();
     tick(0);
+    expect(requestAnimationFrame).not.toHaveBeenCalled();
     expect(q('h1').textContent).toBe('Meeting Recorder를 시작합니다');
     await vi.advanceTimersByTimeAsync(20000);
-    expect(q('h1').textContent).toBe('마이크를 확인합니다');
-    expect(q('.ob-result').textContent).toContain('소리가 들리지 않습니다');
-    expect(q('select').textContent).toBe('시스템 기본값[object HTMLOptionElement],[object HTMLOptionElement]');
+    expect(q('h1')).toBe(currentTitle);
+    expect(html()).toBe(currentHtml);
+    expect(document.querySelector('select')).toBeNull();
+    expect(requestAnimationFrame).not.toHaveBeenCalled();
   });
 });

@@ -6,6 +6,7 @@ import type { Action, Control, Frame, ResultView, StepId } from './view.ts';
 
 type Uses = { dictation: boolean; meetings: boolean };
 let stepInstance = 0;
+let stopRunning: (() => void) | null = null; // 하던 처음 설정 — 설정에서 '다시 하기'로 새로 시작하면 앞의 타이머·마이크·구독을 먼저 정리한다
 type SavedOnboarding = { step?: string | number; uses?: Uses; completed?: boolean; completedAt?: string | Date };
 
 export interface OnboardingCtx {
@@ -51,6 +52,12 @@ export function startOnboarding(ctx: OnboardingCtx, saved: SavedOnboarding) {
     cleanup.forEach((fn) => fn());
     cleanup = [];
   };
+  let stopped = false; // 새로 시작한 처음 설정에 밀려났으면 늦게 온 응답으로 그리지 않는다
+  stopRunning?.();
+  stopRunning = () => {
+    stopped = true;
+    leave();
+  };
   const go = (id: StepId) => {
     leave();
     stepId = id;
@@ -78,6 +85,7 @@ export function startOnboarding(ctx: OnboardingCtx, saved: SavedOnboarding) {
 
   function finish() {
     leave();
+    stopRunning = null;
     api.onboardingSet({ completed: true, step: 'done', uses, completedAt: new Date() });
     root.hidden = true;
     document.querySelector<HTMLElement>('.shell')!.hidden = false;
@@ -86,6 +94,7 @@ export function startOnboarding(ctx: OnboardingCtx, saved: SavedOnboarding) {
 
   // 화면 틀: 위 진행 표시 · 왼쪽 설명과 버튼 · 오른쪽 그림 패널
   function frame(view: Frame) {
+    if (stopped) return;
     const current = steps().find((s) => s.id === stepId)!;
     show({ ...view, sections: SECTIONS, at: SECTIONS.indexOf(current.section), back: view.canBack !== false && stepId !== 'welcome' ? back : null });
   }
@@ -181,6 +190,7 @@ export function startOnboarding(ctx: OnboardingCtx, saved: SavedOnboarding) {
     const save = async () => {
       if (!input.current!.value.trim()) return input.current!.focus();
       await api.saveToken('hf', input.current!.value.trim());
+      ready = true; // 저장했으니 이제 토큰이 있다 — 확인에 실패하면 '다시 확인'을 보인다
       input.current!.value = '';
       verify();
     };
@@ -304,8 +314,7 @@ export function startOnboarding(ctx: OnboardingCtx, saved: SavedOnboarding) {
     const note: Control<HTMLParagraphElement> = { current: null };
     const initialNote: ResultView = { ref: note, className: 'ob-result', text: '' };
     const devices = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput' && d.deviceId !== 'default');
-    // 배열이 옵션 대신 글자로 붙는 기존 버그를 의도적으로 유지한다.
-    const deviceText = String(devices.map(() => '[object HTMLOptionElement]'));
+    const mics = devices.map((d) => ({ id: d.deviceId, label: d.label || '알 수 없는 마이크' }));
     const initialMic = ctx.getMic();
     const start = async () => {
       stream?.getTracks().forEach((t) => t.stop());
@@ -351,7 +360,7 @@ export function startOnboarding(ctx: OnboardingCtx, saved: SavedOnboarding) {
         instance,
         title: '마이크를 확인합니다',
         lead: '평소처럼 아무 말이나 해 보세요. 막대가 움직이면 됩니다. 내장·유선 마이크를 권장합니다.',
-        body: { kind: 'mic', select, bars, note: initialNote, deviceText, initialMic, change, bt, ok },
+        body: { kind: 'mic', select, bars, note: initialNote, mics, initialMic, change, bt, ok },
         primary: primaryBtn(ok ? '계속' : '말해 보세요…', next, !ok && !slow),
         secondary: !ok && slow && quietBtn('그래도 계속', next),
       });
