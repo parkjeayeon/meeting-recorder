@@ -25,7 +25,8 @@
     "dist": "npm run typecheck && npm test && npm run build:ts && npm run build:renderer && node scripts/dev/check-handlers.js && electron scripts/dev/ui-test.js && electron scripts/dev/feature-test.js && node scripts/dev/verify/run-all.js && electron scripts/dev/overlay-check.js && electron scripts/dev/review-crash-check.js && electron scripts/dev/review-unify-check.js && electron scripts/dev/formal/review-undo.js --runs 200 && electron scripts/dev/ask-engine-check.js && electron scripts/dev/compress-check.js && npm run build:fn && node scripts/build-app.mjs",
     "install-app": "INSTALL=1 npm run dist",
     "build:renderer": "vite build -c vite.renderer.config.mts",
-    "dev": "npm run build:fn && npm run build:ts && node scripts/dev/dev.js"
+    "dev": "npm run build:fn && npm run build:ts && node scripts/dev/dev.js",
+    "try:cleanup": "node scripts/dev/try-cleanup.js"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
