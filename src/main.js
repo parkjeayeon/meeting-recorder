@@ -1044,7 +1044,8 @@ async function permissionStatus() {
 }
 
 function openPrivacySettings(kind) {
-  shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?${SETTINGS_PANE[kind]}`);
+  // macOS 13부터의 주소. 예전 com.apple.preference.security?… 는 macOS 26에서 아무 창도 열지 않는다
+  shell.openExternal(`x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?${SETTINGS_PANE[kind]}`);
 }
 
 ipcMain.handle('perm:status', permissionStatus);
