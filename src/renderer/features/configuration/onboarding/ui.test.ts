@@ -57,7 +57,7 @@ function mount(step: string, initialMic = '') {
   return { api, ctx };
 }
 
-describe('onboarding legacy HTML parity', () => {
+describe('onboarding HTML characterization', () => {
   for (const step of ['welcome', 'permissions', 'token', 'engine', 'account', 'mic', 'fnkey', 'practice', 'done']) {
     it(step === 'mic' ? '마이크 장치를 실제 옵션으로 표시한다' : step, async () => {
       mount(step);

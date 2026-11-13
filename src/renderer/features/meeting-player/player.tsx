@@ -94,7 +94,7 @@ export function PlayerBody({ playback, raw, color, durationSec, missing }: Playe
       cancelAnimationFrame(id);
       window.removeEventListener('resize', paint);
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- 그릴 때 한 번 (옛 페이지가 바뀔 때마다 새로 그린다)
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- 그릴 때 한 번 (페이지가 다시 그릴 때마다 새로 그린다)
 
   const at = (clientX: number) => {
     const rect = scrub.current!.getBoundingClientRect();

@@ -14,7 +14,7 @@ import type { RecordingHandle } from '../features/recording/index.ts';
 import type { ImportMeetingHandle } from '../features/import-meeting/index.ts';
 import type { RecorderApi } from '../shared/api/index.ts';
 import { clock, sizeLabel, createSource, store, remember, type Source } from '../shared/lib/index.ts'; // 숫자·시간 표시는 한 벌 (React 화면과 같이 씀)
-import { reactPage } from '../shared/page-host/index.tsx'; // React로 옮긴 화면을 옛 라우터에 끼운다 (docs/renderer-architecture.md)
+import { reactPage } from '../shared/page-host/index.tsx'; // React 화면을 라우터에 연결한다 (docs/renderer-architecture.md)
 import { el } from '../shared/ui/index.tsx';
 import type { HistoryStore } from './history.ts';
 import type { Router, RouteTable } from './router.ts';

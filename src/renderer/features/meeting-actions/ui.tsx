@@ -1,5 +1,5 @@
 // 회의 페이지의 액션 (src/actions.js가 만든 actions.json): 할 일(약속·맡은 일·다짐)과 받은 조언·알아 둘 것.
-// 뿌리 요소(div.acts · div.flow-row)는 옛 회의 페이지가 만들고 여기는 그 안을 그린다 (createIslands).
+// 뿌리 요소(div.acts · div.flow-row)는 회의 페이지·회의록 위젯이 만들고 여기는 그 안을 그린다.
 // 찾기는 오래 걸리는 작업이라 jobs에 키(`${dir}|액션`)로 두어, 화면을 다시 그리거나 떠났다 와도 '찾는 중'이 남는다.
 import { useRef, useState } from 'react';
 import { parseStamp } from '../../../core/script.mts';

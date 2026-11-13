@@ -1,9 +1,8 @@
 // 라우터(app/router.ts)에 React 화면을 끼우는 이음새.
-// 옛 화면 함수는 { el, update?, leave?, reload? }를 돌려준다. reactPage가 React 화면을 같은 모양으로 감싼다:
-//   ROUTES = { …, dictionary: pageDictionary, … }  →  { …, dictionary: () => reactPage(DictionaryPage, { model }), … }
-// 화면 하나를 옮기는 일은 ROUTES의 그 자리 한 줄과, 그 화면이 읽는 상태의 창구(model)뿐이다.
+// reactPage가 React 화면을 { el, update?, leave?, reload? }로 감싼다.
+// 경로 표와 화면이 읽는 창구(model)는 app/pages.ts에서 엮는다.
 //
-// 동작을 옛 화면과 맞추려고 하는 일:
+// 화면의 수명과 그리기 규칙:
 // - 첫 그리기는 동기(flushSync): navigate()가 el을 #view에 넣는 순간 이미 그려져 있다 (시험의 고정 대기와 같은 시점).
 // - el은 display: contents라 #view 아래 상자 구조가 그대로다 (화면이 자기 .page 뿌리를 그린다).
 // - update()는 같은 뿌리를 다시 그린다 — 입력 중인 글자·포커스가 남는다. refresh()가 화면을 새로 만들지 않게 늘 둔다.
@@ -22,7 +21,7 @@ export interface PageHandle {
   readonly reload?: () => void;
 }
 
-/** hooks — reload: 파일이 바뀌어 다시 읽기 · update: 옛 refresh()가 부를 때 (주지 않으면 같은 값으로 다시 그림) · leave: 떠날 때 치우기 (내리기 전에) */
+/** hooks — reload: 파일이 바뀌어 다시 읽기 · update: 라우터의 refresh()가 부를 때 (주지 않으면 같은 값으로 다시 그림) · leave: 떠날 때 치우기 (내리기 전에) */
 export function reactPage<P extends object>(Page: ComponentType<P>, props: P, hooks?: { readonly reload?: () => void; readonly update?: () => void; readonly leave?: () => void }): PageHandle {
   const el = document.createElement('div');
   el.style.display = 'contents';
@@ -49,15 +48,14 @@ export function reactPage<P extends object>(Page: ComponentType<P>, props: P, ho
   };
 }
 
-/** 화면 밖에 늘 떠 있는 React 부품(둥근 버튼·질문 창 등)을 옛 코드가 만든 자리(host)에 붙인다. 첫 그리기는 동기 */
+/** React 부품을 주어진 자리(host)에 붙인다. 첫 그리기는 동기 */
 export function mountReact<P extends object>(host: HTMLElement, Part: ComponentType<P>, props: P): void {
   const root = createRoot(host);
   flushSync(() => root.render(<Part {...props} />));
 }
 
-/** 옛 화면이 아직 그리는 페이지 안의 React 부품들 (회의 페이지를 나눠 옮기는 동안).
- *  옛 코드가 부품의 뿌리 요소(예: section.glossary)를 만들고 React는 그 안을 그린다 — 감싸는 상자가 생기지 않아
- *  형제 선택자(.flow-row + .glossary) 같은 CSS가 그대로 맞는다. 옛 화면은 그릴 때마다 새로 만드므로 clear()로 모두 내린다 */
+/** 주인이 만든 뿌리 요소 안에 그리는 React 부품들 (body에 붙는 용어 카드·설명 추가).
+ *  감싸는 상자 없이 주어진 뿌리 안을 그린다. 뿌리를 다시 만들거나 페이지를 떠날 때 clear()로 모두 내린다 */
 export function createIslands() {
   const roots = new Map<HTMLElement, Root>();
   return {
@@ -81,7 +79,7 @@ export function createIslands() {
   };
 }
 
-/** 옛 코드가 창구(source)를 바꾼 뒤 그 자리에서 다 그려 두게 (뒤이어 그린 화면을 읽는 코드가 있을 때) */
+/** 주인이 창구(source)를 바꾼 뒤 그 자리에서 다 그려 두게 (뒤이어 그린 화면을 읽는 코드가 있을 때) */
 export function commit(fn: () => void): void {
   flushSync(fn);
 }

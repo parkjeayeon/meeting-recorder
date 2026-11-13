@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 용어 칸·설명 카드: 뿌리는 옛 페이지가 만들고 안을 그린다. 버튼은 주인의 명령
+// 용어 칸·설명 카드: 뿌리는 호출하는 쪽이 만들고 안을 그린다. 버튼은 주인의 명령
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { createIslands } from '../../shared/page-host/index.tsx';

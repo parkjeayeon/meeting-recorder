@@ -1,4 +1,4 @@
-// 홈에 보일 것을 계산한다 (그리기와 따로라 시험하기 쉽다). 값은 상태 주인(옛 화면 코드)이 준 그대로 읽기만 한다.
+// 홈에 보일 것을 계산한다 (그리기와 따로라 시험하기 쉽다). 값은 상태 주인이 준 그대로 읽기만 한다.
 import { dictSummary, type DictRecord, type DictSummary, type DictTotals } from '../../entities/dictation/index.ts';
 import { BUSY, canCompressNow, meetState, meetTitle, type MeetingItem } from '../../entities/meeting/index.ts';
 import type { Issue } from '../../entities/issue/index.ts';

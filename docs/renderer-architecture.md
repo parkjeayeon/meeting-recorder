@@ -1,9 +1,12 @@
-# 화면 구조 — React 전환 1단계 (도구와 이음새)
+# 화면 구조 — TypeScript + React
+
+전환 완료(2026-11-13). `src/renderer/legacy/`는 삭제했다. `main.ts`가 `app/boot.ts`의 `startRenderer()`를 호출하고, `app/`이 상태·명령·화면을 엮는다.
+남은 일: 녹음 위 막대·회의 시작 창 마크업의 React 전환(보류, `feat/recording-react`), E2E 시험의 Playwright 전환(다음 단계).
 
 pstack `architect`로 설계했다(2026-11-12): 같은 문제를 Opus·Codex가 따로 설계하고, Codex가 채점하고, 하나로 합쳤다. 계획 전체는 [react-migration.md](react-migration.md), 결정은 [결정 61](decisions.md).
 
-## 문제
-화면(`src/renderer`)은 4,655줄짜리 `app.js` 하나에 모듈 전역 상태와 IPC 구독 16개, 직접 만든 라우터(`ROUTES` → `{ el, update, leave, reload }`)가 있다. 동작을 그대로 둔 채 안쪽만 TypeScript + React로 바꾸려면, 먼저 "화면 하나를 React로 옮기는 일"이 작고 분명해야 한다. 지켜야 할 것:
+## 전환 배경
+화면(`src/renderer`)은 4,655줄짜리 `app.js` 하나에 모듈 전역 상태와 IPC 구독 16개, 직접 만든 라우터가 모여 있었다. 동작을 유지하며 TypeScript + React로 나눴다. 지켜야 할 것:
 - 시험(화면 48·기능 46·흐름 7)은 단언을 고치지 않고 통과. 시험은 `src/renderer/index.html`을 직접 띄우고, 글자·역할·aria와 **클래스 약 70개**(`.add-row input` 등)로 찾는다.
 - 가짜 API(`stub-preload.js`)·점검은 `src/preload.js`의 두 칸 들여쓴 `이름:` 줄을 읽어 함수 목록을 만든다.
 - preload의 `on…` 구독은 해제 함수를 돌려주지 않는다 — React 효과에서 구독하면 화면을 열 때마다 쌓인다. 가짜 API의 `onMeetingChanged`는 마지막 콜백 하나만 쥔다.
@@ -18,10 +21,10 @@ npm run build:renderer    # vite build -c vite.renderer.config.mts → lib/rende
 npm run test:ui | test:feature | verify:journeys | dist     # 화면을 먼저 묶고 시험
 npm run typecheck         # 코어 + 화면(tsconfig.renderer) + preload(tsconfig.preload) + 경계 검사
 ```
-화면 하나를 옮기기 (예: 사전) — `src/renderer/legacy/app.js`의 `ROUTES` 한 줄과, 그 화면이 읽는 상태의 창구:
-```js
-import { reactPage } from '../shared/page-host/index.tsx'; // (legacy는 무엇이든 가져올 수 있다 — 반대는 안 됨)
-const ROUTES = { …, dictionary: () => reactPage(DictionaryPage, { model: dictionaryModel }), … };
+화면 등록 (예: 사전) — `app/pages.ts`의 경로 표와 그 화면이 읽는 상태의 창구:
+```ts
+import { reactPage } from '../shared/page-host/index.tsx';
+const routes = { …, dictionary: { title: '사전', mount: () => reactPage(DictionaryPage, { model: vocabulary }) }, … };
 ```
 ```tsx
 // pages/dictionary/ui.tsx — 상태는 주인이 준 model로만 읽고 바꾼다. 입력칸은 uncontrolled, 시험이 찾는 클래스는 그대로
@@ -33,15 +36,15 @@ API 타입: `src/preload.js`에 함수를 더하면 그것만 고친다. 화면 
 ## 구조
 - **문서 하나, 묶음 하나.** 앱·시험·설치본 모두 `src/renderer/index.html`을 띄우고, 이 문서가 `../../lib/renderer/main.css`·`main.js`를 정해진 이름으로 불러온다(전에 `lib/core`를 불러오던 방식 그대로). 문서 주소가 같으니 `localStorage`·오디오 워크릿 상대 경로(`recorder-worklet.js`)·CSP가 그대로이고, 시험 파일은 손대지 않았다. `main.js`도 그대로.
 - **개발 서버(HMR)는 쓰지 않는다.** `vite build --watch` + 창 새로 고침. 개발·시험·설치본이 한 경로. 자동 새로 고침은 하지 않는다(녹음 중일 수 있다).
-- **옛 화면 코드는 `legacy/`에 격리.** `app.js`·`onboarding.js`·`recorder.js`를 `git mv`. `main.ts`만 가져오고(`style.css`, `legacy/app.js`), 새 코드가 옛 전역 상태에 기대면 빌드 전 검사가 막는다.
+- **조립과 시작은 `app/`.** `app/boot.ts`가 상태·구독·화면을 만들고 시작 순서를 관리한다. `app/pages.ts`·`app/meeting.ts`·`app/session.ts`가 창구·명령·회의 페이지 의존성·세션 상태를 맡는다. `legacy/`는 삭제했다.
 - **API 타입의 원천은 preload 하나.** `const recorderApi = {…}` + `/** @typedef {typeof recorderApi} RecorderApi */` → `shared/api`가 `import('../../../preload.js').RecorderApi`로 끌어낸다(`Window.recorderApi` 선언 포함). 없는 함수를 부르면 타입 오류. 인자·결과 모양은 아직 any/unknown — 화면에서 처음 쓸 때 그 함수에 JSDoc으로 적는다.
-- **상태 주인은 1단계 동안 옛 코드.** 화면을 옮길 때 그 화면이 읽는 상태만 창구(domain model: 읽기 스냅샷 + 명령)로 연다. 상태 한 칸을 옮길 땐 그 칸의 모든 쓰기와 IPC 구독을 한 번에 주인(entities/…)으로 옮긴다 — 옛 변수에 사본을 남기지 않는다.
+- **상태와 구독은 주인에게.** 기록 목록은 `app/history.ts`, 설정·엔진·계정은 `entities/settings`, 문제 알림은 `entities/issue`, 질문은 `features/ask`가 맡는다. 화면은 읽기 창구와 명령을 받는다.
 - **이음새 `reactPage`** (`shared/page-host`): 첫 그리기 동기(flushSync), `display: contents` 껍데기라 `#view` 아래 상자 구조가 같음, `update()`는 같은 뿌리를 다시 그려 입력·포커스 유지, `leave()` 한 번만, `reload`는 넘겨줄 때만.
-- **경계 검사** (`scripts/dev/check-boundaries.js`, typecheck·dist): ① `legacy/`는 `main.ts`만 ② FSD 층 순서(app > pages > widgets > features > entities > shared), 같은 층 다른 조각 금지 ③ 다른 조각은 `index`로만 ④ `node:`·Electron 금지, 화면 밖은 `src/core` 순수 모듈과 preload 타입만 ⑤ 문자열이 아닌 동적 import 금지. 일부러 어긴 다섯 경우를 모두 잡는 것을 확인.
+- **경계 검사** (`scripts/dev/check-boundaries.js`, typecheck·dist): ① FSD 층 순서(app > pages > widgets > features > entities > shared), 같은 층 다른 조각 금지 ② 다른 조각은 `index`로만 ③ `node:`·Electron 금지, 화면 밖은 `src/core` 순수 모듈과 preload 타입만 ④ 문자열이 아닌 동적 import 금지.
 - **코어는 원본에서.** 화면이 `../../core/*.mts`를 바로 가져오고 Vite가 묶는다(`lib/core`는 본체·명령줄 도구용).
-- **설치본**: `lib/**`(묶음 포함)는 그대로 들어가고, 화면 원본(`*.ts(x)`, `legacy/`, `style.css`, `fonts/`)은 뺀다. `index.html`·`recorder-worklet.js`는 들어간다.
+- **설치본**: `lib/**`(묶음 포함)는 그대로 들어가고, 화면 원본(`*.ts(x)`, `style.css`, `fonts/`)은 뺀다. `index.html`·`recorder-worklet.js`는 들어간다.
 
-## 합성 결정
+## 초기 설계 결정 (2026-11-12)
 - **기준: Codex 안.** API 타입을 preload 객체에서 끌어내 두 번째 목록이 없고(Opus 안은 99개짜리 `preload-api.d.ts`를 따로 두고 타입 검사로 묶었다), 1단계 동안 옛 코드가 상태 주인이라 첫 화면 옮기기가 작다(Opus 안은 사전 화면을 옮기면서 설정 상태를 통째로 옮겨 옛 코드 약 25곳을 고친다). 교차 심사(Codex)도 이 안을 골랐다(21 : 18) — 심사자가 작성자와 같은 계열이라 근거를 따로 확인했다.
 - **Opus 안에서 옮겨 붙임:** ① 화면 문서를 그대로 두고 묶음만 불러오기(Codex 안은 `lib/renderer/index.html`로 옮겨 시험의 여는 코드를 고치고 `localStorage` 유지가 불확실했다) ② 설정 이름 `vite.renderer.config.mts`(Codex 안의 루트 `vite.config.mts`는 vitest를 깨뜨린다) ③ 시험하는 묶음 = 설치하는 묶음(`dist`가 한 번 묶어 둘 다 씀) ④ uncontrolled 입력칸·시험이 찾는 클래스 유지라는 함정 기록 ⑤ `check-handlers.js`를 하위 폴더·.ts(x)까지(안 그러면 옮긴 `app.js`를 조용히 안 본다).
 - **버린 것:** Opus 안의 IPC 다리(모든 `on…`을 한 곳에서 받아 나눠 줌, 해제 가능)와 상태를 첫 화면에서 최종 주인으로 옮기기 — 방향은 맞지만 1단계에 16개 구독을 모두 바꾸는 위험이 크다. 상태를 옮기는 화면에서 그 구독부터 옮긴다. Codex 안의 시험마다 따로 묶는 임시 빌드 — 시험하는 묶음과 설치 묶음이 달라진다. 두 안 모두의 "빌드가 바뀌면 자동 새로 고침" — 녹음을 끊을 수 있다.
@@ -59,11 +62,11 @@ API 타입: `src/preload.js`에 함수를 더하면 그것만 고친다. 화면 
 - **React 뿌리 하나 + 옛 칸에 포털**: 첫날부터 React가 라우팅·트리를 가져야 해 마지막 단계의 재작성을 1단계로 당겨 온다.
 
 ## 열린 질문과 위험
-- 화면 코드의 `clock()`은 음수 초를 0으로 막고 코어의 `clock()`은 안 막는다 — 회의 페이지를 옮길 때 코어에 막기를 넣을지(명령줄 출력은 음수일 때만 바뀜) 정해야 한다.
-- 시험의 고정 대기(600~1,500ms)에 React 파싱이 더해진다 — 첫 화면을 옮길 때 기능 시험이 흔들리는지 본다.
+- 화면 코드의 `clock()`은 음수 초를 0으로 막고 코어의 `clock()`은 안 막는다 — 동작을 유지해 두 계산을 그대로 뒀다.
+- E2E 시험의 고정 대기(600~1,500ms)는 Playwright 전환 때 자동 대기로 바꾼다.
 - 오디오 워크릿·`rec://` 재생·글꼴이 설치본(asar)에서 그대로인지는 설치해서 확인한다(묶음은 `lib/`로 들어간다).
 
-## 다음 단계
+## 전환 기록 (완료)
 - 첫 화면(사전)은 옮겼다(2026-11-12): `pages/dictionary` + `entities/vocabulary`(주인이 준 read·save, settings가 바뀌면 주인이 `changed()`) + `shared/ui`의 `Icon`. 옛 `pageDictionary`와 단어 나누기 코드는 지웠다(`vocabWords`는 창구를 읽음).
 - 통계도 옮겼다(2026-11-12): 읽기 창구 `shared/lib`의 `createSource(read, deps)` — 주인의 값 참조가 그대로면 같은 스냅샷. 표시 함수·받아쓰기 요약은 옛 코드와 한 벌.
 - 홈도 옮겼다(2026-11-12): 창구가 읽는 주인의 값 중 제자리에서 바뀌던 것(`issues` Map, `openRaw` Set)은 바뀔 때 알아채게 했다 — `issuesRev` 번호, `openRaw`는 바꿀 때 새 Set. 홈의 버튼은 주인이 준 명령(`homeActions`)만 부르고 API·알림(toast)은 주인 쪽에 둔다.
@@ -73,14 +76,14 @@ API 타입: `src/preload.js`에 함수를 더하면 그것만 고친다. 화면 
   - **옛 `h()`는 `false` 값을 건너뛴다**: `spellcheck: false`가 한 번도 적용되지 않았다(known-issues). 옮길 때 옛 HTML과 비교해야 이런 것이 보인다.
 - 회의 목록도 옮겼다(2026-11-12):
   - 옛 코드가 화면 객체의 메서드(`current.setFilter`·`current.filter()`)를 부르던 상태는 주인의 상태로 올렸다(`meetFilter`). React 화면은 메서드를 내놓지 않는다.
-  - 아직 옮기지 않은 부분(질문 탭 본문)은 주인이 준 함수가 DOM을 만들고, React는 자기 칸(`key`가 다른 빈 `div`)에 넣기만 한다. 칸을 바꿀 때 `key`가 달라 React가 남의 노드 위에 그리지 않는다.
+  - 당시 질문 탭 본문은 주인이 만든 DOM을 넣었다. 이후 `features/ask`의 `AskTab`으로 옮겼다.
   - 화면을 재고 움직이는 코드(스크롤 감시)는 React가 그린 뒤(레이아웃 효과)에 붙이고 다시 그릴 때마다 떼고 붙인다 — 옛 화면이 그릴 때마다 새로 붙이던 것과 같다. 그 코드가 쓰는 표시(`.pill`)는 React가 그린다.
   - 가져오기만 해도 창 API(`matchMedia`)를 부르던 코드는 쓸 때 읽게 바꿨다(단위 시험이 가져올 수 있게).
 - 질문으로 찾기도 옮겼다(2026-11-12) — **처음으로 상태 한 칸을 옛 코드에서 꺼냈다**(결정 63): `features/ask/store.ts`가 질문 상태의 쓰기 전부와 IPC 구독(`onAsk`)을 든다. 옛 코드는 만들 때 `viewing`·`openTab`·`notifyError`를 넘기고, 회의 목록 창구는 store의 `jobs` 참조를 deps로 둔다.
   - 옛 화면은 1초마다 `[data-ask-time]` 글자를 직접 바꿨다 → 찾는 중인 질문의 시간 칸(`LiveSecs`)이 저마다 1초 시계를 돈다.
   - 옛 화면의 `opening`(질문 창이 열리는 움직임)은 창을 다시 그릴 때까지 남았다 → store가 같은 규칙(질문을 고쳐 쓰거나 범위를 바꾸는 건 다시 그리기가 아님)으로 든다. 한 프레임 뒤 지우면 움직임이 끊긴다.
   - FSD 층 때문에 기능(features/ask)이 쓰는 회의 장부는 `entities/meeting`, 스크롤 감시는 `shared/ui`로.
-- 회의 페이지는 세 단계로 나눠 옮긴다(react-migration.md): 계산(끝남) → 잎 부품 → 껍데기. 용어·액션은 옮겼다(2026-11-12):
+- 회의 페이지는 세 단계로 나눠 옮겼다(react-migration.md): 계산 → 잎 부품 → 껍데기. 용어·액션은 옮겼다(2026-11-12):
   - 잎 부품은 옛 페이지가 만든 뿌리 안에 그린다(`createIslands`: 뿌리마다 React 뿌리, 옛 `draw()`가 다시 그릴 때 모두 내림). 부품이 옛 페이지를 다시 그리게 하는 명령은 한 박자 뒤에 부른다 — 누른 부품의 뿌리를 그 처리 중에 내리지 않게.
   - 용어 카드는 '고치기'·'취소' 때 옛 화면처럼 새로 연다. 같은 카드 안에서 모드만 바꾸면 잴 때의 폭이 달라 자리가 2~3px 어긋났다.
   흐름도도 옮겼다(2026-11-12): 자리 계산은 순수 함수(글자 폭 재기는 받는다)라 화면 없이 시험한다. 오래 걸리는 작업 버튼은 `shared/ui`의 `JobButton`(액션·흐름도가 같이 씀).
@@ -90,7 +93,7 @@ API 타입: `src/preload.js`에 함수를 더하면 그것만 고친다. 화면 
   재생 막대·스크립트·화자도 옮겼다(2026-11-12): 재생 상태는 audio 요소의 소식을 구독하는 store(`createPlayback`) — 막대와 스크립트가 같이 읽는다. 옛 화면이 다시 그리지 않고 하던 일(이름 바꾸기 입력칸으로 바꾸기)은 부품 안 상태로 둔다(옛 페이지를 다시 그리면 동작이 달라진다).
   회의록 본문도 옮겼다(2026-11-12): 흐름도·액션·용어 기능을 묶어 그리므로 위젯(`widgets/meeting-minutes`). 이 안의 부품은 이제 섬이 아니라 보통 자식이라 뿌리 요소(div.flows·div.flow-row·section.glossary)를 위젯이 그린다.
   3단계 a(2026-11-12): 회의 페이지 전체를 React가 그리고 옛 `pageMeeting`은 view를 만드는 주인. `reactPage`가 `update`·`leave` 훅을 받게 했다(옛 페이지는 상태가 바뀐 경우에만 다시 그린다). 주인의 draw는 `commit`(flushSync)으로 바로 그려 둔다 — 뒤이어 ⌘F가 새 본문에서 다시 찾는다.
-  3단계 b(2026-11-12): 주인을 `pages/meeting/controller.ts`(`meetingPage(id, deps)`)로 옮기고 `pageMeeting` 삭제. 앱 전체의 것(기록 목록·문서 캐시·알림·확인 창·라우터·재생·작업 목록)은 `MeetingDeps`로 받는다 — 옛 라우터가 사라질 때 이 deps를 채우는 쪽만 바뀐다. React 밖에서 만드는 작은 요소(⌘F 막대, body에 붙는 카드의 뿌리)는 옛 `h()`와 같은 규칙의 `el()`(`pages/meeting/dom.ts`)로 — 속성이 같게 나온다.
-  설정·처음 설정(2026-11-13, 결정 65): 알림·확인 창·툴팁·로컬 저장은 `shared/ui`·`shared/lib`, 문제 알림은 `entities/issue`(`createIssueStore`), 저장된 설정·엔진 상태·다듬기 계정은 `entities/settings`(`createSettingsStore`, 구독자가 바뀐 종류 'settings'·'engine'·'providers'를 받아 옛 그리기 자리에서 그린다). 설정 창의 주인은 `features/configuration`(`mountSettings`) — 아직 index.html의 고정 마크업을 DOM으로 그리고, 다음에 React로.
+  3단계 b(2026-11-12): 주인을 `pages/meeting/controller.ts`(`meetingPage(id, deps)`)로 옮기고 `pageMeeting` 삭제. 앱 전체의 것(기록 목록·문서 캐시·알림·확인 창·라우터·재생·작업 목록)은 `MeetingDeps`로 받는다. 지금은 `app/meeting.ts`가 deps를 채운다. React 밖에서 만드는 작은 요소(⌘F 막대, body에 붙는 카드의 뿌리)는 옛 `h()`와 같은 규칙의 `el()`(`pages/meeting/dom.ts`)로 — 속성이 같게 나온다.
+  설정·처음 설정(2026-11-13, 결정 65): 알림·확인 창·툴팁·로컬 저장은 `shared/ui`·`shared/lib`, 문제 알림은 `entities/issue`(`createIssueStore`), 저장된 설정·엔진 상태·다듬기 계정은 `entities/settings`(`createSettingsStore`, 구독자가 바뀐 종류 'settings'·'engine'·'providers'를 받아 옛 그리기 자리에서 그린다). 설정 창의 주인은 `features/configuration`(`mountSettings`). 아래 단계에서 마크업도 React로 옮겼다.
   설정 창(2026-11-13): React 뼈대(`SettingsDialogBody`, 한 번만 그림)와 다시 그리는 칸(`regions.tsx`, 그릴 때마다 세대 번호로 새로), 주인은 TS(`controller.ts`). 처음 설정은 TS 주인 + React(단계를 시작할 때만 새로, 다시 그릴 때마다 본문 스크롤·포커스를 옛 화면처럼 되돌림).
-  앱 껍데기(2026-11-13~): `app/` 층이 생겼다 — `app/history.ts`(기록 목록 주인), `app/router.ts`(경로 표 한 벌·뒤로·앞으로 순번). 녹음은 `features/recording`(`capture.ts` 녹음기, `controller.ts` 명령 줄·라이브 표시·회의 시작 창), 가져오기 창은 `features/import-meeting`. 옛 `legacy/app.js`는 이것들을 만드는 순서와 시작 순서만 남기고, 마지막에 `app/`으로 옮겨 지운다.
+  앱 껍데기(완료, 2026-11-13): `app/` 층이 생겼다 — `app/history.ts`(기록 목록 주인), `app/router.ts`(경로 표 한 벌·뒤로·앞으로 순번). 녹음은 `features/recording`(`capture.ts` 녹음기, `controller.ts` 명령 줄·라이브 표시·회의 시작 창), 가져오기 창은 `features/import-meeting`. 조립과 시작 순서는 `app/boot.ts`로 옮기고 `legacy/`를 삭제했다. 녹음 위 막대·회의 시작 창 마크업은 index.html에 남아 있다(React 전환 보류, `feat/recording-react`).

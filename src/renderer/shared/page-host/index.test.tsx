@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 화면을 옮길 때마다 기대는 이음새(reactPage) — 옛 라우터가 기대하는 동작을 그대로 지키는지
+// 라우터 이음새(reactPage)의 그리기·갱신·정리 규칙
 import { describe, expect, it } from 'vitest';
 import { useState } from 'react';
 import { reactPage } from './index.tsx';
