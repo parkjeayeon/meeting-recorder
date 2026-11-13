@@ -1,4 +1,5 @@
-export { Recorder } from './capture.ts';
+export { mountRecording } from './controller.ts';
+export type { RecordingDeps, RecordingHandle } from './controller.ts';
 export type {
   RecordingMode,
   RecordingTrack,

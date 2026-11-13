@@ -1,0 +1,11 @@
+api.onDictStage(({ stage }) => showStage(stage));
+
+api.onDictResult((r) => {
+  setLive('idle');
+  if (r.status === 'error') toast('받아쓰기 실패', r.error, { bad: true, ms: 7000 });
+  else if (r.status === 'no-permission') toast('입력하지 못했습니다', '손쉬운 사용 권한이 없어 클립보드에만 복사했습니다. ⌘V로 붙여 넣으세요.', { bad: true, action: '권한 보기', onAction: () => openSettings('perms'), ms: 8000 });
+  else if (r.status === 'failed') toast('입력하지 못했습니다', '클립보드에 복사해 두었습니다. ⌘V로 붙여 넣으세요.', { bad: true, ms: 7000 });
+  freshId = r.id ?? null;
+  loadHistory();
+});
+
