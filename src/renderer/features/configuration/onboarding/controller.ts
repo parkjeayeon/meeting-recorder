@@ -1,8 +1,37 @@
+import type { RecorderApi } from '../../../shared/api/index.ts';
+import { el as h, icon, type createToaster } from '../../../shared/ui/index.tsx';
+import type { ProviderInfo, SetupComponent } from '../settings/types.ts';
+
+type Uses = { dictation: boolean; meetings: boolean };
+type StepId = 'welcome' | 'permissions' | 'token' | 'engine' | 'account' | 'mic' | 'fnkey' | 'practice' | 'done';
+type SavedOnboarding = { step?: string | number; uses?: Uses; completed?: boolean; completedAt?: string | Date };
+
+export interface OnboardingCtx {
+  readonly api: RecorderApi;
+  readonly toast: ReturnType<typeof createToaster>;
+  readonly setupListeners: Set<(list: SetupComponent[]) => void>;
+  readonly fnListeners: Set<(s: { down: boolean }) => void>;
+  readonly tapListeners: Set<() => void>;
+  readonly getMic: () => string;
+  readonly setMic: (id: string) => void;
+  readonly onDone: (uses: Uses) => void | Promise<void>;
+}
+
+interface Frame {
+  title: string;
+  lead: string;
+  body: HTMLElement;
+  panel: HTMLElement;
+  primary: HTMLElement;
+  secondary?: HTMLElement | false;
+  canBack?: boolean;
+}
+
 // 처음 설정(온보딩): 앱을 처음 열면 본 화면 대신 이 화면이 뜨고, 필요한 설정을 모두 마친 뒤 본 화면으로 넘어간다.
 // 흐름은 Wispr Flow를 따랐다: 한 단계씩, 권한은 카드 하나씩(1초마다 다시 확인, 돌아오면 바로 확인),
 // 마이크 레벨 확인, fn 키 확인, 실제 입력칸에서 연습. 어디까지 했는지 저장해 두고 다시 열면 이어서 한다.
 
-const STEPS = [
+const STEPS: { id: StepId; section: string; when?: (u: Uses) => boolean }[] = [
   { id: 'welcome', section: '시작' },
   { id: 'permissions', section: '권한' },
   { id: 'token', section: '설치', when: (u) => u.meetings },
@@ -17,19 +46,19 @@ const SECTIONS = ['시작', '권한', '설치', '확인', '연습'];
 const SAMPLE = '음, 내일 회의는 3시에, 아니 4시에 하는 걸로 정리해 주세요.';
 const BLUETOOTH = /airpods|bluetooth|buds|headset|hands-?free|beats|jabra|bose|wh-1000|wf-1000/i;
 
-export function startOnboarding(ctx, saved) {
-  const { api, h, icon, toast } = ctx;
-  const root = document.getElementById('onboard');
+export function startOnboarding(ctx: OnboardingCtx, saved: SavedOnboarding) {
+  const { api, toast } = ctx;
+  const root = document.getElementById('onboard')!;
   const uses = { dictation: true, meetings: true }; // 받아쓰기와 회의록은 늘 둘 다 쓴다 (고르지 않는다)
-  let stepId = saved.step && STEPS.some((s) => s.id === saved.step) ? saved.step : 'welcome';
-  let cleanup = []; // 단계를 떠날 때 정리할 것 (타이머, 마이크, fn 확인 모드)
+  let stepId: StepId = saved.step && STEPS.some((s) => s.id === saved.step) ? saved.step as StepId : 'welcome';
+  let cleanup: (() => void)[] = []; // 단계를 떠날 때 정리할 것 (타이머, 마이크, fn 확인 모드)
 
   const steps = () => STEPS.filter((s) => !s.when || s.when(uses));
   const leave = () => {
     cleanup.forEach((fn) => fn());
     cleanup = [];
   };
-  const go = (id) => {
+  const go = (id: StepId) => {
     leave();
     stepId = id;
     api.onboardingSet({ step: id, uses });
@@ -38,18 +67,18 @@ export function startOnboarding(ctx, saved) {
   const next = () => {
     const list = steps();
     const i = list.findIndex((s) => s.id === stepId);
-    if (list[i + 1]) go(list[i + 1].id);
+    if (list[i + 1]) go(list[i + 1]!.id);
   };
   const back = () => {
     const list = steps();
     const i = list.findIndex((s) => s.id === stepId);
-    if (i > 0) go(list[i - 1].id);
+    if (i > 0) go(list[i - 1]!.id);
   };
-  const every = (fn, ms) => {
+  const every = (fn: () => void, ms: number) => {
     const t = setInterval(fn, ms);
     cleanup.push(() => clearInterval(t));
   };
-  const later = (fn, ms) => {
+  const later = (fn: () => void, ms: number) => {
     const t = setTimeout(fn, ms);
     cleanup.push(() => clearTimeout(t));
   };
@@ -58,13 +87,13 @@ export function startOnboarding(ctx, saved) {
     leave();
     api.onboardingSet({ completed: true, step: 'done', uses, completedAt: new Date() });
     root.hidden = true;
-    document.querySelector('.shell').hidden = false;
+    document.querySelector<HTMLElement>('.shell')!.hidden = false;
     ctx.onDone(uses);
   }
 
   // 화면 틀: 위 진행 표시 · 왼쪽 설명과 버튼 · 오른쪽 그림 패널
-  function frame({ title, lead, body, panel, primary, secondary, canBack = true }) {
-    const current = steps().find((s) => s.id === stepId);
+  function frame({ title, lead, body, panel, primary, secondary, canBack = true }: Frame) {
+    const current = steps().find((s) => s.id === stepId)!;
     const at = SECTIONS.indexOf(current.section);
     root.replaceChildren(
       h('header', { class: 'ob-top' },
@@ -79,13 +108,13 @@ export function startOnboarding(ctx, saved) {
         h('aside', { class: 'ob-panel' }, panel)));
   }
 
-  const primaryBtn = (label, onclick, disabled = false) => h('button', { class: 'btn primary ob-next', onclick, disabled }, label, icon('i-right'));
-  const quietBtn = (label, onclick) => h('button', { class: 'btn ghost', onclick }, label);
+  const primaryBtn = (label: string, onclick: () => void, disabled = false) => h('button', { class: 'btn primary ob-next', onclick, disabled }, label, icon('i-right'));
+  const quietBtn = (label: string, onclick: () => void) => h('button', { class: 'btn ghost', onclick }, label);
 
   // ── 1. 환영: 무엇에 쓸지 고른다 ─────────────────────────────────────
   function welcome() {
     // 둘 다 늘 켜져 있다. 고르는 것은 아니지만 켜진 상태로 보여 준다
-    const card = (ic, title, text) => h('div', { class: 'ob-use on' }, h('span', { class: 'ob-use-ic' }, icon(ic)), h('b', null, title), h('span', null, text), h('i', { class: 'ob-check' }, icon('i-check')));
+    const card = (ic: string, title: string, text: string) => h('div', { class: 'ob-use on' }, h('span', { class: 'ob-use-ic' }, icon(ic)), h('b', null, title), h('span', null, text), h('i', { class: 'ob-check' }, icon('i-check')));
     frame({
       title: 'Meeting Recorder를 시작합니다',
       lead: '두 가지를 합니다. 몇 단계만 설정하면 바로 쓸 수 있습니다.',
@@ -115,7 +144,7 @@ export function startOnboarding(ctx, saved) {
     let status = await api.permStatus();
     let fnWarn = uses.dictation ? await api.fnKeyWarning() : null;
     const clicked = new Set();
-    const granted = (p) => status[p.kind] === 'granted';
+    const granted = (p: { kind: string }) => status[p.kind] === 'granted';
 
     const draw = () => {
       const active = PERMS.find((p) => !granted(p));
@@ -168,7 +197,7 @@ export function startOnboarding(ctx, saved) {
     let ready = Boolean(status.hf.app || status.hf.cli);
     let message = ready ? (status.hf.app ? '앱에 저장된 토큰이 있습니다.' : '터미널에서 로그인한 토큰이 있습니다.') : '';
     let ok = ready;
-    const input = h('input', { type: 'password', placeholder: 'hf_…', autocomplete: 'off', spellcheck: false });
+    const input = h('input', { type: 'password', placeholder: 'hf_…', autocomplete: 'off', spellcheck: false }) as HTMLInputElement;
     const result = h('p', { class: `ob-result${ok ? ' ok' : ''}` }, message);
     const verify = async () => {
       result.className = 'ob-result';
@@ -211,10 +240,10 @@ export function startOnboarding(ctx, saved) {
 
   // ── 4. 엔진 설치: 필요한 것만, 설치는 이 화면을 떠나도 계속된다 ─────────
   async function engine() {
-    const wanted = (c) => c.id === 'engine' || c.id === 'turbo' || (uses.meetings && (c.id === 'large' || c.id === 'diarize'));
-    const required = (c) => c.id === 'engine' || c.id === 'turbo';
-    let list = (await api.setupStatus()).filter(wanted);
-    const gb = (n) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)}GB` : `${Math.round(n / 1e6)}MB`);
+    const wanted = (c: SetupComponent) => c.id === 'engine' || c.id === 'turbo' || (uses.meetings && (c.id === 'large' || c.id === 'diarize'));
+    const required = (c: SetupComponent) => c.id === 'engine' || c.id === 'turbo';
+    let list: SetupComponent[] = (await api.setupStatus()).filter(wanted);
+    const gb = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)}GB` : `${Math.round(n / 1e6)}MB`);
     const installAll = () => list.filter((c) => !c.installed && !c.job?.running && c.blocker !== 'brew').forEach((c) => api.setupInstall(c.id));
     const draw = () => {
       const ready = list.filter(required).every((c) => c.installed);
@@ -242,7 +271,7 @@ export function startOnboarding(ctx, saved) {
       });
     };
     draw();
-    const onSetup = (l) => {
+    const onSetup = (l: SetupComponent[]) => {
       if (stepId !== 'engine') return;
       list = l.filter(wanted);
       draw();
@@ -255,10 +284,10 @@ export function startOnboarding(ctx, saved) {
 
   // ── 5. 다듬기 계정 ──────────────────────────────────────────────
   async function account() {
-    const p = await api.providers({ fresh: true });
-    const names = [['claude-code', 'Claude Code'], ['codex', 'Codex']];
+    const p: Record<string, ProviderInfo> = await api.providers({ fresh: true });
+    const names = [['claude-code', 'Claude Code'], ['codex', 'Codex']] as const;
     const logged = names.filter(([id]) => p[id]?.loggedIn);
-    const keyInput = h('input', { type: 'password', placeholder: 'sk-ant-… (선택)', autocomplete: 'off', spellcheck: false });
+    const keyInput = h('input', { type: 'password', placeholder: 'sk-ant-… (선택)', autocomplete: 'off', spellcheck: false }) as HTMLInputElement;
     const result = h('p', { class: 'ob-result' });
     const saveKey = async () => {
       if (!keyInput.value.trim()) return keyInput.focus();
@@ -295,16 +324,17 @@ export function startOnboarding(ctx, saved) {
 
   // ── 6. 마이크 확인: 말하면 막대가 움직이는지 ───────────────────────
   async function mic() {
-    let stream = null;
-    let ctxAudio = null;
+    let stream: MediaStream | null = null;
+    let ctxAudio: AudioContext | null = null;
     let heard = 0;
     let level = 0;
     let slow = false;
-    const select = h('select', { 'aria-label': '마이크' });
+    const select = h('select', { 'aria-label': '마이크' }) as HTMLSelectElement;
     const bars = h('div', { class: 'ob-meter' }, Array.from({ length: 16 }, () => h('i')));
     const note = h('p', { class: 'ob-result' });
     const devices = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput' && d.deviceId !== 'default');
-    select.append(h('option', { value: '' }, '시스템 기본값'), devices.map((d) => h('option', { value: d.deviceId }, d.label || '알 수 없는 마이크')));
+    // 배열이 옵션 대신 글자로 붙는 기존 버그를 의도적으로 유지한다.
+    select.append(h('option', { value: '' }, '시스템 기본값'), devices.map((d) => h('option', { value: d.deviceId }, d.label || '알 수 없는 마이크')) as unknown as string);
     select.value = ctx.getMic();
     const start = async () => {
       stream?.getTracks().forEach((t) => t.stop());
@@ -313,7 +343,7 @@ export function startOnboarding(ctx, saved) {
         stream = await navigator.mediaDevices.getUserMedia({ audio: select.value ? { deviceId: { exact: select.value } } : true });
       } catch (err) {
         note.className = 'ob-result bad';
-        note.textContent = `마이크를 열지 못했습니다: ${err.message}`;
+        note.textContent = `마이크를 열지 못했습니다: ${(err as Error).message}`;
         return;
       }
       ctxAudio = new AudioContext();
@@ -387,7 +417,7 @@ export function startOnboarding(ctx, saved) {
     });
     api.onboardingFnTest(true);
     cleanup.push(() => api.onboardingFnTest(false));
-    const onFn = ({ down: d }) => {
+    const onFn = ({ down: d }: { down: boolean }) => {
       if (stepId !== 'fnkey') return;
       down = d;
       if (d) pressed = true;
@@ -407,7 +437,7 @@ export function startOnboarding(ctx, saved) {
     let done = false;
     let hint = '';
     let skippable = false;
-    const area = h('textarea', { class: 'ob-practice', rows: 4, placeholder: '여기를 클릭하고, fn을 꾹 누른 채 위 문장을 읽은 뒤 떼세요.' });
+    const area = h('textarea', { class: 'ob-practice', rows: 4, placeholder: '여기를 클릭하고, fn을 꾹 누른 채 위 문장을 읽은 뒤 떼세요.' }) as HTMLTextAreaElement;
     area.oninput = () => {
       if (!done && area.value.trim()) {
         done = true;
@@ -457,11 +487,11 @@ export function startOnboarding(ctx, saved) {
 
   // ── 9. 완료 ────────────────────────────────────────────────────
   async function done() {
-    const list = await api.setupStatus();
+    const list: SetupComponent[] = await api.setupStatus();
     const perms = await api.permStatus();
-    const ok = (b) => (b ? icon('i-check') : '·');
-    const item = (good, title, text) => h('div', { class: `ob-perm${good ? ' ok' : ''}` }, h('span', { class: 'ob-perm-n' }, ok(good)), h('div', { class: 'ob-perm-text' }, h('b', null, title), h('span', null, text)));
-    const has = (id) => list.find((c) => c.id === id)?.installed;
+    const ok = (b: boolean | undefined) => (b ? icon('i-check') : '·');
+    const item = (good: boolean | undefined, title: string, text: string) => h('div', { class: `ob-perm${good ? ' ok' : ''}` }, h('span', { class: 'ob-perm-n' }, ok(good)), h('div', { class: 'ob-perm-text' }, h('b', null, title), h('span', null, text)));
+    const has = (id: string) => list.find((c) => c.id === id)?.installed;
     frame({
       title: '준비됐습니다',
       lead: '빠진 것은 설정에서 언제든 마저 할 수 있습니다.',
@@ -484,7 +514,7 @@ export function startOnboarding(ctx, saved) {
     VIEWS[stepId]();
   }
 
-  document.querySelector('.shell').hidden = true;
+  document.querySelector<HTMLElement>('.shell')!.hidden = true;
   root.hidden = false;
   api.onboardingSet({ step: stepId, uses, completed: false });
   render();
