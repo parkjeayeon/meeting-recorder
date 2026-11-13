@@ -2,8 +2,10 @@ import type { EngineStatus, SettingsStore } from '../../../entities/settings/ind
 import type { IssueStore } from '../../../entities/issue/index.ts';
 import type { RecorderApi } from '../../../shared/api/index.ts';
 import { dayLabel, fmt, PROVIDER_NAME, remember, store, TIME } from '../../../shared/lib/index.ts';
+import { mountReact } from '../../../shared/page-host/index.tsx';
 import { el as h, type confirmBox, type createToaster } from '../../../shared/ui/index.tsx';
 import type { ProviderInfo, SetupComponent, TokenKind, TokenSource, UsageResult, UsageWindow } from './types.ts';
+import { SettingsDialogBody } from './ui.tsx';
 
 export interface SettingsDeps {
   readonly api: RecorderApi;
@@ -28,6 +30,7 @@ export interface SettingsHandle {
 export function mountSettings({ api, settings: settingsStore, issues, toast, confirm, closePalette, recordingsChanged, rerunOnboarding }: SettingsDeps): SettingsHandle {
   const num = (text: string | number) => h('span', { class: 'num' }, String(text));
   const dialog = document.getElementById('settings') as HTMLDialogElement;
+  mountReact(dialog, SettingsDialogBody, {});
 
   // ── 설정 ────────────────────────────────────────────────────────────────
   function openSettings(sec = 'general') {

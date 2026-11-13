@@ -5,6 +5,7 @@ import { createSettingsStore } from '../../../entities/settings/index.ts';
 import { createIssueStore } from '../../../entities/issue/index.ts';
 import type { RecorderApi } from '../../../shared/api/index.ts';
 import { mountSettings } from '../index.ts';
+import originalBody from './__fixtures__/dialog.html?raw';
 
 const q = <E extends HTMLElement = HTMLElement>(selector: string) => document.querySelector<E>(selector)!;
 const click = (selector: string) => q(selector).onclick!.call(q(selector), new MouseEvent('click') as PointerEvent);
@@ -62,7 +63,13 @@ describe('mountSettings', () => {
   it('마크업을 그대로 두고 구독을 한 번 등록하며 설정 렌더 뒤에 옛 구독자가 돈다', async () => {
     const before = document.body.innerHTML;
     const { api, settings, issues } = mount();
-    expect(document.body.innerHTML).toBe(before);
+    const original = document.createElement('dialog');
+    original.innerHTML = originalBody;
+    const normalize = (html: string) => html.replace(/>[ \t]*\n\s*</g, '><');
+    expect(normalize(q('#settings').innerHTML)).toBe(normalize(original.innerHTML));
+    const outside = document.body.cloneNode(true) as HTMLElement;
+    outside.querySelector('#settings')!.replaceChildren();
+    expect(outside.innerHTML).toBe(before);
     const order = [api.onDictSettings, api.onDictEngine, api.onPermChanged, api.onSetup].map((fn) => {
       expect(fn).toHaveBeenCalledOnce();
       return fn.mock.invocationCallOrder[0]!;
