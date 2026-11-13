@@ -36,7 +36,7 @@ try {
   row('증거 폴더 verify-runs/ 쓰기', true);
 } catch (err) { row('증거 폴더 verify-runs/ 쓰기', false, err.message); }
 let running = false;
-try { running = execFileSync('/usr/bin/pgrep', ['-f', '/Applications/Meeting Recorder.app/Contents/MacOS/Meeting Recorder'], { encoding: 'utf8' }).trim().length > 0; } catch {}
+try { running = execFileSync('/usr/bin/pgrep', ['-f', '^/Applications/Meeting Recorder[^/]*\\.app/Contents/MacOS/'], { encoding: 'utf8' }).trim().length > 0; } catch {}
 row('설치된 앱', true, running ? '켜져 있음 — 검증 도구는 다른 앱 이름·임시 폴더로 따로 돈다. 설치된 앱을 끄거나 조작하지 말 것' : '꺼져 있음');
 let rev = '';
 try { rev = execFileSync('git', ['-C', ROOT, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim(); } catch {}
