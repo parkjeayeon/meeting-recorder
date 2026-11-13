@@ -388,7 +388,7 @@ export function startOnboarding(ctx: OnboardingCtx, saved: SavedOnboarding) {
       instance,
       title: 'fn 키를 눌러 보세요',
       lead: '키보드 왼쪽 아래의 🌐 fn 키입니다. 누르는 동안 오른쪽 키가 주홍색으로 바뀝니다. 이 단계에서는 녹음하지 않습니다.',
-      body: { kind: 'fnkey', pressed, down, quiet, request: () => api.permRequest('inputMonitoring') },
+      body: { kind: 'fnkey', pressed, down, quiet, request: () => void api.permRequest('inputMonitoring').then((s) => s.inputMonitoring === 'granted' && api.permOpenSettings('inputMonitoring')) }, // 허용됨으로 보이는데 fn이 안 잡히면(예전 허용 기록) 요청은 아무 일도 안 하므로 설정을 연다
       primary: primaryBtn(pressed ? '계속' : 'fn을 눌러 보세요…', next, !pressed),
       secondary: !pressed && quiet && quietBtn('건너뛰기', next),
     });
