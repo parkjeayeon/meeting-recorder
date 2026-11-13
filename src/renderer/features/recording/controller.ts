@@ -2,10 +2,12 @@ import type { SettingsStore } from '../../entities/settings/index.ts';
 import type { IssueStore } from '../../entities/issue/index.ts';
 import type { RecorderApi } from '../../shared/api/index.ts';
 import { clock, remember, store } from '../../shared/lib/index.ts';
+import { mountReact } from '../../shared/page-host/index.tsx';
 import { el as h } from '../../shared/ui/index.tsx';
 import type { confirmBox, createToaster } from '../../shared/ui/index.tsx';
 import { Recorder } from './capture.ts';
 import type { RecordingMode } from './capture.ts';
+import { MeetingStartDialogBody, RecordingLiveBody, RecordingSpeakersBody, RecordingActionsBody } from './ui.tsx';
 
 export interface RecordingDeps {
   readonly api: Omit<RecorderApi, 'onDictStage' | 'onDictResult'> & {
@@ -53,6 +55,10 @@ type RecordingElements = {
 
 export function mountRecording({ api, settings: settingsStore, issues, toast, confirm, readInput, openSettings, historyChanged, dictationFinished }: RecordingDeps): RecordingHandle {
   const $ = <K extends keyof RecordingElements>(id: K) => document.getElementById(id) as RecordingElements[K];
+  mountReact($('meetStart'), MeetingStartDialogBody, {});
+  mountReact($('live'), RecordingLiveBody, {});
+  mountReact($('liveSpeakers'), RecordingSpeakersBody, {});
+  mountReact(document.querySelector<HTMLElement>('.top-acts')!, RecordingActionsBody, {});
 
   // ── 녹음 ────────────────────────────────────────────────────────────────
   const peakDb = { mic: -Infinity, system: -Infinity };

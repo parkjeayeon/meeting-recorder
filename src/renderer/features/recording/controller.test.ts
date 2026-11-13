@@ -85,6 +85,35 @@ function initialize() {
 beforeEach(initialize);
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
+it('mounts synchronously and keeps the React-created controls and canvas through controller updates', async () => {
+  const hosts = ['#meetStart', '#live', '#liveSpeakers', '.top-acts'].map((selector) => q(selector));
+  const history = q('.hist');
+  const crumbs = q('#crumbs');
+  const m = setup();
+  const selectors = ['#tape', '#liveText', '#route', '#liveTime', '#liveSpeakersSel', '#cancelBtn', '#pauseBtn', '#memoBtn', '#meetingBtn', '#startKind', '#startMinutes', '#startNo', '#startYes', '#startClose'];
+  const controls = selectors.map((selector) => q(selector));
+  expect(vi.mocked(HTMLCanvasElement.prototype.getContext).mock.contexts).toEqual([q('#tape')]);
+  expect(q('#startSpeakers').childNodes).toHaveLength(0);
+  expect(q('#startKind').querySelectorAll('[aria-checked]')).toHaveLength(0);
+  await m.settings.refresh();
+  m.ui.openStart();
+  await click('#startKind [data-kind="online"]');
+  q<HTMLInputElement>('#startMinutes').checked = false;
+  await click('#startYes');
+  await m.command('start');
+  m.onClock(1000, true);
+  m.onClock(1000, false);
+  m.recorder.options.onLevel!('mic', -33);
+  await m.command('stop');
+  m.ui.openStart();
+  expect(q('#startKind [data-kind="online"]').getAttribute('aria-checked')).toBe('true');
+  expect(q<HTMLInputElement>('#startMinutes').checked).toBe(false);
+  selectors.forEach((selector, index) => expect(q(selector)).toBe(controls[index]));
+  ['#meetStart', '#live', '#liveSpeakers', '.top-acts'].forEach((selector, index) => expect(q(selector)).toBe(hosts[index]));
+  expect(q('.hist')).toBe(history);
+  expect(q('#crumbs')).toBe(crumbs);
+});
+
 describe('recording characterization', () => {
   it('captures idle, memo, stop, meeting, pause, resume and cancel DOM goldens', async () => {
     const m = setup();
