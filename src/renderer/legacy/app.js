@@ -1,4 +1,4 @@
-import { Recorder } from '../features/recording/index.ts';
+import { mountRecording } from '../features/recording/index.ts';
 import { reactPage, mountReact } from '../shared/page-host/index.tsx'; // React로 옮긴 화면을 옛 라우터에 끼운다 (docs/renderer-architecture.md)
 import { createVocabularyModel } from '../entities/vocabulary/index.ts';
 import { DictionaryPage } from '../pages/dictionary/index.ts';
@@ -72,216 +72,19 @@ issues.subscribe(() => {
 
 
 // ── 녹음 ────────────────────────────────────────────────────────────────
-const peakDb = { mic: -Infinity, system: -Infinity };
-const tape = { levels: [], ctx: $('tape').getContext('2d') };
-const recorder = new Recorder({
-  api,
-  onLevel: (track, db) => {
-    peakDb[track] = Math.max(peakDb[track], db);
-    if (track === 'mic') pushLevel(db);
+let recordingDictStage, recordingDictResult;
+const recording = mountRecording({
+  api: {
+    ...api,
+    onDictStage: (handler) => { recordingDictStage = handler; },
+    onDictResult: (handler) => { recordingDictResult = handler; },
   },
+  settings: settingsStore, issues, toast, confirm: confirmBox,
+  readInput: () => ({ deviceId: $('micSelect').value || undefined, echoCancellation: $('echo').checked }),
+  openSettings: (sec) => openSettings(sec),
+  historyChanged: () => { loadHistory(); },
+  dictationFinished: (id) => { freshId = id; loadHistory(); },
 });
-
-function pushLevel(db) {
-  if (liveClock.paused) return;
-  tape.levels.push(Math.max(0, Math.min(1, (db + 60) / 54)));
-  if (tape.levels.length > 60) tape.levels.shift();
-  drawTape();
-}
-
-function drawTape() {
-  const canvas = $('tape');
-  const dpr = window.devicePixelRatio || 1;
-  const w = canvas.clientWidth;
-  const hgt = canvas.clientHeight;
-  if (!w) return;
-  if (canvas.width !== w * dpr) {
-    canvas.width = w * dpr;
-    canvas.height = hgt * dpr;
-  }
-  const { ctx } = tape;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, w, hgt);
-  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent');
-  const step = 4;
-  const levels = tape.levels.slice(-Math.floor(w / step));
-  levels.forEach((v, i) => {
-    const bar = Math.max(2, Math.round(v * hgt));
-    ctx.beginPath();
-    ctx.roundRect(w - (levels.length - i) * step, (hgt - bar) / 2, 2, bar, 1);
-    ctx.fill();
-  });
-}
-
-let liveTimer;
-let recordingMode = null;
-let liveClock = { elapsedMs: 0, at: Date.now(), paused: false }; // 회의 일시정지를 반영한 녹음 시간 (기준은 메인 프로세스)
-const liveElapsed = () => (liveClock.paused ? liveClock.elapsedMs : liveClock.elapsedMs + Date.now() - liveClock.at);
-
-function setLive(state, text = '') {
-  const live = $('live');
-  live.hidden = state === 'idle';
-  live.dataset.state = state;
-  $('liveText').textContent = text;
-  $('route').hidden = state !== 'working';
-  $('tape').hidden = state !== 'memo' && state !== 'meeting';
-  clearInterval(liveTimer);
-  $('liveTime').textContent = '';
-  if (state === 'memo' || state === 'meeting' || state === 'paused') {
-    if (state !== 'paused') {
-      tape.levels = [];
-      drawTape();
-    }
-    const tick = () => ($('liveTime').textContent = clock(liveElapsed() / 1000));
-    tick();
-    liveTimer = setInterval(tick, 250);
-  }
-}
-
-function setRecording(mode) {
-  recordingMode = mode;
-  const memo = $('memoBtn');
-  const meet = $('meetingBtn');
-  memo.classList.toggle('on', mode === 'memo');
-  meet.classList.toggle('on', mode === 'meeting');
-  memo.querySelector('span').textContent = mode === 'memo' ? '받아쓰기 정지' : '받아쓰기';
-  meet.querySelector('span').textContent = mode === 'meeting' ? '종료하고 저장' : '회의 녹음';
-  meet.querySelector('use').setAttribute('href', mode === 'meeting' ? '#i-stop' : '#i-rec');
-  memo.disabled = mode === 'meeting';
-  meet.disabled = mode === 'memo';
-  memo.hidden = mode === 'meeting'; // 회의 중에는 취소 · 일시정지 · 종료만 보인다
-  $('cancelBtn').hidden = mode !== 'meeting';
-  $('pauseBtn').hidden = mode !== 'meeting';
-  $('liveSpeakers').hidden = mode !== 'meeting';
-  if (mode === 'meeting') $('liveSpeakersSel').value = startedFromSheet ? startSpeakers : '';
-  startedFromSheet = false;
-  liveClock = { elapsedMs: 0, at: Date.now(), paused: false };
-  setPauseButton(false);
-  if (mode === 'memo') setLive('memo', '듣는 중');
-  else if (mode === 'meeting') setLive('meeting', '회의 녹음 중');
-  else if ($('live').dataset.state !== 'working') setLive('idle');
-}
-
-function setPauseButton(paused) {
-  const b = $('pauseBtn');
-  b.querySelector('span').textContent = paused ? '재개' : '일시정지';
-  b.querySelector('use').setAttribute('href', paused ? '#i-play' : '#i-pause');
-  b.classList.toggle('on', paused);
-}
-
-api.onClock((c) => {
-  if (!c || c.mode !== 'meeting' || recordingMode !== 'meeting') return;
-  liveClock = { elapsedMs: c.elapsedMs, at: Date.now(), paused: c.paused };
-  setPauseButton(c.paused);
-  setLive(c.paused ? 'paused' : 'meeting', c.paused ? '일시정지됨' : '회의 녹음 중');
-});
-
-$('pauseBtn').onclick = () => api.pause(!liveClock.paused);
-$('cancelBtn').onclick = async () => {
-  const min = Math.round(liveElapsed() / 60000);
-  if (await confirmBox('회의 녹음을 취소할까요?', `지금까지 녹음한 ${min ? `${min}분` : '내용'}이 저장되지 않고 지워집니다.`, '녹음 버리기')) api.cancel();
-};
-
-const STAGES = ['listen', 'transcribe', 'cleanup', 'paste'];
-function showStage(stage) {
-  setLive('working', '받아쓰는 중');
-  const at = STAGES.indexOf(stage);
-  for (const li of $('route').children) {
-    const i = STAGES.indexOf(li.dataset.stage);
-    li.className = i < at ? 'done' : i === at ? 'now' : '';
-  }
-}
-
-// 메인 프로세스 명령은 도착 순서대로 하나씩 처리한다 (꾹 눌렀다 바로 떼면 start → cancel이 연달아 온다)
-let cmdQueue = Promise.resolve();
-function enqueue(cmd) {
-  cmdQueue = cmdQueue.then(() => run(cmd)).catch((err) => toast('오류', err.message, { bad: true }));
-}
-
-async function run({ action, mode }) {
-  if (action === 'start') {
-    if (recorder.isRecording) return;
-    peakDb.mic = peakDb.system = -Infinity;
-    try {
-      const { warnings, timing } = await recorder.start({
-        mode,
-        deviceId: $('micSelect').value || undefined,
-        echoCancellation: $('echo').checked,
-        includeSystem: mode === 'meeting' && Boolean(settingsStore.getSnapshot().saved?.meetingSystemAudio),
-      });
-      warnings.forEach((w) => toast('녹음 경고', w, { bad: true, ms: 7000 }));
-      setRecording(mode);
-      api.log(`start timing ${mode} ${JSON.stringify(timing)}`);
-    } catch (err) {
-      setRecording(null);
-      api.failed();
-      if (/EPERM|EACCES|operation not permitted/i.test(err.message)) {
-        toast('녹음 폴더에 쓸 수 없습니다', 'macOS가 이 앱의 문서 폴더 접근을 막았습니다', { bad: true, ms: 10000, action: '권한 열기', onAction: () => api.permOpenSettings('files') });
-        loadHistory();
-      } else toast('녹음을 시작하지 못했습니다', err.message, { bad: true, ms: 8000 });
-    }
-    return;
-  }
-
-  const wasMode = recordingMode;
-  const result = await recorder.stop({ discard: action === 'cancel' });
-  setRecording(null);
-  if (action === 'cancel' && wasMode === 'meeting') toast('회의 녹음을 취소했습니다', '녹음은 저장하지 않았습니다');
-  if (!result) return;
-  const savedSec = Math.max(0, ...Object.values(result.files ?? {}).map((f) => f.durationSec ?? 0));
-  if (wasMode === 'meeting' && savedSec >= 10) toast('회의 녹음을 저장했습니다', settingsStore.getSnapshot().saved?.minutes ? '회의록을 만들기 시작합니다' : '');
-  loadHistory();
-  // 권한이 없으면 macOS는 에러 없이 완전한 무음(0)을 넘겨준다
-  if (result.files.system && peakDb.system < -150) {
-    issues.set('system-silent', { title: '상대방 소리가 녹음되지 않았습니다', detail: '시스템 오디오 녹음 권한을 허용한 뒤 앱을 다시 실행하세요.', action: '권한 보기', onAction: () => openSettings('perms'), sec: 'perms', dismiss: true });
-  }
-}
-
-$('memoBtn').onclick = () => api.toggle('memo');
-$('meetingBtn').onclick = () => (recordingMode === 'meeting' ? api.toggle('meeting') : openMeetingStart());
-
-// ── 회의 녹음 시작 시트: 참석 인원 · 대면/화상 · 회의록 자동 ─────────────────
-const SPEAKER_CHOICES = ['', '2', '3', '4', '5', '6', '7', '8'];
-const speakerLabel = (v) => (v ? `${v}명` : '자동');
-let startSpeakers = store('startSpeakers', '');
-let startedFromSheet = false; // 독·메뉴바에서 시작하면 시트를 거치지 않으므로 자동으로 둔다
-
-function segPick(box, attr, value) {
-  for (const b of box.querySelectorAll('button')) b.setAttribute('aria-checked', String(b.dataset[attr] === value));
-}
-
-function openMeetingStart() {
-  if (recordingMode) return;
-  const box = $('startSpeakers');
-  box.replaceChildren(...SPEAKER_CHOICES.map((v) => h('button', { type: 'button', role: 'radio', 'data-n': v, onclick: () => { startSpeakers = v; segPick(box, 'n', v); } }, speakerLabel(v))));
-  segPick(box, 'n', startSpeakers);
-  const kind = settingsStore.getSnapshot().saved?.meetingSystemAudio ? 'online' : 'offline';
-  segPick($('startKind'), 'kind', kind);
-  $('startMinutes').checked = Boolean(settingsStore.getSnapshot().saved?.minutes);
-  $('meetStart').showModal();
-  $('startYes').focus();
-}
-for (const b of $('startKind').querySelectorAll('button')) b.onclick = () => segPick($('startKind'), 'kind', b.dataset.kind);
-$('startNo').onclick = () => $('meetStart').close();
-$('startClose').onclick = () => $('meetStart').close();
-$('meetStart').addEventListener('click', (e) => e.target === $('meetStart') && $('meetStart').close());
-$('startYes').onclick = async () => {
-  const online = $('startKind').querySelector('[aria-checked="true"]')?.dataset.kind === 'online';
-  const patch = {};
-  if (online !== Boolean(settingsStore.getSnapshot().saved?.meetingSystemAudio)) patch.meetingSystemAudio = online;
-  if ($('startMinutes').checked !== Boolean(settingsStore.getSnapshot().saved?.minutes)) patch.minutes = $('startMinutes').checked;
-  if (Object.keys(patch).length) await settingsStore.save(patch);
-  remember('startSpeakers', startSpeakers);
-  api.setSpeakers(startSpeakers || null);
-  startedFromSheet = true;
-  $('meetStart').close();
-  api.toggle('meeting');
-};
-
-// 녹음 중 참석 인원 바꾸기 (위쪽 막대)
-$('liveSpeakersSel').append(...SPEAKER_CHOICES.map((v) => h('option', { value: v }, v ? `참석 ${speakerLabel(v)}` : '참석 자동')));
-$('liveSpeakersSel').onchange = (e) => api.setSpeakers(e.target.value || null);
-api.onCommand(enqueue);
 api.onFnStatus((s) => issues.set('fn', s.ok ? null : { title: 'fn 키를 감지하지 못합니다', detail: s.reason, action: '권한 보기', onAction: () => openSettings('perms'), sec: 'perms' }));
 
 // ── 기록 데이터 ─────────────────────────────────────────────────────────
@@ -383,7 +186,7 @@ const homeSource = createSource(
 );
 const homeActions = {
   openSettings: (sec) => openSettings(sec),
-  openMeetingStart: () => openMeetingStart(),
+  openMeetingStart: () => recording.openStart(),
   openMeetings,
   dismissIssue: (key) => issues.set(key, null),
   copy: (text) => api.copy(text),
@@ -483,7 +286,7 @@ const meetingsActions = {
   trashStrays: (list) => trashStrays(list),
   reveal: (dir) => api.reveal(dir),
   importMeeting: (paths) => importMeeting(paths ?? null),
-  openMeetingStart: () => openMeetingStart(),
+  openMeetingStart: () => recording.openStart(),
   filePath: (f) => api.filePath(f),
 };
 function openMeetingsPage() {
@@ -527,6 +330,11 @@ const askWidgetDeps = {
 };
 
 // 녹음 파일 가져오기: 파일을 고르면(또는 끌어다 놓으면) 확인 창에서 순서·참석 인원·녹음에 담기지 않은 내용을 받고 가져온다
+const IMPORT_SPEAKER_CHOICES = ['', '2', '3', '4', '5', '6', '7', '8'];
+const importSpeakerLabel = (v) => (v ? `${v}명` : '자동');
+function importSegPick(box, attr, value) {
+  for (const b of box.querySelectorAll('button')) b.setAttribute('aria-checked', String(b.dataset[attr] === value));
+}
 let importing = false;
 let importPaths = [];
 let importSpeakers = '';
@@ -539,9 +347,9 @@ async function importMeeting(paths = null) {
   $('importOrder').textContent = files.length > 1 ? `이름 순서대로 이어 붙여 회의 하나로 만듭니다` : '';
   $('importFiles').replaceChildren(...files.map((f) => h('li', null, f.name, f.durationSec ? h('span', { class: 'num' }, clock(f.durationSec)) : null)));
   const box = $('importSpeakers');
-  box.replaceChildren(...SPEAKER_CHOICES.map((v) => h('button', { type: 'button', role: 'radio', 'data-n': v, onclick: () => { importSpeakers = v; segPick(box, 'n', v); } }, speakerLabel(v))));
+  box.replaceChildren(...IMPORT_SPEAKER_CHOICES.map((v) => h('button', { type: 'button', role: 'radio', 'data-n': v, onclick: () => { importSpeakers = v; importSegPick(box, 'n', v); } }, importSpeakerLabel(v))));
   importSpeakers = '';
-  segPick(box, 'n', '');
+  importSegPick(box, 'n', '');
   $('importNotes').value = '';
   // 회의 날짜: 짐작한 시각을 채우고 어디서 짐작했는지 알린다 (고칠 수 있다)
   const at = new Date(picked.guess?.at ?? Date.now());
@@ -628,10 +436,10 @@ const vocabWords = () => vocabulary.getSnapshot();
 // ── ⌘K 빠른 검색 ────────────────────────────────────────────────────────
 const palette = mountPalette({
   api, meetings, dictations, toast,
-  recording: () => ({ mode: recordingMode, paused: liveClock.paused }),
+  recording: () => recording.status(),
   openSettings: (sec) => openSettings(sec),
-  openMeetingStart: () => openMeetingStart(),
-  cancelRecording: () => $('cancelBtn').click(),
+  openMeetingStart: () => recording.openStart(),
+  cancelRecording: () => recording.cancel(),
 });
 
 document.addEventListener('keydown', (e) => {
@@ -661,16 +469,8 @@ settingsStore.subscribe((change) => {
   }
 });
 
-api.onDictStage(({ stage }) => showStage(stage));
-
-api.onDictResult((r) => {
-  setLive('idle');
-  if (r.status === 'error') toast('받아쓰기 실패', r.error, { bad: true, ms: 7000 });
-  else if (r.status === 'no-permission') toast('입력하지 못했습니다', '손쉬운 사용 권한이 없어 클립보드에만 복사했습니다. ⌘V로 붙여 넣으세요.', { bad: true, action: '권한 보기', onAction: () => openSettings('perms'), ms: 8000 });
-  else if (r.status === 'failed') toast('입력하지 못했습니다', '클립보드에 복사해 두었습니다. ⌘V로 붙여 넣으세요.', { bad: true, ms: 7000 });
-  freshId = r.id ?? null;
-  loadHistory();
-});
+api.onDictStage(recordingDictStage);
+api.onDictResult(recordingDictResult);
 
 window.addEventListener('focus', () => {
   settingsUi.refreshPermissions();
@@ -678,7 +478,6 @@ window.addEventListener('focus', () => {
 });
 
 // ── 시작 ────────────────────────────────────────────────────────────────
-setRecording(null);
 
 // 처음 설정: 끝내기 전까지는 본 화면 대신 온보딩을 보여 준다
 const fnListeners = new Set();
@@ -721,4 +520,4 @@ if (info.capability === 'unsupported') toast('이 macOS에서는 상대방 소�
 if (info.fnWarning) issues.set('fnUsage', { title: 'fn 키가 다른 동작과 겹칩니다', detail: info.fnWarning, sec: 'general', dismiss: true });
 await settingsUi.loadDevices();
 
-recorder.prepare().catch((err) => toast('오디오 엔진 준비 실패', err.message, { bad: true }));
+recording.prepare().catch((err) => toast('오디오 엔진 준비 실패', err.message, { bad: true }));

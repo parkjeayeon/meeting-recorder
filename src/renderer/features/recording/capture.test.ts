@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Recorder } from './index.ts';
+import { Recorder } from './capture.ts';
 import { rmsDb } from './capture.ts';
 import type { RecorderApi } from '../../shared/api/index.ts';
 

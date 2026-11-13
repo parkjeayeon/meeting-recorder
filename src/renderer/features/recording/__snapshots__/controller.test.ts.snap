@@ -1,0 +1,1126 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`recording legacy characterization > captures every working stage, preserves working on stop, and clears on result 1`] = `
+{
+  "cleanup": {
+    "buttons": [
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn ghost on" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기 정지</span></button>",
+      },
+      {
+        "disabled": true,
+        "hidden": false,
+        "html": "<button class="btn rec" id="meetingBtn" disabled=""><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="cancelBtn" hidden="" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>",
+      },
+    ],
+    "live": "<div class="live" id="live" data-state="working" aria-live="polite">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText">받아쓰는 중</span>
+          <ol class="route" id="route">
+            <li data-stage="listen" class="done">듣기</li><li data-stage="transcribe" class="done">인식</li><li data-stage="cleanup" class="now">다듬기</li><li data-stage="paste" class="">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18" hidden=""></canvas>
+          <span class="live-time" id="liveTime"></span>
+        </div>",
+    "speakers": "",
+    "topbar": "<header class="topbar">
+        <div class="hist">
+          <button class="icon-btn" id="navBack" aria-label="뒤로" title="뒤로 (⌘[)" disabled=""><svg><use href="#i-left"></use></svg></button>
+          <button class="icon-btn" id="navFwd" aria-label="앞으로" title="앞으로 (⌘])" disabled=""><svg><use href="#i-right"></use></svg></button>
+        </div>
+        <div class="crumbs" id="crumbs"></div>
+        <div class="live" id="live" data-state="working" aria-live="polite">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText">받아쓰는 중</span>
+          <ol class="route" id="route">
+            <li data-stage="listen" class="done">듣기</li><li data-stage="transcribe" class="done">인식</li><li data-stage="cleanup" class="now">다듬기</li><li data-stage="paste" class="">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18" hidden=""></canvas>
+          <span class="live-time" id="liveTime"></span>
+        </div>
+        <label class="live-speakers" id="liveSpeakers" hidden="" title="화자 구분에 쓰는 참석 인원. 녹음 중에도 바꿀 수 있습니다.">
+          <svg><use href="#i-people"></use></svg>
+          <select id="liveSpeakersSel" aria-label="참석 인원"><option value="">참석 자동</option><option value="2">참석 2명</option><option value="3">참석 3명</option><option value="4">참석 4명</option><option value="5">참석 5명</option><option value="6">참석 6명</option><option value="7">참석 7명</option><option value="8">참석 8명</option></select>
+        </label>
+        <div class="top-acts">
+          <button class="btn ghost" id="cancelBtn" hidden="" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>
+          <button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>
+          <button class="btn ghost on" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기 정지</span></button>
+          <button class="btn rec" id="meetingBtn" disabled=""><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>
+        </div>
+      </header>",
+  },
+  "listen": {
+    "buttons": [
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn ghost on" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기 정지</span></button>",
+      },
+      {
+        "disabled": true,
+        "hidden": false,
+        "html": "<button class="btn rec" id="meetingBtn" disabled=""><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="cancelBtn" hidden="" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>",
+      },
+    ],
+    "live": "<div class="live" id="live" data-state="working" aria-live="polite">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText">받아쓰는 중</span>
+          <ol class="route" id="route">
+            <li data-stage="listen" class="now">듣기</li><li data-stage="transcribe" class="">인식</li><li data-stage="cleanup" class="">다듬기</li><li data-stage="paste" class="">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18" hidden=""></canvas>
+          <span class="live-time" id="liveTime"></span>
+        </div>",
+    "speakers": "",
+    "topbar": "<header class="topbar">
+        <div class="hist">
+          <button class="icon-btn" id="navBack" aria-label="뒤로" title="뒤로 (⌘[)" disabled=""><svg><use href="#i-left"></use></svg></button>
+          <button class="icon-btn" id="navFwd" aria-label="앞으로" title="앞으로 (⌘])" disabled=""><svg><use href="#i-right"></use></svg></button>
+        </div>
+        <div class="crumbs" id="crumbs"></div>
+        <div class="live" id="live" data-state="working" aria-live="polite">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText">받아쓰는 중</span>
+          <ol class="route" id="route">
+            <li data-stage="listen" class="now">듣기</li><li data-stage="transcribe" class="">인식</li><li data-stage="cleanup" class="">다듬기</li><li data-stage="paste" class="">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18" hidden=""></canvas>
+          <span class="live-time" id="liveTime"></span>
+        </div>
+        <label class="live-speakers" id="liveSpeakers" hidden="" title="화자 구분에 쓰는 참석 인원. 녹음 중에도 바꿀 수 있습니다.">
+          <svg><use href="#i-people"></use></svg>
+          <select id="liveSpeakersSel" aria-label="참석 인원"><option value="">참석 자동</option><option value="2">참석 2명</option><option value="3">참석 3명</option><option value="4">참석 4명</option><option value="5">참석 5명</option><option value="6">참석 6명</option><option value="7">참석 7명</option><option value="8">참석 8명</option></select>
+        </label>
+        <div class="top-acts">
+          <button class="btn ghost" id="cancelBtn" hidden="" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>
+          <button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>
+          <button class="btn ghost on" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기 정지</span></button>
+          <button class="btn rec" id="meetingBtn" disabled=""><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>
+        </div>
+      </header>",
+  },
+  "paste": {
+    "buttons": [
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn ghost on" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기 정지</span></button>",
+      },
+      {
+        "disabled": true,
+        "hidden": false,
+        "html": "<button class="btn rec" id="meetingBtn" disabled=""><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="cancelBtn" hidden="" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>",
+      },
+    ],
+    "live": "<div class="live" id="live" data-state="working" aria-live="polite">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText">받아쓰는 중</span>
+          <ol class="route" id="route">
+            <li data-stage="listen" class="done">듣기</li><li data-stage="transcribe" class="done">인식</li><li data-stage="cleanup" class="done">다듬기</li><li data-stage="paste" class="now">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18" hidden=""></canvas>
+          <span class="live-time" id="liveTime"></span>
+        </div>",
+    "speakers": "",
+    "topbar": "<header class="topbar">
+        <div class="hist">
+          <button class="icon-btn" id="navBack" aria-label="뒤로" title="뒤로 (⌘[)" disabled=""><svg><use href="#i-left"></use></svg></button>
+          <button class="icon-btn" id="navFwd" aria-label="앞으로" title="앞으로 (⌘])" disabled=""><svg><use href="#i-right"></use></svg></button>
+        </div>
+        <div class="crumbs" id="crumbs"></div>
+        <div class="live" id="live" data-state="working" aria-live="polite">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText">받아쓰는 중</span>
+          <ol class="route" id="route">
+            <li data-stage="listen" class="done">듣기</li><li data-stage="transcribe" class="done">인식</li><li data-stage="cleanup" class="done">다듬기</li><li data-stage="paste" class="now">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18" hidden=""></canvas>
+          <span class="live-time" id="liveTime"></span>
+        </div>
+        <label class="live-speakers" id="liveSpeakers" hidden="" title="화자 구분에 쓰는 참석 인원. 녹음 중에도 바꿀 수 있습니다.">
+          <svg><use href="#i-people"></use></svg>
+          <select id="liveSpeakersSel" aria-label="참석 인원"><option value="">참석 자동</option><option value="2">참석 2명</option><option value="3">참석 3명</option><option value="4">참석 4명</option><option value="5">참석 5명</option><option value="6">참석 6명</option><option value="7">참석 7명</option><option value="8">참석 8명</option></select>
+        </label>
+        <div class="top-acts">
+          <button class="btn ghost" id="cancelBtn" hidden="" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>
+          <button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>
+          <button class="btn ghost on" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기 정지</span></button>
+          <button class="btn rec" id="meetingBtn" disabled=""><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>
+        </div>
+      </header>",
+  },
+  "result": {
+    "buttons": [
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn ghost" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn rec" id="meetingBtn"><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="cancelBtn" hidden="" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>",
+      },
+    ],
+    "live": "<div class="live" id="live" data-state="idle" aria-live="polite" hidden="">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText"></span>
+          <ol class="route" id="route" hidden="">
+            <li data-stage="listen" class="">듣기</li><li data-stage="transcribe" class="">인식</li><li data-stage="cleanup" class="">다듬기</li><li data-stage="paste" class="">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18" hidden=""></canvas>
+          <span class="live-time" id="liveTime"></span>
+        </div>",
+    "speakers": "",
+    "topbar": "<header class="topbar">
+        <div class="hist">
+          <button class="icon-btn" id="navBack" aria-label="뒤로" title="뒤로 (⌘[)" disabled=""><svg><use href="#i-left"></use></svg></button>
+          <button class="icon-btn" id="navFwd" aria-label="앞으로" title="앞으로 (⌘])" disabled=""><svg><use href="#i-right"></use></svg></button>
+        </div>
+        <div class="crumbs" id="crumbs"></div>
+        <div class="live" id="live" data-state="idle" aria-live="polite" hidden="">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText"></span>
+          <ol class="route" id="route" hidden="">
+            <li data-stage="listen" class="">듣기</li><li data-stage="transcribe" class="">인식</li><li data-stage="cleanup" class="">다듬기</li><li data-stage="paste" class="">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18" hidden=""></canvas>
+          <span class="live-time" id="liveTime"></span>
+        </div>
+        <label class="live-speakers" id="liveSpeakers" hidden="" title="화자 구분에 쓰는 참석 인원. 녹음 중에도 바꿀 수 있습니다.">
+          <svg><use href="#i-people"></use></svg>
+          <select id="liveSpeakersSel" aria-label="참석 인원"><option value="">참석 자동</option><option value="2">참석 2명</option><option value="3">참석 3명</option><option value="4">참석 4명</option><option value="5">참석 5명</option><option value="6">참석 6명</option><option value="7">참석 7명</option><option value="8">참석 8명</option></select>
+        </label>
+        <div class="top-acts">
+          <button class="btn ghost" id="cancelBtn" hidden="" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>
+          <button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>
+          <button class="btn ghost" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기</span></button>
+          <button class="btn rec" id="meetingBtn"><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>
+        </div>
+      </header>",
+  },
+  "stoppedWhileWorking": {
+    "buttons": [
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn ghost" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn rec" id="meetingBtn"><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="cancelBtn" hidden="" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>",
+      },
+    ],
+    "live": "<div class="live" id="live" data-state="working" aria-live="polite">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText">받아쓰는 중</span>
+          <ol class="route" id="route">
+            <li data-stage="listen" class="">듣기</li><li data-stage="transcribe" class="">인식</li><li data-stage="cleanup" class="">다듬기</li><li data-stage="paste" class="">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18" hidden=""></canvas>
+          <span class="live-time" id="liveTime"></span>
+        </div>",
+    "speakers": "",
+    "topbar": "<header class="topbar">
+        <div class="hist">
+          <button class="icon-btn" id="navBack" aria-label="뒤로" title="뒤로 (⌘[)" disabled=""><svg><use href="#i-left"></use></svg></button>
+          <button class="icon-btn" id="navFwd" aria-label="앞으로" title="앞으로 (⌘])" disabled=""><svg><use href="#i-right"></use></svg></button>
+        </div>
+        <div class="crumbs" id="crumbs"></div>
+        <div class="live" id="live" data-state="working" aria-live="polite">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText">받아쓰는 중</span>
+          <ol class="route" id="route">
+            <li data-stage="listen" class="">듣기</li><li data-stage="transcribe" class="">인식</li><li data-stage="cleanup" class="">다듬기</li><li data-stage="paste" class="">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18" hidden=""></canvas>
+          <span class="live-time" id="liveTime"></span>
+        </div>
+        <label class="live-speakers" id="liveSpeakers" hidden="" title="화자 구분에 쓰는 참석 인원. 녹음 중에도 바꿀 수 있습니다.">
+          <svg><use href="#i-people"></use></svg>
+          <select id="liveSpeakersSel" aria-label="참석 인원"><option value="">참석 자동</option><option value="2">참석 2명</option><option value="3">참석 3명</option><option value="4">참석 4명</option><option value="5">참석 5명</option><option value="6">참석 6명</option><option value="7">참석 7명</option><option value="8">참석 8명</option></select>
+        </label>
+        <div class="top-acts">
+          <button class="btn ghost" id="cancelBtn" hidden="" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>
+          <button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>
+          <button class="btn ghost" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기</span></button>
+          <button class="btn rec" id="meetingBtn"><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>
+        </div>
+      </header>",
+  },
+  "transcribe": {
+    "buttons": [
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn ghost on" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기 정지</span></button>",
+      },
+      {
+        "disabled": true,
+        "hidden": false,
+        "html": "<button class="btn rec" id="meetingBtn" disabled=""><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="cancelBtn" hidden="" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>",
+      },
+    ],
+    "live": "<div class="live" id="live" data-state="working" aria-live="polite">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText">받아쓰는 중</span>
+          <ol class="route" id="route">
+            <li data-stage="listen" class="done">듣기</li><li data-stage="transcribe" class="now">인식</li><li data-stage="cleanup" class="">다듬기</li><li data-stage="paste" class="">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18" hidden=""></canvas>
+          <span class="live-time" id="liveTime"></span>
+        </div>",
+    "speakers": "",
+    "topbar": "<header class="topbar">
+        <div class="hist">
+          <button class="icon-btn" id="navBack" aria-label="뒤로" title="뒤로 (⌘[)" disabled=""><svg><use href="#i-left"></use></svg></button>
+          <button class="icon-btn" id="navFwd" aria-label="앞으로" title="앞으로 (⌘])" disabled=""><svg><use href="#i-right"></use></svg></button>
+        </div>
+        <div class="crumbs" id="crumbs"></div>
+        <div class="live" id="live" data-state="working" aria-live="polite">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText">받아쓰는 중</span>
+          <ol class="route" id="route">
+            <li data-stage="listen" class="done">듣기</li><li data-stage="transcribe" class="now">인식</li><li data-stage="cleanup" class="">다듬기</li><li data-stage="paste" class="">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18" hidden=""></canvas>
+          <span class="live-time" id="liveTime"></span>
+        </div>
+        <label class="live-speakers" id="liveSpeakers" hidden="" title="화자 구분에 쓰는 참석 인원. 녹음 중에도 바꿀 수 있습니다.">
+          <svg><use href="#i-people"></use></svg>
+          <select id="liveSpeakersSel" aria-label="참석 인원"><option value="">참석 자동</option><option value="2">참석 2명</option><option value="3">참석 3명</option><option value="4">참석 4명</option><option value="5">참석 5명</option><option value="6">참석 6명</option><option value="7">참석 7명</option><option value="8">참석 8명</option></select>
+        </label>
+        <div class="top-acts">
+          <button class="btn ghost" id="cancelBtn" hidden="" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>
+          <button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>
+          <button class="btn ghost on" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기 정지</span></button>
+          <button class="btn rec" id="meetingBtn" disabled=""><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>
+        </div>
+      </header>",
+  },
+  "unknown": {
+    "buttons": [
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn ghost on" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기 정지</span></button>",
+      },
+      {
+        "disabled": true,
+        "hidden": false,
+        "html": "<button class="btn rec" id="meetingBtn" disabled=""><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="cancelBtn" hidden="" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>",
+      },
+    ],
+    "live": "<div class="live" id="live" data-state="working" aria-live="polite">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText">받아쓰는 중</span>
+          <ol class="route" id="route">
+            <li data-stage="listen" class="">듣기</li><li data-stage="transcribe" class="">인식</li><li data-stage="cleanup" class="">다듬기</li><li data-stage="paste" class="">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18" hidden=""></canvas>
+          <span class="live-time" id="liveTime"></span>
+        </div>",
+    "speakers": "",
+    "topbar": "<header class="topbar">
+        <div class="hist">
+          <button class="icon-btn" id="navBack" aria-label="뒤로" title="뒤로 (⌘[)" disabled=""><svg><use href="#i-left"></use></svg></button>
+          <button class="icon-btn" id="navFwd" aria-label="앞으로" title="앞으로 (⌘])" disabled=""><svg><use href="#i-right"></use></svg></button>
+        </div>
+        <div class="crumbs" id="crumbs"></div>
+        <div class="live" id="live" data-state="working" aria-live="polite">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText">받아쓰는 중</span>
+          <ol class="route" id="route">
+            <li data-stage="listen" class="">듣기</li><li data-stage="transcribe" class="">인식</li><li data-stage="cleanup" class="">다듬기</li><li data-stage="paste" class="">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18" hidden=""></canvas>
+          <span class="live-time" id="liveTime"></span>
+        </div>
+        <label class="live-speakers" id="liveSpeakers" hidden="" title="화자 구분에 쓰는 참석 인원. 녹음 중에도 바꿀 수 있습니다.">
+          <svg><use href="#i-people"></use></svg>
+          <select id="liveSpeakersSel" aria-label="참석 인원"><option value="">참석 자동</option><option value="2">참석 2명</option><option value="3">참석 3명</option><option value="4">참석 4명</option><option value="5">참석 5명</option><option value="6">참석 6명</option><option value="7">참석 7명</option><option value="8">참석 8명</option></select>
+        </label>
+        <div class="top-acts">
+          <button class="btn ghost" id="cancelBtn" hidden="" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>
+          <button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>
+          <button class="btn ghost on" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기 정지</span></button>
+          <button class="btn rec" id="meetingBtn" disabled=""><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>
+        </div>
+      </header>",
+  },
+}
+`;
+
+exports[`recording legacy characterization > captures idle, memo, stop, meeting, pause, resume and cancel DOM goldens 1`] = `
+{
+  "cancelled": {
+    "buttons": [
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn ghost" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn rec" id="meetingBtn"><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="cancelBtn" title="저장하지 않고 버립니다" hidden=""><svg><use href="#i-x"></use></svg><span>취소</span></button>",
+      },
+    ],
+    "live": "<div class="live" id="live" data-state="idle" aria-live="polite" hidden="">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText"></span>
+          <ol class="route" id="route" hidden="">
+            <li data-stage="listen">듣기</li><li data-stage="transcribe">인식</li><li data-stage="cleanup">다듬기</li><li data-stage="paste">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18" hidden=""></canvas>
+          <span class="live-time" id="liveTime"></span>
+        </div>",
+    "speakers": "",
+    "topbar": "<header class="topbar">
+        <div class="hist">
+          <button class="icon-btn" id="navBack" aria-label="뒤로" title="뒤로 (⌘[)" disabled=""><svg><use href="#i-left"></use></svg></button>
+          <button class="icon-btn" id="navFwd" aria-label="앞으로" title="앞으로 (⌘])" disabled=""><svg><use href="#i-right"></use></svg></button>
+        </div>
+        <div class="crumbs" id="crumbs"></div>
+        <div class="live" id="live" data-state="idle" aria-live="polite" hidden="">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText"></span>
+          <ol class="route" id="route" hidden="">
+            <li data-stage="listen">듣기</li><li data-stage="transcribe">인식</li><li data-stage="cleanup">다듬기</li><li data-stage="paste">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18" hidden=""></canvas>
+          <span class="live-time" id="liveTime"></span>
+        </div>
+        <label class="live-speakers" id="liveSpeakers" title="화자 구분에 쓰는 참석 인원. 녹음 중에도 바꿀 수 있습니다." hidden="">
+          <svg><use href="#i-people"></use></svg>
+          <select id="liveSpeakersSel" aria-label="참석 인원"><option value="">참석 자동</option><option value="2">참석 2명</option><option value="3">참석 3명</option><option value="4">참석 4명</option><option value="5">참석 5명</option><option value="6">참석 6명</option><option value="7">참석 7명</option><option value="8">참석 8명</option></select>
+        </label>
+        <div class="top-acts">
+          <button class="btn ghost" id="cancelBtn" title="저장하지 않고 버립니다" hidden=""><svg><use href="#i-x"></use></svg><span>취소</span></button>
+          <button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>
+          <button class="btn ghost" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기</span></button>
+          <button class="btn rec" id="meetingBtn"><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>
+        </div>
+      </header>",
+  },
+  "idle": {
+    "buttons": [
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn ghost" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn rec" id="meetingBtn"><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="cancelBtn" hidden="" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>",
+      },
+    ],
+    "live": "<div class="live" id="live" data-state="idle" aria-live="polite" hidden="">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText"></span>
+          <ol class="route" id="route" hidden="">
+            <li data-stage="listen">듣기</li><li data-stage="transcribe">인식</li><li data-stage="cleanup">다듬기</li><li data-stage="paste">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18" hidden=""></canvas>
+          <span class="live-time" id="liveTime"></span>
+        </div>",
+    "speakers": "",
+    "topbar": "<header class="topbar">
+        <div class="hist">
+          <button class="icon-btn" id="navBack" aria-label="뒤로" title="뒤로 (⌘[)" disabled=""><svg><use href="#i-left"></use></svg></button>
+          <button class="icon-btn" id="navFwd" aria-label="앞으로" title="앞으로 (⌘])" disabled=""><svg><use href="#i-right"></use></svg></button>
+        </div>
+        <div class="crumbs" id="crumbs"></div>
+        <div class="live" id="live" data-state="idle" aria-live="polite" hidden="">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText"></span>
+          <ol class="route" id="route" hidden="">
+            <li data-stage="listen">듣기</li><li data-stage="transcribe">인식</li><li data-stage="cleanup">다듬기</li><li data-stage="paste">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18" hidden=""></canvas>
+          <span class="live-time" id="liveTime"></span>
+        </div>
+        <label class="live-speakers" id="liveSpeakers" hidden="" title="화자 구분에 쓰는 참석 인원. 녹음 중에도 바꿀 수 있습니다.">
+          <svg><use href="#i-people"></use></svg>
+          <select id="liveSpeakersSel" aria-label="참석 인원"><option value="">참석 자동</option><option value="2">참석 2명</option><option value="3">참석 3명</option><option value="4">참석 4명</option><option value="5">참석 5명</option><option value="6">참석 6명</option><option value="7">참석 7명</option><option value="8">참석 8명</option></select>
+        </label>
+        <div class="top-acts">
+          <button class="btn ghost" id="cancelBtn" hidden="" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>
+          <button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>
+          <button class="btn ghost" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기</span></button>
+          <button class="btn rec" id="meetingBtn"><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>
+        </div>
+      </header>",
+  },
+  "meeting": {
+    "buttons": [
+      {
+        "disabled": true,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="memoBtn" title="fn을 꾹 눌러도 됩니다" disabled="" hidden=""><svg><use href="#i-mic"></use></svg><span>받아쓰기</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn rec on" id="meetingBtn"><svg><use href="#i-stop"></use></svg><span>종료하고 저장</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn ghost" id="pauseBtn"><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn ghost" id="cancelBtn" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>",
+      },
+    ],
+    "live": "<div class="live" id="live" data-state="meeting" aria-live="polite">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText">회의 녹음 중</span>
+          <ol class="route" id="route" hidden="">
+            <li data-stage="listen">듣기</li><li data-stage="transcribe">인식</li><li data-stage="cleanup">다듬기</li><li data-stage="paste">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18"></canvas>
+          <span class="live-time" id="liveTime">00:00</span>
+        </div>",
+    "speakers": "",
+    "topbar": "<header class="topbar">
+        <div class="hist">
+          <button class="icon-btn" id="navBack" aria-label="뒤로" title="뒤로 (⌘[)" disabled=""><svg><use href="#i-left"></use></svg></button>
+          <button class="icon-btn" id="navFwd" aria-label="앞으로" title="앞으로 (⌘])" disabled=""><svg><use href="#i-right"></use></svg></button>
+        </div>
+        <div class="crumbs" id="crumbs"></div>
+        <div class="live" id="live" data-state="meeting" aria-live="polite">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText">회의 녹음 중</span>
+          <ol class="route" id="route" hidden="">
+            <li data-stage="listen">듣기</li><li data-stage="transcribe">인식</li><li data-stage="cleanup">다듬기</li><li data-stage="paste">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18"></canvas>
+          <span class="live-time" id="liveTime">00:00</span>
+        </div>
+        <label class="live-speakers" id="liveSpeakers" title="화자 구분에 쓰는 참석 인원. 녹음 중에도 바꿀 수 있습니다.">
+          <svg><use href="#i-people"></use></svg>
+          <select id="liveSpeakersSel" aria-label="참석 인원"><option value="">참석 자동</option><option value="2">참석 2명</option><option value="3">참석 3명</option><option value="4">참석 4명</option><option value="5">참석 5명</option><option value="6">참석 6명</option><option value="7">참석 7명</option><option value="8">참석 8명</option></select>
+        </label>
+        <div class="top-acts">
+          <button class="btn ghost" id="cancelBtn" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>
+          <button class="btn ghost" id="pauseBtn"><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>
+          <button class="btn ghost" id="memoBtn" title="fn을 꾹 눌러도 됩니다" disabled="" hidden=""><svg><use href="#i-mic"></use></svg><span>받아쓰기</span></button>
+          <button class="btn rec on" id="meetingBtn"><svg><use href="#i-stop"></use></svg><span>종료하고 저장</span></button>
+        </div>
+      </header>",
+  },
+  "memo": {
+    "buttons": [
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn ghost on" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기 정지</span></button>",
+      },
+      {
+        "disabled": true,
+        "hidden": false,
+        "html": "<button class="btn rec" id="meetingBtn" disabled=""><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="cancelBtn" hidden="" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>",
+      },
+    ],
+    "live": "<div class="live" id="live" data-state="memo" aria-live="polite">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText">듣는 중</span>
+          <ol class="route" id="route" hidden="">
+            <li data-stage="listen">듣기</li><li data-stage="transcribe">인식</li><li data-stage="cleanup">다듬기</li><li data-stage="paste">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18"></canvas>
+          <span class="live-time" id="liveTime">00:00</span>
+        </div>",
+    "speakers": "",
+    "topbar": "<header class="topbar">
+        <div class="hist">
+          <button class="icon-btn" id="navBack" aria-label="뒤로" title="뒤로 (⌘[)" disabled=""><svg><use href="#i-left"></use></svg></button>
+          <button class="icon-btn" id="navFwd" aria-label="앞으로" title="앞으로 (⌘])" disabled=""><svg><use href="#i-right"></use></svg></button>
+        </div>
+        <div class="crumbs" id="crumbs"></div>
+        <div class="live" id="live" data-state="memo" aria-live="polite">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText">듣는 중</span>
+          <ol class="route" id="route" hidden="">
+            <li data-stage="listen">듣기</li><li data-stage="transcribe">인식</li><li data-stage="cleanup">다듬기</li><li data-stage="paste">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18"></canvas>
+          <span class="live-time" id="liveTime">00:00</span>
+        </div>
+        <label class="live-speakers" id="liveSpeakers" hidden="" title="화자 구분에 쓰는 참석 인원. 녹음 중에도 바꿀 수 있습니다.">
+          <svg><use href="#i-people"></use></svg>
+          <select id="liveSpeakersSel" aria-label="참석 인원"><option value="">참석 자동</option><option value="2">참석 2명</option><option value="3">참석 3명</option><option value="4">참석 4명</option><option value="5">참석 5명</option><option value="6">참석 6명</option><option value="7">참석 7명</option><option value="8">참석 8명</option></select>
+        </label>
+        <div class="top-acts">
+          <button class="btn ghost" id="cancelBtn" hidden="" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>
+          <button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>
+          <button class="btn ghost on" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기 정지</span></button>
+          <button class="btn rec" id="meetingBtn" disabled=""><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>
+        </div>
+      </header>",
+  },
+  "memoStopped": {
+    "buttons": [
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn ghost" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn rec" id="meetingBtn"><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="cancelBtn" hidden="" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>",
+      },
+    ],
+    "live": "<div class="live" id="live" data-state="idle" aria-live="polite" hidden="">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText"></span>
+          <ol class="route" id="route" hidden="">
+            <li data-stage="listen">듣기</li><li data-stage="transcribe">인식</li><li data-stage="cleanup">다듬기</li><li data-stage="paste">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18" hidden=""></canvas>
+          <span class="live-time" id="liveTime"></span>
+        </div>",
+    "speakers": "",
+    "topbar": "<header class="topbar">
+        <div class="hist">
+          <button class="icon-btn" id="navBack" aria-label="뒤로" title="뒤로 (⌘[)" disabled=""><svg><use href="#i-left"></use></svg></button>
+          <button class="icon-btn" id="navFwd" aria-label="앞으로" title="앞으로 (⌘])" disabled=""><svg><use href="#i-right"></use></svg></button>
+        </div>
+        <div class="crumbs" id="crumbs"></div>
+        <div class="live" id="live" data-state="idle" aria-live="polite" hidden="">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText"></span>
+          <ol class="route" id="route" hidden="">
+            <li data-stage="listen">듣기</li><li data-stage="transcribe">인식</li><li data-stage="cleanup">다듬기</li><li data-stage="paste">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18" hidden=""></canvas>
+          <span class="live-time" id="liveTime"></span>
+        </div>
+        <label class="live-speakers" id="liveSpeakers" hidden="" title="화자 구분에 쓰는 참석 인원. 녹음 중에도 바꿀 수 있습니다.">
+          <svg><use href="#i-people"></use></svg>
+          <select id="liveSpeakersSel" aria-label="참석 인원"><option value="">참석 자동</option><option value="2">참석 2명</option><option value="3">참석 3명</option><option value="4">참석 4명</option><option value="5">참석 5명</option><option value="6">참석 6명</option><option value="7">참석 7명</option><option value="8">참석 8명</option></select>
+        </label>
+        <div class="top-acts">
+          <button class="btn ghost" id="cancelBtn" hidden="" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>
+          <button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>
+          <button class="btn ghost" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기</span></button>
+          <button class="btn rec" id="meetingBtn"><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>
+        </div>
+      </header>",
+  },
+  "memoTick": {
+    "buttons": [
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn ghost on" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기 정지</span></button>",
+      },
+      {
+        "disabled": true,
+        "hidden": false,
+        "html": "<button class="btn rec" id="meetingBtn" disabled=""><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="cancelBtn" hidden="" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>",
+      },
+    ],
+    "live": "<div class="live" id="live" data-state="memo" aria-live="polite">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText">듣는 중</span>
+          <ol class="route" id="route" hidden="">
+            <li data-stage="listen">듣기</li><li data-stage="transcribe">인식</li><li data-stage="cleanup">다듬기</li><li data-stage="paste">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18"></canvas>
+          <span class="live-time" id="liveTime">00:01</span>
+        </div>",
+    "speakers": "",
+    "topbar": "<header class="topbar">
+        <div class="hist">
+          <button class="icon-btn" id="navBack" aria-label="뒤로" title="뒤로 (⌘[)" disabled=""><svg><use href="#i-left"></use></svg></button>
+          <button class="icon-btn" id="navFwd" aria-label="앞으로" title="앞으로 (⌘])" disabled=""><svg><use href="#i-right"></use></svg></button>
+        </div>
+        <div class="crumbs" id="crumbs"></div>
+        <div class="live" id="live" data-state="memo" aria-live="polite">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText">듣는 중</span>
+          <ol class="route" id="route" hidden="">
+            <li data-stage="listen">듣기</li><li data-stage="transcribe">인식</li><li data-stage="cleanup">다듬기</li><li data-stage="paste">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18"></canvas>
+          <span class="live-time" id="liveTime">00:01</span>
+        </div>
+        <label class="live-speakers" id="liveSpeakers" hidden="" title="화자 구분에 쓰는 참석 인원. 녹음 중에도 바꿀 수 있습니다.">
+          <svg><use href="#i-people"></use></svg>
+          <select id="liveSpeakersSel" aria-label="참석 인원"><option value="">참석 자동</option><option value="2">참석 2명</option><option value="3">참석 3명</option><option value="4">참석 4명</option><option value="5">참석 5명</option><option value="6">참석 6명</option><option value="7">참석 7명</option><option value="8">참석 8명</option></select>
+        </label>
+        <div class="top-acts">
+          <button class="btn ghost" id="cancelBtn" hidden="" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>
+          <button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>
+          <button class="btn ghost on" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기 정지</span></button>
+          <button class="btn rec" id="meetingBtn" disabled=""><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>
+        </div>
+      </header>",
+  },
+  "paused": {
+    "buttons": [
+      {
+        "disabled": true,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="memoBtn" title="fn을 꾹 눌러도 됩니다" disabled="" hidden=""><svg><use href="#i-mic"></use></svg><span>받아쓰기</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn rec on" id="meetingBtn"><svg><use href="#i-stop"></use></svg><span>종료하고 저장</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn ghost on" id="pauseBtn"><svg><use href="#i-play"></use></svg><span>재개</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn ghost" id="cancelBtn" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>",
+      },
+    ],
+    "live": "<div class="live" id="live" data-state="paused" aria-live="polite">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText">일시정지됨</span>
+          <ol class="route" id="route" hidden="">
+            <li data-stage="listen">듣기</li><li data-stage="transcribe">인식</li><li data-stage="cleanup">다듬기</li><li data-stage="paste">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18" hidden=""></canvas>
+          <span class="live-time" id="liveTime">01:01</span>
+        </div>",
+    "speakers": "",
+    "topbar": "<header class="topbar">
+        <div class="hist">
+          <button class="icon-btn" id="navBack" aria-label="뒤로" title="뒤로 (⌘[)" disabled=""><svg><use href="#i-left"></use></svg></button>
+          <button class="icon-btn" id="navFwd" aria-label="앞으로" title="앞으로 (⌘])" disabled=""><svg><use href="#i-right"></use></svg></button>
+        </div>
+        <div class="crumbs" id="crumbs"></div>
+        <div class="live" id="live" data-state="paused" aria-live="polite">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText">일시정지됨</span>
+          <ol class="route" id="route" hidden="">
+            <li data-stage="listen">듣기</li><li data-stage="transcribe">인식</li><li data-stage="cleanup">다듬기</li><li data-stage="paste">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18" hidden=""></canvas>
+          <span class="live-time" id="liveTime">01:01</span>
+        </div>
+        <label class="live-speakers" id="liveSpeakers" title="화자 구분에 쓰는 참석 인원. 녹음 중에도 바꿀 수 있습니다.">
+          <svg><use href="#i-people"></use></svg>
+          <select id="liveSpeakersSel" aria-label="참석 인원"><option value="">참석 자동</option><option value="2">참석 2명</option><option value="3">참석 3명</option><option value="4">참석 4명</option><option value="5">참석 5명</option><option value="6">참석 6명</option><option value="7">참석 7명</option><option value="8">참석 8명</option></select>
+        </label>
+        <div class="top-acts">
+          <button class="btn ghost" id="cancelBtn" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>
+          <button class="btn ghost on" id="pauseBtn"><svg><use href="#i-play"></use></svg><span>재개</span></button>
+          <button class="btn ghost" id="memoBtn" title="fn을 꾹 눌러도 됩니다" disabled="" hidden=""><svg><use href="#i-mic"></use></svg><span>받아쓰기</span></button>
+          <button class="btn rec on" id="meetingBtn"><svg><use href="#i-stop"></use></svg><span>종료하고 저장</span></button>
+        </div>
+      </header>",
+  },
+  "resumed": {
+    "buttons": [
+      {
+        "disabled": true,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="memoBtn" title="fn을 꾹 눌러도 됩니다" disabled="" hidden=""><svg><use href="#i-mic"></use></svg><span>받아쓰기</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn rec on" id="meetingBtn"><svg><use href="#i-stop"></use></svg><span>종료하고 저장</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn ghost" id="pauseBtn"><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn ghost" id="cancelBtn" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>",
+      },
+    ],
+    "live": "<div class="live" id="live" data-state="meeting" aria-live="polite">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText">회의 녹음 중</span>
+          <ol class="route" id="route" hidden="">
+            <li data-stage="listen">듣기</li><li data-stage="transcribe">인식</li><li data-stage="cleanup">다듬기</li><li data-stage="paste">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18"></canvas>
+          <span class="live-time" id="liveTime">01:01</span>
+        </div>",
+    "speakers": "",
+    "topbar": "<header class="topbar">
+        <div class="hist">
+          <button class="icon-btn" id="navBack" aria-label="뒤로" title="뒤로 (⌘[)" disabled=""><svg><use href="#i-left"></use></svg></button>
+          <button class="icon-btn" id="navFwd" aria-label="앞으로" title="앞으로 (⌘])" disabled=""><svg><use href="#i-right"></use></svg></button>
+        </div>
+        <div class="crumbs" id="crumbs"></div>
+        <div class="live" id="live" data-state="meeting" aria-live="polite">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText">회의 녹음 중</span>
+          <ol class="route" id="route" hidden="">
+            <li data-stage="listen">듣기</li><li data-stage="transcribe">인식</li><li data-stage="cleanup">다듬기</li><li data-stage="paste">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18"></canvas>
+          <span class="live-time" id="liveTime">01:01</span>
+        </div>
+        <label class="live-speakers" id="liveSpeakers" title="화자 구분에 쓰는 참석 인원. 녹음 중에도 바꿀 수 있습니다.">
+          <svg><use href="#i-people"></use></svg>
+          <select id="liveSpeakersSel" aria-label="참석 인원"><option value="">참석 자동</option><option value="2">참석 2명</option><option value="3">참석 3명</option><option value="4">참석 4명</option><option value="5">참석 5명</option><option value="6">참석 6명</option><option value="7">참석 7명</option><option value="8">참석 8명</option></select>
+        </label>
+        <div class="top-acts">
+          <button class="btn ghost" id="cancelBtn" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>
+          <button class="btn ghost" id="pauseBtn"><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>
+          <button class="btn ghost" id="memoBtn" title="fn을 꾹 눌러도 됩니다" disabled="" hidden=""><svg><use href="#i-mic"></use></svg><span>받아쓰기</span></button>
+          <button class="btn rec on" id="meetingBtn"><svg><use href="#i-stop"></use></svg><span>종료하고 저장</span></button>
+        </div>
+      </header>",
+  },
+  "resumedTick": {
+    "buttons": [
+      {
+        "disabled": true,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="memoBtn" title="fn을 꾹 눌러도 됩니다" disabled="" hidden=""><svg><use href="#i-mic"></use></svg><span>받아쓰기</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn rec on" id="meetingBtn"><svg><use href="#i-stop"></use></svg><span>종료하고 저장</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn ghost" id="pauseBtn"><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn ghost" id="cancelBtn" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>",
+      },
+    ],
+    "live": "<div class="live" id="live" data-state="meeting" aria-live="polite">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText">회의 녹음 중</span>
+          <ol class="route" id="route" hidden="">
+            <li data-stage="listen">듣기</li><li data-stage="transcribe">인식</li><li data-stage="cleanup">다듬기</li><li data-stage="paste">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18"></canvas>
+          <span class="live-time" id="liveTime">01:03</span>
+        </div>",
+    "speakers": "",
+    "topbar": "<header class="topbar">
+        <div class="hist">
+          <button class="icon-btn" id="navBack" aria-label="뒤로" title="뒤로 (⌘[)" disabled=""><svg><use href="#i-left"></use></svg></button>
+          <button class="icon-btn" id="navFwd" aria-label="앞으로" title="앞으로 (⌘])" disabled=""><svg><use href="#i-right"></use></svg></button>
+        </div>
+        <div class="crumbs" id="crumbs"></div>
+        <div class="live" id="live" data-state="meeting" aria-live="polite">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText">회의 녹음 중</span>
+          <ol class="route" id="route" hidden="">
+            <li data-stage="listen">듣기</li><li data-stage="transcribe">인식</li><li data-stage="cleanup">다듬기</li><li data-stage="paste">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18"></canvas>
+          <span class="live-time" id="liveTime">01:03</span>
+        </div>
+        <label class="live-speakers" id="liveSpeakers" title="화자 구분에 쓰는 참석 인원. 녹음 중에도 바꿀 수 있습니다.">
+          <svg><use href="#i-people"></use></svg>
+          <select id="liveSpeakersSel" aria-label="참석 인원"><option value="">참석 자동</option><option value="2">참석 2명</option><option value="3">참석 3명</option><option value="4">참석 4명</option><option value="5">참석 5명</option><option value="6">참석 6명</option><option value="7">참석 7명</option><option value="8">참석 8명</option></select>
+        </label>
+        <div class="top-acts">
+          <button class="btn ghost" id="cancelBtn" title="저장하지 않고 버립니다"><svg><use href="#i-x"></use></svg><span>취소</span></button>
+          <button class="btn ghost" id="pauseBtn"><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>
+          <button class="btn ghost" id="memoBtn" title="fn을 꾹 눌러도 됩니다" disabled="" hidden=""><svg><use href="#i-mic"></use></svg><span>받아쓰기</span></button>
+          <button class="btn rec on" id="meetingBtn"><svg><use href="#i-stop"></use></svg><span>종료하고 저장</span></button>
+        </div>
+      </header>",
+  },
+  "stopped": {
+    "buttons": [
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn ghost" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": false,
+        "html": "<button class="btn rec" id="meetingBtn"><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>",
+      },
+      {
+        "disabled": false,
+        "hidden": true,
+        "html": "<button class="btn ghost" id="cancelBtn" title="저장하지 않고 버립니다" hidden=""><svg><use href="#i-x"></use></svg><span>취소</span></button>",
+      },
+    ],
+    "live": "<div class="live" id="live" data-state="idle" aria-live="polite" hidden="">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText"></span>
+          <ol class="route" id="route" hidden="">
+            <li data-stage="listen">듣기</li><li data-stage="transcribe">인식</li><li data-stage="cleanup">다듬기</li><li data-stage="paste">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18" hidden=""></canvas>
+          <span class="live-time" id="liveTime"></span>
+        </div>",
+    "speakers": "",
+    "topbar": "<header class="topbar">
+        <div class="hist">
+          <button class="icon-btn" id="navBack" aria-label="뒤로" title="뒤로 (⌘[)" disabled=""><svg><use href="#i-left"></use></svg></button>
+          <button class="icon-btn" id="navFwd" aria-label="앞으로" title="앞으로 (⌘])" disabled=""><svg><use href="#i-right"></use></svg></button>
+        </div>
+        <div class="crumbs" id="crumbs"></div>
+        <div class="live" id="live" data-state="idle" aria-live="polite" hidden="">
+          <span class="live-dot"></span>
+          <span class="live-text" id="liveText"></span>
+          <ol class="route" id="route" hidden="">
+            <li data-stage="listen">듣기</li><li data-stage="transcribe">인식</li><li data-stage="cleanup">다듬기</li><li data-stage="paste">입력</li>
+          </ol>
+          <canvas class="tape" id="tape" width="96" height="18" hidden=""></canvas>
+          <span class="live-time" id="liveTime"></span>
+        </div>
+        <label class="live-speakers" id="liveSpeakers" title="화자 구분에 쓰는 참석 인원. 녹음 중에도 바꿀 수 있습니다." hidden="">
+          <svg><use href="#i-people"></use></svg>
+          <select id="liveSpeakersSel" aria-label="참석 인원"><option value="">참석 자동</option><option value="2">참석 2명</option><option value="3">참석 3명</option><option value="4">참석 4명</option><option value="5">참석 5명</option><option value="6">참석 6명</option><option value="7">참석 7명</option><option value="8">참석 8명</option></select>
+        </label>
+        <div class="top-acts">
+          <button class="btn ghost" id="cancelBtn" title="저장하지 않고 버립니다" hidden=""><svg><use href="#i-x"></use></svg><span>취소</span></button>
+          <button class="btn ghost" id="pauseBtn" hidden=""><svg><use href="#i-pause"></use></svg><span>일시정지</span></button>
+          <button class="btn ghost" id="memoBtn" title="fn을 꾹 눌러도 됩니다"><svg><use href="#i-mic"></use></svg><span>받아쓰기</span></button>
+          <button class="btn rec" id="meetingBtn"><svg><use href="#i-rec"></use></svg><span>회의 녹음</span></button>
+        </div>
+      </header>",
+  },
+}
+`;
+
+exports[`recording legacy characterization > captures meeting sheet choices and awaits settings before remember, speakers, close and toggle 1`] = `
+[
+  {
+    "focus": "startYes",
+    "html": "<dialog class="sheet" id="meetStart" aria-labelledby="meetStartTitle" open="">
+    <header class="sheet-head">
+      <span class="sheet-mark"><svg><use href="#i-rec"></use></svg></span>
+      <div>
+        <h3 id="meetStartTitle">회의 녹음 시작</h3>
+        <p>시작한 뒤에도 일시정지하거나 취소할 수 있습니다.</p>
+      </div>
+      <button class="icon-btn" id="startClose" aria-label="닫기"><svg><use href="#i-x"></use></svg></button>
+    </header>
+    <section class="sheet-sec">
+      <div class="sheet-label"><b>참석 인원</b><span>알려 주면 누가 말했는지 더 정확하게 나눕니다</span></div>
+      <div class="segbar" id="startSpeakers" role="radiogroup" aria-label="참석 인원"><button type="button" role="radio" data-n="" aria-checked="true">자동</button><button type="button" role="radio" data-n="2" aria-checked="false">2명</button><button type="button" role="radio" data-n="3" aria-checked="false">3명</button><button type="button" role="radio" data-n="4" aria-checked="false">4명</button><button type="button" role="radio" data-n="5" aria-checked="false">5명</button><button type="button" role="radio" data-n="6" aria-checked="false">6명</button><button type="button" role="radio" data-n="7" aria-checked="false">7명</button><button type="button" role="radio" data-n="8" aria-checked="false">8명</button></div>
+    </section>
+    <section class="sheet-sec">
+      <div class="sheet-label"><b>회의 방식</b></div>
+      <div class="kinds" id="startKind" role="radiogroup" aria-label="회의 방식">
+        <button type="button" role="radio" data-kind="offline" aria-checked="true"><svg><use href="#i-people"></use></svg><b>대면 회의</b><span>이 Mac 마이크로만 녹음</span></button>
+        <button type="button" role="radio" data-kind="online" aria-checked="false"><svg><use href="#i-mic"></use></svg><b>화상 회의</b><span>상대방 소리(시스템 오디오)도 함께</span></button>
+      </div>
+    </section>
+    <footer class="sheet-foot">
+      <label class="inline-switch"><span class="switch"><input type="checkbox" id="startMinutes"><i></i></span>끝나면 회의록 만들기</label>
+      <button class="btn" id="startNo">닫기</button>
+      <button class="btn rec" id="startYes"><svg><use href="#i-rec"></use></svg>녹음 시작</button>
+    </footer>
+  </dialog>",
+    "minutes": true,
+  },
+  {
+    "focus": "startYes",
+    "html": "<dialog class="sheet" id="meetStart" aria-labelledby="meetStartTitle" open="">
+    <header class="sheet-head">
+      <span class="sheet-mark"><svg><use href="#i-rec"></use></svg></span>
+      <div>
+        <h3 id="meetStartTitle">회의 녹음 시작</h3>
+        <p>시작한 뒤에도 일시정지하거나 취소할 수 있습니다.</p>
+      </div>
+      <button class="icon-btn" id="startClose" aria-label="닫기"><svg><use href="#i-x"></use></svg></button>
+    </header>
+    <section class="sheet-sec">
+      <div class="sheet-label"><b>참석 인원</b><span>알려 주면 누가 말했는지 더 정확하게 나눕니다</span></div>
+      <div class="segbar" id="startSpeakers" role="radiogroup" aria-label="참석 인원"><button type="button" role="radio" data-n="" aria-checked="false">자동</button><button type="button" role="radio" data-n="2" aria-checked="false">2명</button><button type="button" role="radio" data-n="3" aria-checked="false">3명</button><button type="button" role="radio" data-n="4" aria-checked="true">4명</button><button type="button" role="radio" data-n="5" aria-checked="false">5명</button><button type="button" role="radio" data-n="6" aria-checked="false">6명</button><button type="button" role="radio" data-n="7" aria-checked="false">7명</button><button type="button" role="radio" data-n="8" aria-checked="false">8명</button></div>
+    </section>
+    <section class="sheet-sec">
+      <div class="sheet-label"><b>회의 방식</b></div>
+      <div class="kinds" id="startKind" role="radiogroup" aria-label="회의 방식">
+        <button type="button" role="radio" data-kind="offline" aria-checked="false"><svg><use href="#i-people"></use></svg><b>대면 회의</b><span>이 Mac 마이크로만 녹음</span></button>
+        <button type="button" role="radio" data-kind="online" aria-checked="true"><svg><use href="#i-mic"></use></svg><b>화상 회의</b><span>상대방 소리(시스템 오디오)도 함께</span></button>
+      </div>
+    </section>
+    <footer class="sheet-foot">
+      <label class="inline-switch"><span class="switch"><input type="checkbox" id="startMinutes"><i></i></span>끝나면 회의록 만들기</label>
+      <button class="btn" id="startNo">닫기</button>
+      <button class="btn rec" id="startYes"><svg><use href="#i-rec"></use></svg>녹음 시작</button>
+    </footer>
+  </dialog>",
+    "minutes": false,
+  },
+  {
+    "focus": "startYes",
+    "html": "<dialog class="sheet" id="meetStart" aria-labelledby="meetStartTitle">
+    <header class="sheet-head">
+      <span class="sheet-mark"><svg><use href="#i-rec"></use></svg></span>
+      <div>
+        <h3 id="meetStartTitle">회의 녹음 시작</h3>
+        <p>시작한 뒤에도 일시정지하거나 취소할 수 있습니다.</p>
+      </div>
+      <button class="icon-btn" id="startClose" aria-label="닫기"><svg><use href="#i-x"></use></svg></button>
+    </header>
+    <section class="sheet-sec">
+      <div class="sheet-label"><b>참석 인원</b><span>알려 주면 누가 말했는지 더 정확하게 나눕니다</span></div>
+      <div class="segbar" id="startSpeakers" role="radiogroup" aria-label="참석 인원"><button type="button" role="radio" data-n="" aria-checked="false">자동</button><button type="button" role="radio" data-n="2" aria-checked="false">2명</button><button type="button" role="radio" data-n="3" aria-checked="false">3명</button><button type="button" role="radio" data-n="4" aria-checked="true">4명</button><button type="button" role="radio" data-n="5" aria-checked="false">5명</button><button type="button" role="radio" data-n="6" aria-checked="false">6명</button><button type="button" role="radio" data-n="7" aria-checked="false">7명</button><button type="button" role="radio" data-n="8" aria-checked="false">8명</button></div>
+    </section>
+    <section class="sheet-sec">
+      <div class="sheet-label"><b>회의 방식</b></div>
+      <div class="kinds" id="startKind" role="radiogroup" aria-label="회의 방식">
+        <button type="button" role="radio" data-kind="offline" aria-checked="false"><svg><use href="#i-people"></use></svg><b>대면 회의</b><span>이 Mac 마이크로만 녹음</span></button>
+        <button type="button" role="radio" data-kind="online" aria-checked="true"><svg><use href="#i-mic"></use></svg><b>화상 회의</b><span>상대방 소리(시스템 오디오)도 함께</span></button>
+      </div>
+    </section>
+    <footer class="sheet-foot">
+      <label class="inline-switch"><span class="switch"><input type="checkbox" id="startMinutes"><i></i></span>끝나면 회의록 만들기</label>
+      <button class="btn" id="startNo">닫기</button>
+      <button class="btn rec" id="startYes"><svg><use href="#i-rec"></use></svg>녹음 시작</button>
+    </footer>
+  </dialog>",
+    "minutes": false,
+  },
+]
+`;
