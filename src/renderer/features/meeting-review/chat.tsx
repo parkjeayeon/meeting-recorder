@@ -1,6 +1,6 @@
 // 확인 필요 채팅 (aside.chat 안): 기억나는 것을 말하면 녹취 앞뒤를 보고 고칠 말을 제안한다.
 // 제안마다 적용·그대로 두기·확인됨으로·구간 다시 받아쓰기, 녹취에서 그대로 찾지 못한 제안은 녹취 글자로 고쳐 적용, 다시 받아쓴 구간은 '녹취에 반영'.
-// 채팅 상태(메시지·쓰던 글·적용 중·받아쓰는 중)와 명령은 주인(옛 회의 페이지)의 것.
+// 채팅 상태(메시지·쓰던 글·적용 중·받아쓰는 중)와 명령은 회의 페이지 주인의 것.
 import { useLayoutEffect, useRef, useState } from 'react';
 import { clock } from '../../../core/script.mts';
 import { REVIEW_KIND } from '../../entities/review/index.ts';
@@ -99,7 +99,7 @@ export function ReviewChatBody(p: ReviewChatProps) {
       if (log.current) log.current.scrollTop = log.current.scrollHeight;
     });
     return () => cancelAnimationFrame(id);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- 그릴 때 한 번 (옛 페이지가 바뀔 때마다 새로 그린다)
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- 그릴 때 한 번 (페이지가 다시 그릴 때마다 새로 그린다)
   useNativeEvent(input, 'input', (el) => p.setDraft(el.value));
   const go = () => {
     const text = input.current!.value.trim();

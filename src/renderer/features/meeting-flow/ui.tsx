@@ -1,6 +1,6 @@
 // 회의 페이지의 흐름도 (src/flow.js가 만든 flow.json): 사용자가 요청한 회의만. 회의록 요약 아래에 그림마다 카드 —
 // 한 줄 요약·채팅·SVG 저장·다시 만들기·지우기, 인수인계. 흐름도가 없으면 '흐름도 만들기' 줄, 그림마다 채팅(고친 그림을 제안받아 반영).
-// 뿌리 요소(div.flows · div.flow-row · aside.chat)는 옛 회의 페이지가 만들고 여기는 그 안을 그린다 (createIslands).
+// 뿌리 요소(div.flows · div.flow-row · aside.chat)는 회의록 위젯·회의 페이지가 만들고 여기는 그 안을 그린다.
 import { useLayoutEffect, useRef } from 'react';
 import { flowOrder, type FlowDoc, type Wrap } from '../../entities/flow/index.ts';
 import type { Jobs } from '../../shared/lib/index.ts';
@@ -136,7 +136,7 @@ export function FlowChatBody({ f, messages, busy, draft, setDraft, send, apply, 
       if (log.current) log.current.scrollTop = log.current.scrollHeight;
     });
     return () => cancelAnimationFrame(id);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- 그릴 때 한 번 (옛 페이지가 바뀔 때마다 새로 그린다)
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- 그릴 때 한 번 (페이지가 다시 그릴 때마다 새로 그린다)
   useNativeEvent(input, 'input', (el) => setDraft(el.value));
   const go = () => {
     const text = input.current!.value.trim();

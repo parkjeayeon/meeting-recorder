@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`recording legacy characterization > captures every working stage, preserves working on stop, and clears on result 1`] = `
+exports[`recording characterization > captures every working stage, preserves working on stop, and clears on result 1`] = `
 {
   "cleanup": {
     "buttons": [
@@ -425,7 +425,7 @@ exports[`recording legacy characterization > captures every working stage, prese
 }
 `;
 
-exports[`recording legacy characterization > captures idle, memo, stop, meeting, pause, resume and cancel DOM goldens 1`] = `
+exports[`recording characterization > captures idle, memo, stop, meeting, pause, resume and cancel DOM goldens 1`] = `
 {
   "cancelled": {
     "buttons": [
@@ -1030,7 +1030,7 @@ exports[`recording legacy characterization > captures idle, memo, stop, meeting,
 }
 `;
 
-exports[`recording legacy characterization > captures meeting sheet choices and awaits settings before remember, speakers, close and toggle 1`] = `
+exports[`recording characterization > captures meeting sheet choices and awaits settings before remember, speakers, close and toggle 1`] = `
 [
   {
     "focus": "startYes",

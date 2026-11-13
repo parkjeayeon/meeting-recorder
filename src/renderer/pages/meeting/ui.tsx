@@ -1,4 +1,4 @@
-// 회의 페이지 (옛 pageMeeting의 그리기를 옮김: 같은 글자·같은 클래스). 무엇을 보일지는 주인(옛 페이지의 draw)이 만든 view로 받고,
+// 회의 페이지. 무엇을 보일지는 주인(controller.ts의 draw)이 만든 view로 받고,
 // 주인이 다시 그릴 때마다(version) 안을 새로 만든다 — 옛 화면처럼 열어 둔 고치기 줄·누른 버튼 표시가 다시 그릴 때 풀린다.
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { ActionsBody, type ActionsProps } from '../../features/meeting-actions/index.ts';

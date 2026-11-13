@@ -1,4 +1,4 @@
-// 통계 화면에 보일 값 (순수 계산). 입력은 상태 주인(아직 옛 화면 코드)이 창구로 넘겨준 값.
+// 통계 화면에 보일 값 (순수 계산). 입력은 상태 주인이 창구로 넘겨준 값.
 import { charsOf, dictSummary, type DictItem, type DictSummary, type DictTotals } from '../../entities/dictation/index.ts';
 
 /** 회의 기록 하나 — 여기서 쓰는 칸만 */

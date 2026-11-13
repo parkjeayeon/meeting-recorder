@@ -1,15 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import html from '../../index.html?raw';
-import legacyController from './__fixtures__/controller.js.txt?raw';
-import legacyDictation from './__fixtures__/dictation.js.txt?raw';
-import { clock, remember, store } from '../../shared/lib/index.ts';
-import { el, icon } from '../../shared/ui/index.tsx';
 import { createSettingsStore } from '../../entities/settings/index.ts';
 import { createIssueStore } from '../../entities/issue/index.ts';
 import type { RecorderApi } from '../../shared/api/index.ts';
 import { mountRecording } from './index.ts';
-import type { RecordingDeps } from './index.ts';
 import type { RecorderOptions, RecorderStartOptions } from './capture.ts';
 
 const q = <E extends HTMLElement = HTMLElement>(selector: string) => document.querySelector<E>(selector)!;
@@ -25,26 +20,6 @@ const capture = () => ({
   speakers: q<HTMLSelectElement>('#liveSpeakersSel').value,
 });
 const sheet = () => ({ html: q('#meetStart').outerHTML, minutes: q<HTMLInputElement>('#startMinutes').checked, focus: document.activeElement?.id });
-
-const legacyMount = (deps: RecordingDeps) => {
-  let readingResult = false;
-  const api = { ...deps.api, onDictResult: (fn: (r: unknown) => void) => deps.api.onDictResult((r: unknown) => {
-    readingResult = true;
-    try { fn(r); } finally { readingResult = false; }
-  }) };
-  const handle = new Function(
-    '$', 'h', 'icon', 'Recorder', 'api', 'settingsStore', 'issues', 'toast', 'confirmBox', 'openSettings', 'loadHistory', 'clock', 'store', 'remember',
-    `${legacyController}\nlet freshId = null;\n${legacyDictation}\nsetRecording(null);\nreturn {
-      status: () => ({ mode: recordingMode, paused: liveClock.paused }),
-      openStart: openMeetingStart,
-      cancel: () => $('cancelBtn').onclick(),
-      prepare: () => recorder.prepare(),
-      resultId: () => freshId,
-    };`,
-  )((id: string) => document.getElementById(id), el, icon, FakeRecorder, api, deps.settings, deps.issues, deps.toast, deps.confirm, deps.openSettings,
-    () => { if (readingResult) deps.dictationFinished(handle.resultId()); else deps.historyChanged(); }, clock, store, remember);
-  return handle;
-};
 
 vi.mock('./capture.ts', () => ({ Recorder: class { constructor(options: RecorderOptions) { return new FakeRecorder(options); } } }));
 
@@ -63,7 +38,7 @@ class FakeRecorder {
   constructor(readonly options: RecorderOptions) { recorder = this; }
 }
 
-function setup(factory = activeFactory) {
+function setup() {
   const events: unknown[] = [];
   const saved = { meetingSystemAudio: false, minutes: true };
   const api = {
@@ -83,7 +58,7 @@ function setup(factory = activeFactory) {
     readInput: () => ({ deviceId: q<HTMLSelectElement>('#micSelect').value || undefined, echoCancellation: q<HTMLInputElement>('#echo').checked }),
     historyChanged: vi.fn(), dictationFinished: vi.fn(),
   };
-  const ui = factory(deps);
+  const ui = mountRecording(deps);
   const emit = (action: string, mode = 'meeting') => api.onCommand.mock.calls[0]![0]({ action, mode });
   const command = async (action: string, mode = 'meeting') => { emit(action, mode); await settle(); };
   const onClock = (elapsedMs: number, paused: boolean, mode = 'meeting') => api.onClock.mock.calls[0]![0]({ elapsedMs, paused, mode });
@@ -110,28 +85,8 @@ function initialize() {
 beforeEach(initialize);
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
-let activeFactory = legacyMount;
-let golden: (value: unknown) => void;
-async function parity(scenario: () => unknown) {
-  const expected: unknown[] = [];
-  activeFactory = legacyMount;
-  golden = (value) => { expect(value).toMatchSnapshot(); expected.push(value); };
-  await scenario();
-  vi.clearAllTimers();
-  vi.restoreAllMocks();
-  initialize();
-  activeFactory = mountRecording;
-  let index = 0;
-  golden = (value) => { expect(value).toEqual(expected[index++]); };
-  await scenario();
-  expect(index).toBe(expected.length);
-}
-const characterize = (name: string, scenario: () => unknown) => it(name, () => parity(scenario));
-characterize.each = <T,>(cases: T[]) => (name: string, scenario: (value: T) => unknown) =>
-  it.each(cases)(name, (value) => parity(() => scenario(value)));
-
-describe('recording legacy characterization', () => {
-  characterize('captures idle, memo, stop, meeting, pause, resume and cancel DOM goldens', async () => {
+describe('recording characterization', () => {
+  it('captures idle, memo, stop, meeting, pause, resume and cancel DOM goldens', async () => {
     const m = setup();
     const intervals = vi.spyOn(globalThis, 'setInterval');
     const registrations = [m.api.onClock, m.api.onCommand, m.api.onDictStage, m.api.onDictResult].map((fn) => {
@@ -164,11 +119,11 @@ describe('recording legacy characterization', () => {
     await m.command('cancel');
     states.cancelled = capture();
     expect(vi.getTimerCount()).toBe(0);
-    golden(states);
+    expect(states).toMatchSnapshot();
     expect(m.deps.toast).toHaveBeenLastCalledWith('회의 녹음을 취소했습니다', '녹음은 저장하지 않았습니다');
   });
 
-  characterize('captures every working stage, preserves working on stop, and clears on result', async () => {
+  it('captures every working stage, preserves working on stop, and clears on result', async () => {
     const m = setup();
     await m.command('start', 'memo');
     const states: Record<string, ReturnType<typeof capture>> = {};
@@ -180,10 +135,10 @@ describe('recording legacy characterization', () => {
     states.stoppedWhileWorking = capture();
     m.result({ id: 'dict-1', status: 'ok' });
     states.result = capture();
-    golden(states);
+    expect(states).toMatchSnapshot();
   });
 
-  characterize('captures meeting sheet choices and awaits settings before remember, speakers, close and toggle', async () => {
+  it('captures meeting sheet choices and awaits settings before remember, speakers, close and toggle', async () => {
     const m = setup();
     await m.settings.refresh();
     const setItem = Storage.prototype.setItem;
@@ -212,7 +167,7 @@ describe('recording legacy characterization', () => {
       ['speakers', '4'], ['close'], ['toggle', 'meeting'],
     ]);
     states.push(sheet());
-    golden(states);
+    expect(states).toMatchSnapshot();
     await m.command('start');
     expect(q<HTMLSelectElement>('#liveSpeakersSel').value).toBe('4');
     expect(m.recorder.start).toHaveBeenCalledWith({ mode: 'meeting', deviceId: undefined, echoCancellation: false, includeSystem: true });
@@ -221,7 +176,7 @@ describe('recording legacy characterization', () => {
     expect(q<HTMLSelectElement>('#liveSpeakersSel').value).toBe('');
   });
 
-  characterize('keeps cancelled sheet selection in memory and skips unchanged settings writes', async () => {
+  it('keeps cancelled sheet selection in memory and skips unchanged settings writes', async () => {
     const m = setup();
     await m.settings.refresh();
     for (const close of ['#startNo', '#startClose', '#meetStart']) {
@@ -240,7 +195,7 @@ describe('recording legacy characterization', () => {
     expect(q<HTMLDialogElement>('#meetStart').open).toBe(false);
   });
 
-  characterize('wires buttons, pause clock filtering, cancellation confirmation and live speakers', async () => {
+  it('wires buttons, pause clock filtering, cancellation confirmation and live speakers', async () => {
     const m = setup();
     m.onClock(30000, true);
     expect(m.ui.status()).toEqual({ mode: null, paused: false });
@@ -274,7 +229,7 @@ describe('recording legacy characterization', () => {
     expect(m.recorder.prepare).toHaveBeenCalledOnce();
   });
 
-  characterize('serializes a pending start then cancel and recovers the queue after a stop failure', async () => {
+  it('serializes a pending start then cancel and recovers the queue after a stop failure', async () => {
     const m = setup();
     let resolve!: (v: { warnings: string[]; timing: { acquireMs: number; startMs: number } }) => void;
     m.recorder.start.mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
@@ -298,7 +253,7 @@ describe('recording legacy characterization', () => {
     expect(m.recorder.start).toHaveBeenCalledTimes(2);
   });
 
-  characterize.each(['EPERM denied', 'EACCES denied', 'Operation not permitted', 'mic unavailable'])('keeps start failure handling for %s', async (message) => {
+  it.each(['EPERM denied', 'EACCES denied', 'Operation not permitted', 'mic unavailable'])('keeps start failure handling for %s', async (message) => {
     const m = setup();
     m.recorder.start.mockRejectedValueOnce(new Error(message));
     await m.command('start');
@@ -317,7 +272,7 @@ describe('recording legacy characterization', () => {
     }
   });
 
-  characterize.each([9.9, 10])('keeps the %s second save threshold, unawaited history, and silent-system issue', async (durationSec) => {
+  it.each([9.9, 10])('keeps the %s second save threshold, unawaited history, and silent-system issue', async (durationSec) => {
     const m = setup();
     await m.settings.refresh();
     await m.command('start');
@@ -335,7 +290,7 @@ describe('recording legacy characterization', () => {
   });
 
 
-  characterize('reads current input and settings at start and leaves audible system audio without an issue', async () => {
+  it('reads current input and settings at start and leaves audible system audio without an issue', async () => {
     const m = setup();
     await m.settings.refresh();
     m.saved.meetingSystemAudio = true;
@@ -361,7 +316,7 @@ describe('recording legacy characterization', () => {
     expect(m.issues.get('system-silent')).toBeDefined();
   });
 
-  characterize('warns before changing recording UI and logging start timing', async () => {
+  it('warns before changing recording UI and logging start timing', async () => {
     const m = setup();
     const states: unknown[] = [];
     m.deps.toast.mockImplementation(() => states.push(m.ui.status().mode));
@@ -377,7 +332,7 @@ describe('recording legacy characterization', () => {
     await expect(m.ui.prepare()).rejects.toBe(failure);
   });
 
-  characterize('keeps tape scaling, rolling window, paused samples and reset on resume', async () => {
+  it('keeps tape scaling, rolling window, paused samples and reset on resume', async () => {
     const m = setup();
     const canvas = q<HTMLCanvasElement>('#tape');
     Object.defineProperties(canvas, { clientWidth: { value: 300 }, clientHeight: { value: 18 } });
@@ -398,7 +353,7 @@ describe('recording legacy characterization', () => {
     expect(ctx.roundRect).toHaveBeenCalledExactlyOnceWith(296, 8, 2, 2, 1);
   });
 
-  characterize.each(['error', 'no-permission', 'failed', 'ok'])('keeps dictation %s toast and idle UI', (status) => {
+  it.each(['error', 'no-permission', 'failed', 'ok'])('keeps dictation %s toast and idle UI', (status) => {
     const m = setup();
     m.stage('paste');
     m.result({ status, error: 'dict error', id: 'dict-id' });

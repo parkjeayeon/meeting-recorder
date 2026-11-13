@@ -1,6 +1,6 @@
 // 회의 페이지의 주인: 페이지 상태(탭·고른 항목·고쳐 쓴 말·채팅 …), 파일을 바꾸는 명령, ⌘F, body에 뜨는 용어 카드·설명 추가.
 // draw()는 무엇을 보일지(view)를 만들어 창구로 넘기고 그 자리에서 그려 둔다(commit). 그릴 때마다 React가 안을 새로 만든다 — 옛 화면처럼.
-// 옛 화면 코드(pageMeeting)에서 그대로 옮겼다. 앱 전체의 것(기록 목록·회의 문서 캐시·알림·라우터 …)은 deps로 받는다.
+// 앱 전체의 것(기록 목록·회의 문서 캐시·알림·라우터 …)은 deps로 받는다.
 import { scriptMarkdown, parseScript, speakerStats, type ScriptLine } from '../../../core/script.mts';
 import { BUSY, progressOf, statusText, type MeetingItem } from '../../entities/meeting/index.ts';
 import { speakerOrder, termMatcher, type Term, type TermMatcher } from '../../entities/minutes/index.ts';
@@ -39,9 +39,9 @@ export interface MeetingDoc {
 type Toast = (title: string, detail?: string, opts?: { bad?: boolean; ms?: number; action?: string; onAction?: () => void }) => void;
 export interface MeetingDeps {
   readonly api: RecorderApi;
-  /** 지금 기록 목록 전체 — 회의만 거르지 않는다(옛 화면처럼 주소의 id가 기록에 있으면 연다). 주인은 옛 코드 */
+  /** 지금 기록 목록 전체 — 회의만 거르지 않는다(옛 화면처럼 주소의 id가 기록에 있으면 연다). 주인은 app/history */
   readonly records: () => readonly MeetingRecord[];
-  /** 회의 id → 읽은 문서 (주인은 옛 코드: 파일이 바뀌면 지운다) */
+  /** 회의 id → 읽은 문서 (주인은 app/meeting: 파일이 바뀌면 지운다) */
   readonly docs: Map<string, MeetingDoc>;
   readonly toast: Toast;
   readonly confirm: (title: string, text: string, yes: string) => Promise<boolean>;

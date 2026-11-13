@@ -6,11 +6,7 @@ import { createIssueStore } from '../../../entities/issue/index.ts';
 import type { RecorderApi } from '../../../shared/api/index.ts';
 import { mountSettings } from '../index.ts';
 import * as sharedUi from '../../../shared/ui/index.tsx';
-import { mountReact } from '../../../shared/page-host/index.tsx';
-import { dayLabel, fmt, PROVIDER_NAME, remember, store, TIME } from '../../../shared/lib/index.ts';
-import { SettingsDialogBody } from './ui.tsx';
 import type { SetupComponent, UsageResult } from './types.ts';
-import legacyController from './__fixtures__/controller.js.txt?raw';
 import originalBody from './__fixtures__/dialog.html?raw';
 
 const q = <E extends HTMLElement = HTMLElement>(selector: string) => document.querySelector<E>(selector)!;
@@ -34,7 +30,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function mount(factory = mountSettings) {
+function mount() {
   const saved = {
     enabled: true, language: 'ko', meetingLanguage: 'en', cleanup: true, provider: 'auto',
     vocabulary: 'Whisper', minutes: true, diarize: true, diarizeReady: true,
@@ -64,12 +60,12 @@ function mount(factory = mountSettings) {
   const settings = createSettingsStore(api);
   const issues = createIssueStore();
   const deps = { api: api as unknown as RecorderApi, settings, issues, toast: vi.fn(), confirm: vi.fn().mockResolvedValue(true), closePalette: vi.fn(), recordingsChanged: vi.fn(), rerunOnboarding: vi.fn() };
-  const ui = factory(deps);
+  const ui = mountSettings(deps);
   return { ui, api, settings, issues, deps, saved, providers };
 }
 
 describe('mountSettings', () => {
-  it('마크업을 그대로 두고 구독을 한 번 등록하며 설정 렌더 뒤에 옛 구독자가 돈다', async () => {
+  it('마크업을 그대로 두고 구독을 한 번 등록하며 설정 렌더 뒤에 후속 구독자가 돈다', async () => {
     const before = document.body.innerHTML;
     const { api, settings, issues } = mount();
     const original = document.createElement('dialog');
@@ -209,10 +205,6 @@ describe('mountSettings', () => {
 });
 
 
-const legacyMount: typeof mountSettings = new Function(
-  'h', 'mountReact', 'SettingsDialogBody', 'dayLabel', 'fmt', 'PROVIDER_NAME', 'remember', 'store', 'TIME', legacyController,
-)(sharedUi.el, mountReact, SettingsDialogBody, dayLabel, fmt, PROVIDER_NAME, remember, store, TIME);
-
 const settle = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 const capture = (selector: string) => q(selector).innerHTML;
 type Mounted = ReturnType<typeof mount>;
@@ -319,15 +311,11 @@ const scenarios: { name: string; run: (m: Mounted) => Promise<string[]> }[] = [
   } },
 ];
 
-describe('settings region DOM parity with the pre-migration controller snapshot', () => {
+describe('settings region DOM characterization', () => {
   it.each(scenarios)('$name', async ({ run }) => {
     vi.setSystemTime(new Date('2026-11-13T03:00:00Z'));
-    const expected = await run(mount(legacyMount));
-    vi.clearAllTimers();
-    resetDocument();
-    vi.setSystemTime(new Date('2026-11-13T03:00:00Z'));
     const builder = vi.spyOn(sharedUi, 'el');
-    expect(await run(mount())).toEqual(expected);
+    expect(await run(mount())).toMatchSnapshot();
     expect(builder).not.toHaveBeenCalled();
   });
 });

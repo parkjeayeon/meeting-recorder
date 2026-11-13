@@ -214,7 +214,7 @@ describe('createRouter', () => {
     ['#unknown/a%2Fb/c', 'home', 'a/b/c'],
     ['#meeting', 'meeting', null],
     ['#meeting/', 'meeting', ''],
-  ] as const)('parses %s with the legacy fallback and argument rules', (hash, name, arg) => {
+  ] as const)('parses %s with the fallback and argument rules', (hash, name, arg) => {
     window.history.replaceState(null, '', `/${hash}`);
     const { router, table } = fixture();
     router.navigate();

@@ -1,6 +1,6 @@
 // 회의 페이지의 '확인 필요' 탭 (div.review 안): 항목마다 추정 적용 · 직접 고치기 · 채팅 · 그대로 두기, 여러 개 골라 한 번에,
 // 직접 추가, 확인 마치기, 처리한 항목 고치기·되돌리기·다시 열기, 구간 다시 받아쓰기(구간을 모르면 직접 고르기).
-// 고른 항목·고쳐 쓴 말·갈래 같은 상태와 파일을 바꾸는 명령은 주인(옛 회의 페이지)의 것 — 여기는 받은 대로 그린다.
+// 고른 항목·고쳐 쓴 말·갈래 같은 상태와 파일을 바꾸는 명령은 회의 페이지 주인의 것 — 여기는 받은 대로 그린다.
 import { useLayoutEffect, useRef, useState } from 'react';
 import { noteVariants } from '../../../core/review.mts';
 import { clock, parseStamp } from '../../../core/script.mts';
@@ -97,7 +97,7 @@ function ReviewAdd({ draft, jobs, jobKey, setDraft, add }: { readonly draft: str
     input.current!.value = draft;
     const id = requestAnimationFrame(fit);
     return () => cancelAnimationFrame(id);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- 그릴 때 한 번 (옛 페이지가 바뀔 때마다 새로 그린다)
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- 그릴 때 한 번 (페이지가 다시 그릴 때마다 새로 그린다)
   useNativeEvent(input, 'input', (el) => {
     setDraft(el.value);
     fit();

@@ -1,10 +1,9 @@
-// 빌드 전 검사: 화면(src/renderer)의 가져오기 경계 (React 전환, docs/react-migration.md).
+// 빌드 전 검사: 화면(src/renderer)의 가져오기 경계 (docs/renderer-architecture.md).
 //   node scripts/dev/check-boundaries.js            → 어기는 곳이 있으면 끝 코드 1
 // 규칙
-//  1. legacy/(옛 화면 코드)는 main.ts만 가져온다 — 새 코드가 옛 전역 상태에 기대면 옛 코드를 영영 못 지운다.
-//  2. FSD 층 순서: app > pages > widgets > features > entities > shared. 아래 층만 가져온다. 같은 층의 다른 조각은 못 가져온다.
-//  3. 다른 조각은 공개 입구(그 조각 폴더의 index.ts/tsx)로만 — 안쪽 파일을 바로 가져오면 그게 공개 약속이 돼 버린다.
-//  4. 화면 코드는 node:·electron·src/main 쪽을 못 가져온다 (코어는 src/core의 순수 모듈만, 상대 경로로).
+//  1. FSD 층 순서: app > pages > widgets > features > entities > shared. 아래 층만 가져온다. 같은 층의 다른 조각은 못 가져온다.
+//  2. 다른 조각은 공개 입구(그 조각 폴더의 index.ts/tsx)로만 — 안쪽 파일을 바로 가져오면 그게 공개 약속이 돼 버린다.
+//  3. 화면 코드는 node:·electron·src/main 쪽을 못 가져온다 (코어는 src/core의 순수 모듈만, 상대 경로로).
 // 정규식으로 가져오기 경로(import·export from·import())를 읽는다. 문자열이 아닌 동적 import는 금지.
 const fs = require('fs');
 const path = require('path');
@@ -12,7 +11,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '../..');
 const R = path.join(ROOT, 'src/renderer');
 const LAYERS = ['app', 'pages', 'widgets', 'features', 'entities', 'shared'];
-const files = fs.readdirSync(R, { recursive: true }).map(String).filter((f) => /\.(ts|tsx)$/.test(f) && !f.startsWith('legacy/'));
+const files = fs.readdirSync(R, { recursive: true }).map(String).filter((f) => /\.(ts|tsx)$/.test(f));
 const IMPORT = /(?:import|export)\s[^'"]*?from\s*['"]([^'"]+)['"]|import\s*\(\s*([^)]*)\)|import\s*['"]([^'"]+)['"]/g;
 
 // src/renderer 안의 위치 → { layer, slice } (shared는 조각마다: shared/api, shared/page-host …)
@@ -44,10 +43,6 @@ for (const f of files) {
       const out = path.relative(path.join(ROOT, 'src'), abs).split(path.sep).join('/');
       const typeOnlyPreload = out === 'preload.js' && /import\(['"][^'"]*preload\.js['"]\)|import\s+type/.test(m[0]);
       if (!(out.startsWith('core/') && !out.includes('.test.')) && !typeOnlyPreload) problems.push(`${f}: 화면 밖을 가져옴 (${spec}) — src/core의 순수 모듈만`);
-      continue;
-    }
-    if (rel.startsWith('legacy/')) {
-      if (f !== 'main.ts') problems.push(`${f}: 옛 화면 코드(legacy/)는 main.ts만 가져온다 (${spec})`);
       continue;
     }
     const to = where(rel);

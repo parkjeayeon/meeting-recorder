@@ -1,6 +1,6 @@
 // 회의 페이지의 용어: 회의록 아래 '용어' 칸, 밑줄 친 말을 누르면 뜨는 설명 카드, 본문에서 드래그하면 뜨는 '설명 추가'.
-// 뿌리 요소(section.glossary · div.term-card · div.term-add)는 옛 회의 페이지가 만들고 여기는 그 안을 그린다 (createIslands).
-// 파일을 바꾸는 일(설명 고치기·지우기·확인, 만들기)은 주인(옛 회의 페이지)이 준 명령으로.
+// 용어 칸 뿌리(section.glossary)는 회의록 위젯이, 카드·설명 추가 뿌리는 회의 페이지 주인이 만든다.
+// 파일을 바꾸는 일(설명 고치기·지우기·확인, 만들기)은 회의 페이지 주인이 준 명령으로.
 import { useLayoutEffect, useRef, useState } from 'react';
 import { parseStamp } from '../../../core/script.mts';
 import type { Term } from '../../entities/minutes/index.ts';
@@ -60,7 +60,7 @@ export function GlossaryBody({ terms, exists, openCard, change, make }: Glossary
 
 export interface TermCardProps {
   readonly t: Term;
-  /** 카드 뿌리 (div.term-card, 옛 페이지가 body에 붙임) — 용어 아래(넘치면 위)에 놓는다 */
+  /** 카드 뿌리 (div.term-card, 회의 페이지 주인이 body에 붙임) — 용어 아래(넘치면 위)에 놓는다 */
   readonly host: HTMLElement;
   readonly anchor: Element;
   readonly seek: ((sec: number) => void) | null;

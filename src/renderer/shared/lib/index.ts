@@ -1,4 +1,4 @@
-// 화면 공통 도구: 숫자·시간 표시와 '바뀌면 알려 주는 읽기 창구'. 옛 화면 코드(legacy)도 같은 것을 쓴다 — 두 벌을 두지 않는다.
+// 화면 공통 도구: 숫자·시간 표시와 '바뀌면 알려 주는 읽기 창구'.
 export const fmt = new Intl.NumberFormat('ko-KR');
 export const DAY = new Intl.DateTimeFormat('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
 export const TIME = new Intl.DateTimeFormat('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
