@@ -19,8 +19,9 @@ const PIECE_SEC = 600; // 긴 녹음은 약 10분씩, 조용한 지점에서 잘
 const MINUTES_SYSTEM = `You write meeting minutes in Korean from a speech-recognition script of a meeting, usually already pruned of fillers, backchannels and small talk.
 The meeting was usually held in person and recorded with one microphone, so speakers are not identified.
 Lines may carry a speaker label such as [화자 1], [김 대리], [나] or [상대방] from speaker diarization, which can be wrong at times.
-When speakers are labelled, say who proposed, asked, decided or took on what, using the labels as names.
-Each line starts with a [mm:ss] timestamp.
+Speaker labels can be wrong, so write the body around content, not people: state what was proposed, argued, decided or left open without naming who said it.
+Name a speaker (using the label as the name) only in two places: the owner of each to-do, and, where participants clearly disagreed, whose position each side was. Never pair speakers ("A·B는 …") unless both clearly said it.
+Each line starts with a timestamp: [mm:ss], or [h:mm:ss] after the first hour. Quote timestamps in exactly that form; never convert 1:24:53 into 84:53.
 
 Output Markdown in exactly this structure and nothing else:
 
@@ -31,7 +32,7 @@ Output Markdown in exactly this structure and nothing else:
 
 ## 논의 내용
 ### <주제>
-- 핵심 내용 (중요한 결정·숫자에는 (mm:ss)를 붙인다)
+- 핵심 내용 (중요한 결정·숫자에는 시각을 붙인다 — 스크립트에 적힌 꼴 그대로: 1시간 전은 (12:30), 넘으면 (1:24:53))
 
 ## 결정 사항
 - 결정 내용 (없으면 "- 없음")
