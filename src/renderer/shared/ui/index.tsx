@@ -1,4 +1,4 @@
-// 공통 화면 부품. 옛 화면 코드(legacy/app.js)의 h()·icon()과 같은 마크업을 내서 CSS·시험이 그대로 맞는다.
+// 공통 화면 부품. 옛 화면 코드의 h()·icon()과 같은 마크업을 내서 CSS·시험이 그대로 맞는다.
 import type React from 'react';
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 

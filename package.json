@@ -52,7 +52,6 @@
       "!src/test/**",
       "!src/renderer/**/*.ts",
       "!src/renderer/**/*.tsx",
-      "!src/renderer/legacy/**/*",
       "!src/renderer/style.css",
       "!src/renderer/fonts/**/*",
       "lib/**/*",

@@ -3,3 +3,4 @@ export { createRouter, type Route, type RouteTable, type RouterDeps, type Router
 export { createSession, type Session } from './session.ts';
 export { createMeeting, type MeetingAppDeps, type MeetingApp } from './meeting.ts';
 export { createPages, type PagesDeps } from './pages.ts';
+export { startRenderer } from './boot.ts';
