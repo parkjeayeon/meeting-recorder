@@ -375,6 +375,7 @@ export function mountSettings({ api, settings: settingsStore, issues, toast, con
   const setupListeners = new Set<(list: SetupComponent[]) => void>();
   api.onSetup((list: SetupComponent[]) => {
     if (dialog.open) renderSetup(list);
+    else document.getElementById('engineDot')!.hidden = !list.some((c) => !c.installed && c.id !== 'large'); // 닫혀 있어도 엔진 탭 점은 바로
     setupListeners.forEach((fn) => fn(list));
   });
 
@@ -396,7 +397,8 @@ export function mountSettings({ api, settings: settingsStore, issues, toast, con
       block.querySelector<HTMLButtonElement>('[data-clear]')!.disabled = !s.app;
       block.querySelector<HTMLButtonElement>('[data-verify]')!.disabled = !has;
     }
-    const p = await api.providers({ fresh: true });
+    await settingsStore.refreshProviders(true); // 다듬기 칸·왼쪽 아래 다듬기 표시도 같이 바뀌게
+    const p = settingsStore.getSnapshot().providers!;
     document.getElementById('connAccounts')!.replaceChildren(...([['claude-code', 'Claude Code'], ['codex', 'Codex']] as const).map(([id, name]) => {
       const info = p[id];
       return h('div', { class: 'account' }, h('b', null, name), h('span', { class: info.loggedIn ? 'ok' : '' }, !info.installed ? '설치 안 됨' : info.loggedIn ? `로그인됨${info.account ? ` · ${info.account}` : ''}` : '로그인 안 됨'));

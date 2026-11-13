@@ -136,7 +136,7 @@ describe('startOnboarding', () => {
     expect(ctx.onDone).toHaveBeenCalledExactlyOnceWith(uses);
   });
 
-  it('마이크 옵션 배열은 글자로 붙고 20초 뒤 계속할 수 있으며 떠나면 마이크를 닫는다', async () => {
+  it('마이크 장치를 옵션으로 표시하고 선택값을 유지하며 떠나면 마이크를 닫는다', async () => {
     const stop = vi.fn();
     const close = vi.fn();
     const getUserMedia = vi.fn().mockResolvedValue({ getTracks: () => [{ stop }] });
@@ -157,19 +157,23 @@ describe('startOnboarding', () => {
     const { ctx } = mount('mic');
     await flush();
     const select = q<HTMLSelectElement>('select');
-    expect(select.innerHTML).toBe('<option value="">시스템 기본값</option>[object HTMLOptionElement],[object HTMLOptionElement]');
-    expect(select.options).toHaveLength(1);
-    expect(select.childNodes[1]!.nodeType).toBe(Node.TEXT_NODE);
+    expect([...select.options].map((option) => [option.value, option.textContent])).toEqual([
+      ['', '시스템 기본값'], ['wired', '내장'], ['bt', 'AirPods'],
+    ]);
+    expect(select.childNodes).toHaveLength(3);
     expect(getUserMedia).toHaveBeenCalledWith({ audio: true });
+    select.value = 'wired';
+    select.dispatchEvent(new Event('change'));
+    await flush();
+    expect(ctx.setMic).toHaveBeenCalledWith('wired');
+    expect(getUserMedia).toHaveBeenLastCalledWith({ audio: { deviceId: { exact: 'wired' } } });
     await vi.advanceTimersByTimeAsync(19999);
     expect(q<HTMLButtonElement>('.ob-next').disabled).toBe(true);
     await vi.advanceTimersByTimeAsync(1);
     expect(q<HTMLButtonElement>('.ob-next').disabled).toBe(false);
     expect(q('.ob-result').textContent).toContain('소리가 들리지 않습니다');
     expect(q('select')).toBe(select);
-    select.dispatchEvent(new Event('change'));
-    await flush();
-    expect(ctx.setMic).toHaveBeenCalledWith('');
+    expect(select.value).toBe('wired');
     expect(stop).toHaveBeenCalledTimes(1);
     q<HTMLButtonElement>('.ob-next').click();
     expect(stop).toHaveBeenCalledTimes(2);
@@ -201,7 +205,7 @@ describe('startOnboarding', () => {
     expect(q('h1').textContent).toBe('준비됐습니다');
   });
 
-  it('HF 저장 뒤에도 ready는 바뀌지 않고 실행 중 다시 시작하면 구독이 하나 더 생긴다', async () => {
+  it('HF 저장 뒤 확인에 실패하면 재시도 버튼을 보이고 다시 시작하면 이전 구독을 정리한다', async () => {
     const { api, ctx } = mount('token');
     await flush();
     q<HTMLInputElement>('input').value = '  hf_token  ';
@@ -209,10 +213,20 @@ describe('startOnboarding', () => {
     await flush();
     expect(api.saveToken).toHaveBeenCalledWith('hf', 'hf_token');
     expect(q('.ob-result').textContent).toBe('확인 실패');
-    expect(q('#onboard').textContent).not.toContain('지금 토큰 확인');
+    const retry = [...document.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === '지금 토큰 확인')!;
+    expect(retry).toBeDefined();
+    expect(retry.disabled).toBe(false);
+    retry.click();
+    await flush();
+    expect(api.verifyToken).toHaveBeenCalledTimes(2);
+    expect(api.verifyToken).toHaveBeenLastCalledWith('hf');
     startOnboarding(ctx, { step: 'fnkey' });
+    const previousListener = [...ctx.fnListeners][0]!;
+    api.onboardingFnTest.mockClear();
     startOnboarding(ctx, { step: 'fnkey' });
-    expect(ctx.fnListeners.size).toBe(2);
-    expect(vi.getTimerCount()).toBe(2);
+    expect(api.onboardingFnTest.mock.calls).toEqual([[false], [true]]);
+    expect(ctx.fnListeners.has(previousListener)).toBe(false);
+    expect(ctx.fnListeners.size).toBe(1);
+    expect(vi.getTimerCount()).toBe(1);
   });
 });

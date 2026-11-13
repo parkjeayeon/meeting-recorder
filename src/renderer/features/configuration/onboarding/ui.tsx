@@ -58,12 +58,9 @@ function Result({ value }: { value: ResultView }) {
 function MicSelect({ v }: { v: Extract<StepView, { kind: 'mic' }> }) {
   const ref = useRetainedRef(v.select, (node, previous) => {
     node.value = previous ? previous.value : v.initialMic;
-    // React가 생략하는 빈 문자열도 옛 append([])처럼 빈 텍스트 노드로 남긴다.
-    if (!v.deviceText) node.append('');
   });
   useNativeEvent(v.select, 'change', v.change);
-  // 배열이 옵션 대신 글자로 붙는 기존 버그를 의도적으로 유지한다.
-  return <select ref={ref} aria-label="마이크"><option value="">시스템 기본값</option>{v.deviceText}</select>;
+  return <select ref={ref} aria-label="마이크"><option value="">시스템 기본값</option>{v.mics.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}</select>;
 }
 
 function Meter({ bars }: { bars: Control<HTMLDivElement> }) {

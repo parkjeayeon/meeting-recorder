@@ -83,7 +83,7 @@ describe('mountSettings', () => {
     expect(q<HTMLInputElement>('#providers input[value="codex"]').disabled).toBe(true);
   });
 
-  it('설정이 닫혀 있으면 setup은 팬아웃만 하고 열려 있을 때 렌더 뒤 알린다', async () => {
+  it('설정이 닫혀 있어도 setup으로 엔진 표시점을 갱신하고 열려 있으면 렌더 뒤 알린다', async () => {
     const { ui, api, settings } = mount();
     await settings.refresh();
     const dot = q('#engineDot');
@@ -91,8 +91,10 @@ describe('mountSettings', () => {
     const list = [{ id: 'turbo', name: '받아쓰기 모델', desc: '설명', installed: false, size: 0, removable: true }];
     const listener = vi.fn(() => q('#compList').innerHTML);
     ui.setupListeners.add(listener);
-    setup(list);
+    expect(q<HTMLDialogElement>('#settings').open).toBe(false);
     expect(dot.hidden).toBe(true);
+    setup(list);
+    expect(dot.hidden).toBe(false);
     expect(listener.mock.results[0]!.value).toBe('');
     ui.open();
     setup(list);
@@ -102,16 +104,30 @@ describe('mountSettings', () => {
     api.dictSettings.mockClear();
     setup(list);
     expect(api.dictSettings).toHaveBeenCalledOnce();
+    q<HTMLDialogElement>('#settings').close();
+    setup([{ ...list[0]!, installed: true }]);
+    expect(dot.hidden).toBe(true);
+    setup(list);
+    expect(dot.hidden).toBe(false);
+    setup([{ ...list[0]!, id: 'large' }]);
+    expect(dot.hidden).toBe(true);
   });
 
-  it('토큰은 공백을 보존해 저장하고 계정 새로 고침은 공용 providers를 바꾸지 않는다', async () => {
+  it('토큰은 공백을 보존해 저장하고 계정 새로 고침은 공용 providers와 사이드바 다듬기 표시를 갱신한다', async () => {
     const { api, settings, providers } = mount();
     await settings.refresh();
     await settings.refreshProviders();
-    api.providers.mockResolvedValue({ ...providers, codex: { installed: true, loggedIn: true } });
+    expect(q('#engCleanup em').textContent).toBe('계정 없음');
+    const refreshedProviders = { ...providers, codex: { installed: true, loggedIn: true } };
+    api.providers.mockResolvedValue(refreshedProviders);
+    const refreshProviders = vi.spyOn(settings, 'refreshProviders');
     await click('#connRefresh');
-    expect(settings.getSnapshot().providers).toBe(providers);
+    expect(refreshProviders).toHaveBeenCalledExactlyOnceWith(true);
+    expect(api.providers).toHaveBeenLastCalledWith({ fresh: true });
+    expect(settings.getSnapshot().providers).toBe(refreshedProviders);
     expect(q('#connAccounts').textContent).toContain('Codex로그인됨');
+    expect(q('#engCleanup em').textContent).toBe('Codex');
+    expect(q<HTMLInputElement>('#providers input[value="codex"]').disabled).toBe(false);
     const input = q<HTMLInputElement>('[data-kind="hf"] [data-input]');
     input.value = '  hf_token  ';
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true }));
