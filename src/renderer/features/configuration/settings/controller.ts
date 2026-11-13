@@ -3,9 +3,11 @@ import type { IssueStore } from '../../../entities/issue/index.ts';
 import type { RecorderApi } from '../../../shared/api/index.ts';
 import { dayLabel, fmt, PROVIDER_NAME, remember, store, TIME } from '../../../shared/lib/index.ts';
 import { mountReact } from '../../../shared/page-host/index.tsx';
-import { el as h, type confirmBox, type createToaster } from '../../../shared/ui/index.tsx';
+import type { confirmBox, createToaster } from '../../../shared/ui/index.tsx';
 import type { ProviderInfo, SetupComponent, TokenKind, TokenSource, UsageResult, UsageWindow } from './types.ts';
 import { SettingsDialogBody } from './ui.tsx';
+import { settingsRegionRenderer, SettingsAccounts, SettingsAction, SettingsPermissions, SettingsProviders, SettingsSetup, SettingsUsage } from './regions.tsx';
+import type { ActionView, PermissionView, SetupView, UsageView } from './view.ts';
 
 export interface SettingsDeps {
   readonly api: RecorderApi;
@@ -28,9 +30,14 @@ export interface SettingsHandle {
 }
 
 export function mountSettings({ api, settings: settingsStore, issues, toast, confirm, closePalette, recordingsChanged, rerunOnboarding }: SettingsDeps): SettingsHandle {
-  const num = (text: string | number) => h('span', { class: 'num' }, String(text));
   const dialog = document.getElementById('settings') as HTMLDialogElement;
   mountReact(dialog, SettingsDialogBody, {});
+  const engineActions = settingsRegionRenderer(document.getElementById('engineActs')!, SettingsAction);
+  const providersRegion = settingsRegionRenderer(document.getElementById('providers')!, SettingsProviders);
+  const permissionsRegion = settingsRegionRenderer(document.getElementById('permList')!, SettingsPermissions);
+  const setupRegion = settingsRegionRenderer(document.getElementById('compList')!, SettingsSetup);
+  const accountsRegion = settingsRegionRenderer(document.getElementById('connAccounts')!, SettingsAccounts);
+  const usageRegions = new Map<HTMLElement, ReturnType<typeof settingsRegionRenderer<UsageView>>>();
 
   // ── 설정 ────────────────────────────────────────────────────────────────
   function openSettings(sec = 'general') {
@@ -78,9 +85,7 @@ export function mountSettings({ api, settings: settingsStore, issues, toast, con
     const bad = ['no-engine', 'no-model', 'error'].includes(engine.state);
     document.getElementById('engineLine')!.textContent = text;
     document.getElementById('engineLine')!.classList.toggle('bad', bad);
-    const acts = document.getElementById('engineActs')!;
-    acts.replaceChildren();
-    acts.append(h('button', { class: 'btn small', onclick: () => openSettings('engine') }, bad ? '설치하기' : '엔진 관리'));
+    engineActions.render({ className: 'btn small', click: () => openSettings('engine'), label: bad ? '설치하기' : '엔진 관리' });
     const short = ({ ready: '준비됨', loading: '불러오는 중', downloading: '받는 중', stopped: '꺼짐' } as Record<string, string>)[engine.state] ?? '설정 필요';
     setEngine('engAsr', bad ? 'bad' : engine.state === 'ready' ? 'ok' : 'busy', short);
     issues.set('engine', bad ? {
@@ -119,28 +124,31 @@ export function mountSettings({ api, settings: settingsStore, issues, toast, con
   function drawUsage() {
     for (const el of document.querySelectorAll<HTMLElement>('[data-usage]')) {
       const u = usageNow?.[el.dataset.usage!];
-      const again = h('button', { class: 'link', disabled: usageBusy, onclick: () => loadUsage(true) }, usageBusy ? '확인 중…' : '새로 고침');
+      let region = usageRegions.get(el);
+      if (!region) {
+        region = settingsRegionRenderer(el, SettingsUsage);
+        usageRegions.set(el, region);
+      }
+      const again: ActionView = { className: 'link', disabled: usageBusy, click: () => loadUsage(true), label: usageBusy ? '확인 중…' : '새로 고침' };
       if (!u) {
-        el.replaceChildren(h('div', { class: 'usage-foot' }, h('span', null, usageBusy ? '남은 사용량 확인 중…' : '남은 사용량'), !usageBusy && again));
+        region.render({ rows: [], footClass: 'usage-foot', footText: usageBusy ? '남은 사용량 확인 중…' : '남은 사용량', again: usageBusy ? null : again });
         continue;
       }
       if (!u.ok) {
-        el.replaceChildren(h('div', { class: 'usage-foot bad' }, h('span', null, `남은 사용량을 읽지 못했습니다 · ${u.error}`), again));
+        region.render({ rows: [], footClass: 'usage-foot bad', footText: `남은 사용량을 읽지 못했습니다 · ${u.error}`, again });
         continue;
       }
       const ago = Math.max(0, Math.round((Date.now() - new Date(u.fetchedAt).getTime()) / 60000));
-      el.replaceChildren(
-        ...u.windows.map((w) => {
-          const left = Math.max(0, Math.round(100 - w.usedPercent));
-          return h('div', { class: `usage-row${left < 20 ? ' low' : ''}` },
-            h('span', { class: 'usage-name' }, w.kind === 'model-week' ? `이번 주 · ${w.model}` : USAGE_NAME[w.kind]),
-            h('span', { class: 'meter', role: 'meter', 'aria-valuenow': String(left), 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-label': '남은 사용량' }, h('i', { style: `width:${left}%` })),
-            h('span', { class: 'num' }, `${left}% 남음`),
-            h('span', { class: 'usage-reset' }, resetLabel(w)));
-        }),
-        h('div', { class: 'usage-foot' },
-          h('span', null, [ago ? `${ago}분 전 확인` : '방금 확인', u.credits && `크레딧 ${Number.isFinite(Number(u.credits)) ? fmt.format(Math.floor(Number(u.credits))) : u.credits}`, u.via === 'llm' && '출력 형식이 바뀌어 LLM으로 읽음'].filter(Boolean).join(' · ')),
-          again));
+      region.render({
+        rows: u.windows.map((w) => ({
+          left: Math.max(0, Math.round(100 - w.usedPercent)),
+          name: w.kind === 'model-week' ? `이번 주 · ${w.model}` : USAGE_NAME[w.kind],
+          reset: resetLabel(w),
+        })),
+        footClass: 'usage-foot',
+        footText: [ago ? `${ago}분 전 확인` : '방금 확인', u.credits && `크레딧 ${Number.isFinite(Number(u.credits)) ? fmt.format(Math.floor(Number(u.credits))) : u.credits}`, u.via === 'llm' && '출력 형식이 바뀌어 LLM으로 읽음'].filter(Boolean).join(' · '),
+        again,
+      });
     }
   }
 
@@ -190,22 +198,23 @@ export function mountSettings({ api, settings: settingsStore, issues, toast, con
       renderEngine(settingsStore.getSnapshot().engine);
     } else if (change === 'providers') {
       const providers = settingsStore.getSnapshot().providers;
-      const box = document.getElementById('providers')!;
-      box.replaceChildren();
+      for (const region of usageRegions.values()) region.unmount();
+      usageRegions.clear();
       const rows: [string, string, string | ProviderInfo][] = [
         ['auto', '자동', '로그인된 계정 중 가장 빠른 것'],
         ['claude-code', 'Claude Code', providers['claude-code']],
         ['codex', 'Codex', providers.codex],
         ['api', 'Anthropic API 키', providers.api],
       ];
-      for (const [id, name, info] of rows) {
+      providersRegion.render(rows.map(([id, name, info]) => {
         const usable = typeof info === 'string' || info.loggedIn;
         const who = typeof info === 'string' ? info : !info.installed ? '설치 안 됨' : info.loggedIn ? info.account ?? (id === 'api' ? '키 저장됨' : '로그인됨') : id === 'api' ? '키 없음 · 계정·토큰에서 입력' : '로그인 필요';
-        const input = h('input', { type: 'radio', name: 'provider', value: id, checked: settingsStore.getSnapshot().saved.provider === id, disabled: !usable });
-        input.onchange = () => settingsStore.save({ provider: id });
-        box.append(h('label', { class: `choice${usable ? '' : ' off'}` }, input, h('b', null, name), h('span', { class: 'who' }, who)));
-        if (USAGE_IDS.includes(id) && (info as ProviderInfo).loggedIn) box.append(h('div', { class: 'usage', 'data-usage': id }));
-      }
+        return {
+          id, name, who, usable, checked: settingsStore.getSnapshot().saved.provider === id,
+          change: () => settingsStore.save({ provider: id }),
+          usage: USAGE_IDS.includes(id) && Boolean((info as ProviderInfo).loggedIn),
+        };
+      }));
       drawUsage();
       renderSideCleanup();
     }
@@ -304,22 +313,22 @@ export function mountSettings({ api, settings: settingsStore, issues, toast, con
 
   async function renderPerms(status?: Record<string, string>) {
     status ??= await api.permStatus();
-    const list = document.getElementById('permList')!;
-    list.replaceChildren();
+    const render = permissionsRegion.rebuild();
+    const rows: PermissionView[] = [];
+    render(rows);
     for (const p of PERMS) {
       const st = status![p.kind];
       const ok = st === 'granted' || st === 'unsupported';
       const optional = !ok && p.optional?.();
       const first = st === 'not-determined' || st === 'unknown';
-      const row = h('div', { class: 'perm' },
-        h('div', { class: 'field-text' }, h('b', null, p.name), h('span', null, optional ? `${p.what} · 화상 회의 녹음을 켤 때만 필요` : p.what)));
-      if (ok) row.append(h('span', { class: 'pill ok' }, st === 'granted' ? '허용됨' : '이 macOS에서는 지원 안 됨'));
-      else {
-        const btn = h('button', { class: 'btn small primary' }, first ? '허용하기' : '시스템 설정 열기') as HTMLButtonElement;
-        btn.onclick = () => requestPerm(p.kind, btn);
-        row.append(btn);
-      }
-      list.append(row);
+      const row: PermissionView = {
+        name: p.name,
+        what: optional ? `${p.what} · 화상 회의 녹음을 켤 때만 필요` : p.what,
+        status: ok ? st === 'granted' ? '허용됨' : '이 macOS에서는 지원 안 됨' : null,
+        action: ok ? null : { className: 'btn small primary', label: first ? '허용하기' : '시스템 설정 열기', click: (btn) => requestPerm(p.kind, btn) },
+      };
+      rows.push(row);
+      render([...rows]);
       issues.set(`perm:${p.kind}`, ok || optional ? null : {
         title: `${p.name} 권한이 필요합니다`, detail: `${p.what}에 씁니다.`, sec: 'perms',
         action: first ? '허용하기' : '시스템 설정 열기', onAction: () => requestPerm(p.kind),
@@ -335,21 +344,19 @@ export function mountSettings({ api, settings: settingsStore, issues, toast, con
   let setupWasRunning = false;
 
   function renderSetup(list: SetupComponent[]) {
-    const box = document.getElementById('compList')!;
-    box.replaceChildren();
     let total = 0;
     const running = list.some((c) => c.job?.running);
     document.getElementById('engineDot')!.hidden = !list.some((c) => !c.installed && c.id !== 'large');
-    for (const c of list) {
+    const rows: SetupView[] = list.map((c) => {
       if (c.installed && c.size) total += c.size;
       const job = c.job;
-      const state = job?.running ? ['', '설치 중'] : job?.error ? ['bad', '실패'] : c.installed ? ['ok', '설치됨'] : c.partial ? ['bad', '모델 없음'] : ['', '없음'];
-      const acts = h('div', { class: 'comp-acts' });
+      const state: [string, string] = job?.running ? ['', '설치 중'] : job?.error ? ['bad', '실패'] : c.installed ? ['ok', '설치됨'] : c.partial ? ['bad', '모델 없음'] : ['', '없음'];
+      const actions: ActionView[] = [];
       if (!c.installed && !job?.running && !(c.blocker === 'brew')) {
-        acts.append(h('button', { class: 'btn small primary', onclick: () => api.setupInstall(c.id) }, job?.error ? '다시 시도' : c.id === 'engine' ? '설치' : '받기'));
+        actions.push({ className: 'btn small primary', click: () => api.setupInstall(c.id), label: job?.error ? '다시 시도' : c.id === 'engine' ? '설치' : '받기' });
       }
       if (c.installed && c.removable && !job?.running) {
-        acts.append(h('button', { class: 'btn small ghost', onclick: async () => {
+        actions.push({ className: 'btn small ghost', click: async () => {
           if (!(await confirm(`${c.name}을(를) 지울까요?`, `${gb(c.size!)}를 확보합니다. 필요하면 언제든 다시 받을 수 있습니다.`, '지우기'))) return;
           try {
             await api.setupRemove(c.id);
@@ -358,18 +365,21 @@ export function mountSettings({ api, settings: settingsStore, issues, toast, con
           } catch (err) {
             toast('지우지 못했습니다', (err as Error).message, { bad: true });
           }
-        } }, '지우기'));
+        }, label: '지우기' });
       }
-      const row = h('div', { class: 'comp' },
-        h('div', { class: 'comp-main' }, h('b', null, c.name), h('span', null, c.desc)),
-        h('div', { class: 'comp-side' }, h('span', { class: `pill ${state[0]}` }, state[1]), c.size && (c.installed || c.id !== 'engine') && num(c.installed ? gb(c.size!) : `약 ${gb(c.size!)}`)),
-        acts);
-      if (job?.running) row.append(h('div', { class: 'comp-progress' }, h('div', { class: `bar${job.pct == null ? ' indeterminate' : ''}` }, h('i', { style: `width:${Math.round((job.pct ?? 0.3) * 100)}%` })), h('span', null, job.text ?? '')));
-      if (job?.error) row.append(h('div', { class: 'comp-note bad' }, job.error, c.blocker === 'token' && h('button', { class: 'link', onclick: () => openSettings('accounts') }, '토큰 넣기')));
-      if (!c.installed && c.blocker === 'brew') row.append(h('div', { class: 'comp-note' }, '터미널에서 Homebrew를 먼저 설치하세요.', h('button', { class: 'link', onclick: () => api.openExternal('https://brew.sh') }, 'brew.sh 열기')));
-      if (!c.installed && c.blocker === 'token' && !job?.running && !job?.error) row.append(h('div', { class: 'comp-note' }, 'Hugging Face 토큰이 있어야 모델을 받을 수 있습니다.', h('button', { class: 'link', onclick: () => openSettings('accounts') }, '토큰 넣기')));
-      box.append(row);
-    }
+      const notes: SetupView['notes'][number][] = [];
+      if (job?.error) notes.push({ className: 'comp-note bad', text: job.error, action: c.blocker === 'token' ? { className: 'link', click: () => openSettings('accounts'), label: '토큰 넣기' } : null });
+      if (!c.installed && c.blocker === 'brew') notes.push({ className: 'comp-note', text: '터미널에서 Homebrew를 먼저 설치하세요.', action: { className: 'link', click: () => api.openExternal('https://brew.sh'), label: 'brew.sh 열기' } });
+      if (!c.installed && c.blocker === 'token' && !job?.running && !job?.error) notes.push({ className: 'comp-note', text: 'Hugging Face 토큰이 있어야 모델을 받을 수 있습니다.', action: { className: 'link', click: () => openSettings('accounts'), label: '토큰 넣기' } });
+      return {
+        name: c.name, desc: c.desc, state,
+        size: c.size && (c.installed || c.id !== 'engine') && (c.installed ? gb(c.size!) : `약 ${gb(c.size!)}`),
+        actions,
+        progress: job?.running ? { indeterminate: job.pct == null, width: Math.round((job.pct ?? 0.3) * 100), text: job.text ?? '' } : null,
+        notes,
+      };
+    });
+    setupRegion.render(rows);
     document.getElementById('compTotal')!.textContent = `앱 폴더 사용량 ${gb(total)} · ~/Library/Application Support/meeting-recorder`;
     // 설치가 끝나면 화자 구분·엔진 상태를 다시 읽는다
     if (setupWasRunning && !running) void settingsStore.refresh();
@@ -402,9 +412,9 @@ export function mountSettings({ api, settings: settingsStore, issues, toast, con
     }
     await settingsStore.refreshProviders(true); // 다듬기 칸·왼쪽 아래 다듬기 표시도 같이 바뀌게
     const p = settingsStore.getSnapshot().providers!;
-    document.getElementById('connAccounts')!.replaceChildren(...([['claude-code', 'Claude Code'], ['codex', 'Codex']] as const).map(([id, name]) => {
+    accountsRegion.render(([['claude-code', 'Claude Code'], ['codex', 'Codex']] as const).map(([id, name]) => {
       const info = p[id];
-      return h('div', { class: 'account' }, h('b', null, name), h('span', { class: info.loggedIn ? 'ok' : '' }, !info.installed ? '설치 안 됨' : info.loggedIn ? `로그인됨${info.account ? ` · ${info.account}` : ''}` : '로그인 안 됨'));
+      return { name, className: info.loggedIn ? 'ok' : '', text: !info.installed ? '설치 안 됨' : info.loggedIn ? `로그인됨${info.account ? ` · ${info.account}` : ''}` : '로그인 안 됨' };
     }));
   }
 
