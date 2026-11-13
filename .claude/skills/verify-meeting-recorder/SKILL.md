@@ -16,7 +16,7 @@ description: Meeting Recorder(macOS Electron 받아쓰기·회의록 앱)의 화
 | 떠 있는 받아쓰기 막대 | `npx electron scripts/dev/overlay-check.js` | 아래 "다른 면" |
 | 명령줄 도구 `mr` (읽기 전용) | `npm test`의 `src/cli/mr.test.mts` (가짜 녹음 폴더, `--dir`) | 아래 "다른 면" |
 
-`npm start`는 **쓰지 않는다**: 실제 녹음 폴더(`~/Documents/MeetingRecorder`)와 설정을 쓰고, 설치된 앱과 단일 실행 잠금이 겹친다. 설치된 앱(`/Applications/Meeting Recorder.app`)이 켜져 있어도 끄거나 조작하지 않는다 — 사용자가 녹음 중일 수 있다.
+`npm start`는 **쓰지 않는다**: 실제 녹음 폴더(`~/Documents/MeetingRecorder`)와 설정을 쓰고, 설치된 앱과 단일 실행 잠금이 겹친다. 설치된 앱(`/Applications/Meeting Recorder 0.1.0 (…).app`)이 켜져 있어도 끄거나 조작하지 않는다 — 사용자가 녹음 중일 수 있다.
 
 ## 1. 점검 (Doctor) — 먼저, 그리고 뭔가 이상하면 언제든
 
