@@ -1,21 +1,81 @@
+import type { RecorderApi } from '../../shared/api/index.ts';
+
+export type RecordingMode = 'memo' | 'meeting';
+export type RecordingTrack = 'mic' | 'system';
+
+export interface RecorderOptions {
+  api: Pick<RecorderApi, 'start' | 'chunk' | 'stop'>;
+  onLevel?: (track: RecordingTrack, db: number) => void;
+}
+
+export interface RecorderMicOptions {
+  deviceId?: string;
+  echoCancellation: boolean;
+}
+
+export interface RecorderStartOptions extends RecorderMicOptions {
+  mode: RecordingMode;
+  includeSystem?: boolean;
+}
+
+export interface RecorderStopOptions {
+  discard?: boolean;
+}
+
+export interface RecorderStartResult {
+  dir: string;
+  tracks: RecordingTrack[];
+  warnings: string[];
+  devices: Partial<Record<RecordingTrack, string | null>>;
+  timing: { acquireMs: number; startMs: number };
+}
+
+export interface RecorderStopResult {
+  dir: string;
+  mode: RecordingMode;
+  sampleRate: number;
+  bitDepth: number;
+  startedAt: Date;
+  endedAt: Date;
+  devices: Partial<Record<RecordingTrack, string | null>>;
+  files: Partial<Record<RecordingTrack, { file: string; durationSec: number }>>;
+  speakers?: number;
+}
+
+interface ActiveRecording {
+  mode: RecordingMode;
+  node: AudioWorkletNode;
+  sink: GainNode;
+  sources: MediaStreamAudioSourceNode[];
+  streams: Partial<Record<RecordingTrack, MediaStream>>;
+  dir: string;
+  startedAt: number;
+}
+
 // 마이크 / 시스템 오디오를 하나의 AudioContext(48kHz)로 받아 트랙별 WAV로 기록한다.
 const SAMPLE_RATE = 48000;
 const BLUETOOTH_HINT = /airpods|bluetooth|buds|headset|hands-?free|beats|jabra|bose|wh-1000|wf-1000/i;
 
 export class Recorder {
-  constructor({ api, onLevel }) {
+  declare api: RecorderOptions['api'];
+  declare onLevel: RecorderOptions['onLevel'];
+  declare active: ActiveRecording | null;
+  declare ready?: Promise<void>;
+  declare ctx: AudioContext;
+
+  constructor({ api, onLevel }: RecorderOptions) {
     this.api = api;
     this.onLevel = onLevel;
     this.active = null;
   }
 
-  get isRecording() {
+  get isRecording(): boolean {
     return this.active !== null;
   }
 
   // AudioContext와 Worklet을 앱 시작 때 미리 준비해 둔다 (꾹 누르기 시작 지연 단축).
   // 대기 중에는 suspend 상태라 오디오 장치를 점유하지 않는다.
-  async prepare() {
+  async prepare(): Promise<void> {
     if (this.ready) return this.ready;
     this.ready = (async () => {
       this.ctx = new AudioContext({ sampleRate: SAMPLE_RATE, latencyHint: 'interactive' });
@@ -25,7 +85,7 @@ export class Recorder {
     return this.ready;
   }
 
-  async getMic({ deviceId, echoCancellation }) {
+  async getMic({ deviceId, echoCancellation }: RecorderMicOptions): Promise<MediaStream> {
     return navigator.mediaDevices.getUserMedia({
       audio: {
         deviceId: deviceId ? { exact: deviceId } : undefined,
@@ -38,7 +98,7 @@ export class Recorder {
     });
   }
 
-  async getSystemAudio() {
+  async getSystemAudio(): Promise<MediaStream> {
     const stream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: false });
     for (const t of stream.getVideoTracks()) {
       t.stop();
@@ -51,11 +111,11 @@ export class Recorder {
   }
 
   // mode: 'memo' | 'meeting'. includeSystem이면 상대방 소리(시스템 오디오)도 따로 녹음한다
-  async start({ mode, deviceId, echoCancellation, includeSystem = false }) {
+  async start({ mode, deviceId, echoCancellation, includeSystem = false }: RecorderStartOptions): Promise<RecorderStartResult | undefined> {
     if (this.active) return;
     const t0 = performance.now();
-    const streams = {};
-    const warnings = [];
+    const streams: Partial<Record<RecordingTrack, MediaStream>> = {};
+    const warnings: string[] = [];
     const [mic, system] = await Promise.allSettled([
       this.getMic({ deviceId, echoCancellation }),
       includeSystem ? this.getSystemAudio() : Promise.resolve(null),
@@ -76,8 +136,8 @@ export class Recorder {
     }
 
     const ctx = this.ctx;
-    const tracks = Object.keys(streams);
-    const devices = Object.fromEntries(tracks.map((t) => [t, streams[t].getAudioTracks()[0]?.label ?? null]));
+    const tracks = Object.keys(streams) as RecordingTrack[];
+    const devices = Object.fromEntries(tracks.map((t) => [t, streams[t]!.getAudioTracks()[0]?.label ?? null]));
     const { dir } = await this.api.start({ mode, sampleRate: ctx.sampleRate, tracks, devices });
 
     await ctx.resume();
@@ -93,16 +153,16 @@ export class Recorder {
     const startMs = Math.round(performance.now() - t0);
 
     const sources = tracks.map((t, i) => {
-      const src = ctx.createMediaStreamSource(streams[t]);
+      const src = ctx.createMediaStreamSource(streams[t]!);
       src.connect(node, 0, i);
       return src;
     });
 
-    node.port.onmessage = (e) => {
+    node.port.onmessage = (e: MessageEvent<{ tracks?: Float32Array[] } | null>) => {
       if (!e.data?.tracks) return;
       e.data.tracks.forEach((samples, i) => {
         this.api.chunk(tracks[i], samples);
-        this.onLevel?.(tracks[i], rmsDb(samples));
+        this.onLevel?.(tracks[i]!, rmsDb(samples));
       });
     };
 
@@ -110,13 +170,13 @@ export class Recorder {
     return { dir, tracks, warnings, devices, timing: { acquireMs, startMs } };
   }
 
-  async stop({ discard = false } = {}) {
+  async stop({ discard = false }: RecorderStopOptions = {}): Promise<RecorderStopResult | null> {
     if (!this.active) return null;
     const { node, sink, sources, streams } = this.active;
     this.active = null;
-    await new Promise((resolve) => {
+    await new Promise<void>((resolve) => {
       const timer = setTimeout(resolve, 1000);
-      const prev = node.port.onmessage;
+      const prev = node.port.onmessage as ((e: MessageEvent) => void) | null;
       node.port.onmessage = (e) => {
         prev?.(e);
         if (e.data === 'done') {
@@ -135,8 +195,8 @@ export class Recorder {
   }
 }
 
-export function rmsDb(samples) {
+export function rmsDb(samples: Float32Array): number {
   let sum = 0;
-  for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
+  for (let i = 0; i < samples.length; i++) sum += samples[i]! * samples[i]!;
   return 20 * Math.log10(Math.sqrt(sum / Math.max(1, samples.length)) + 1e-10);
 }

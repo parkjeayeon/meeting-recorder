@@ -1,4 +1,4 @@
-// 옮긴 화면의 HTML이 main과 같은지 상태마다 찍어 비교한다 (docs/testing.md) — 회의 페이지(#view), 홈의 문제 알림, ⌘K 빠른 검색, 설정 창과 사이드바, 처음 설정(#onboard).
+// 옮긴 화면의 HTML이 main과 같은지 상태마다 찍어 비교한다 (docs/testing.md) — 회의 페이지(#view), 홈의 문제 알림, 위 막대·사이드바·회의 시작 창·가져오기 창, ⌘K 빠른 검색, 설정 창과 사이드바, 처음 설정(#onboard).
 //   git worktree add --detach /tmp/wt-main main && ln -s "$PWD/node_modules" /tmp/wt-main/node_modules && (cd /tmp/wt-main && npm run build:ts && npm run build:renderer)
 //   npm run build:renderer && node scripts/dev/view-parity.js /tmp/wt-main /tmp/parity [이름 일부]
 // 같은 상태를 두 쪽에서 연달아 찍는다(가짜 기록의 시각이 지금 기준이라). 다르면 <이름>.diff를 남기고 끝에 실패로 끝난다.
@@ -38,6 +38,11 @@ const STATES = [
   ['빠른 검색 · 받아쓰기 찾기', PAL, `document.getElementById('openPalette').click(); await wait(); type('#paletteInput', '받아쓴 글'); await wait()`, '#home'],
   ['빠른 검색 · 아래로 둘', PAL, `document.getElementById('openPalette').click(); await wait(); const i = document.getElementById('paletteInput'); i.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' })); i.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown' })); await wait()`, '#home'],
   ['빠른 검색 · 없음', PAL, `document.getElementById('openPalette').click(); await wait(); type('#paletteInput', 'zzqx'); await wait()`, '#home'],
+  ['껍데기 · 위 막대', { DUMP_SEL: '.topbar' }, null, '#home'],
+  ['껍데기 · 사이드바 기록 많음', { DUMP_SEL: '.side', STUB_DICTS: '3', STUB_HISTORY_DICTS: '1', STUB_MANY: '12' }, null, '#home'],
+  ['껍데기 · 회의 시작 창', { DUMP_SEL: '#meetStart' }, `document.getElementById('meetingBtn').click(); await wait()`, '#home'],
+  ['껍데기 · 회의 시작 창 4명 화상', { DUMP_SEL: '#meetStart' }, `document.getElementById('meetingBtn').click(); await wait(); need(document.querySelector('#startSpeakers [data-n="4"]'), '4명').click(); need(document.querySelector('#startKind [data-kind="online"]'), '화상').click(); await wait()`, '#home'],
+  ['껍데기 · 가져오기 창', { DUMP_SEL: '#importSheet' }, `btn('파일 가져오기').click(); await wait(1000)`, '#meetings'],
   ...SETTINGS,
   ['설정 · 사이드바만', BOX, `keep('.side')`, '#home'],
   ['설정 · 언어 바꾸기', BOX, `const sel = need(document.getElementById('sideLanguage'), '언어'); sel.value = 'en'; sel.dispatchEvent(new Event('change', { bubbles: true })); await wait(1000); await settings('general'); keep('#settings', '.side', '#toasts')`, '#home'],
