@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanGuess, inlineGuesses, locateHeard, noteVariants, searchKeys, stampFor, stampFromNote, toReviewItems } from './review.mjs';
+import { cleanGuess, finalizeResults, inlineGuesses, locateHeard, noteVariants, searchKeys, stampFor, stampFromNote, toReviewItems } from './review.mjs';
 
 const transcript = '[00:05] [화자 1] 통신 한정성이 제일 중요해요\n[12:30] [화자 2] 랩캐시도 쪽은 제가 볼게요\n';
 
@@ -123,5 +123,34 @@ describe('stampFromNote', () => {
     expect(stampFromNote('매출 30억 외에 내년 목표 매출은 말이 끊겨 확인할 수 없음.', near)).toBe('12:10');
     const far = '[12:10] [화자 2] 매출은 30억\n[50:00] [화자 1] 매출은 30억이라니까\n';
     expect(stampFromNote('매출 30억 외에 내년 목표 매출은 말이 끊겨 확인할 수 없음.', far)).toBeNull();
+  });
+});
+
+describe('finalizeResults', () => {
+  const long = Array.from({ length: 40 }, (_, i) => ({ start: 5000 + i * 15, label: i % 2 ? '화자 2' : '화자 1', text: `되살린 말 ${i} — 배포 전에 결제 흐름을 다시 확인하기로 함` }));
+  const redoItem = {
+    id: 'r4', kind: 'lost' as const, at: '1:23:20', heard: null, heardNote: null, note: '구간 녹음이 흐림', status: 'applied', applied: '구간 다시 받아씀',
+    chat: [{ user: '(1:23:20~1:33:20 구간을 다시 받아써 녹취에 반영함)', assistant: 'x'.repeat(1200) }],
+    redo: { lines: long, appliedAt: '2026-11-14T00:00:00Z' },
+  };
+
+  it('반영한 구간은 다시 받아쓴 줄 전체를 스크립트 꼴로 (채팅의 1,200자에서 잘리지 않음)', () => {
+    const [r] = finalizeResults([redoItem]);
+    const lines = (r!.recovered as string).split('\n');
+    expect(lines).toHaveLength(40);
+    expect(lines[0]).toBe('[1:23:20] [화자 1] 되살린 말 0 — 배포 전에 결제 흐름을 다시 확인하기로 함');
+    expect(lines.at(-1)).toBe('[1:33:05] [화자 2] 되살린 말 39 — 배포 전에 결제 흐름을 다시 확인하기로 함');
+    expect((r!.recovered as string).length).toBeGreaterThan(1200);
+    expect(r!.corrected).toBe('구간 다시 받아씀');
+  });
+
+  it('반영 전(받아쓰기만 함)이나 다른 항목은 recovered가 없고, 나머지 꼴은 그대로', () => {
+    const [notApplied, word] = finalizeResults([
+      { ...redoItem, status: 'open', redo: { lines: long } },
+      { id: 'r1', kind: 'word', at: '00:15', heard: '랩캐시도', heardNote: null, note: '오인식', status: 'resolved', resolution: 'Memcached 맞음', request: '이거 확인' },
+    ]);
+    expect(notApplied).not.toHaveProperty('recovered');
+    expect(notApplied!.corrected).toBeNull();
+    expect(word).toEqual({ id: 'r1', kind: 'word', at: '00:15', status: 'resolved', note: '오인식', heard: '랩캐시도', corrected: null, user_request: '이거 확인', confirmed: 'Memcached 맞음', chat: null });
   });
 });

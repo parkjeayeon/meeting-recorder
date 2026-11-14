@@ -1,4 +1,5 @@
 // 확인 필요 항목 다듬기 (LLM 출력 → 항목). 파일을 읽거나 쓰지 않는다. src/minutes.js가 불러 쓴다.
+import { clock } from './script.mjs';
 
 export interface ReviewItem {
   id: string;
@@ -139,4 +140,24 @@ export function searchKeys(item: Pick<ReviewItem, 'heard' | 'heardNote' | 'note'
   }
   const body = transcript.split('\n').map((l) => l.replace(/^\[[\d:]+\]\s*(?:\[[^\]]+\]\s*)?/, '')).join('\n');
   return [...new Set([...whole, ...parts])].filter((k) => body.includes(k));
+}
+
+interface RedoLine { start: number; label?: string | null; text: string }
+type FinalizeItem = Pick<ReviewItem, 'id' | 'kind' | 'at' | 'heard' | 'heardNote' | 'status' | 'note'> & {
+  applied?: string | null;
+  chat?: { user: string; assistant: string }[];
+  request?: string;
+  resolution?: string;
+  redo?: { lines?: RedoLine[]; appliedAt?: unknown };
+};
+
+// 확인 마치기에서 회의록 모델에 넘기는 항목 결과. 구간을 다시 받아써 녹취에 반영한 항목은 다시 받아쓴 줄 전체(recovered, 스크립트 꼴)를 따로 넘긴다
+// — 채팅 기록에는 화면용으로 앞부분만(1,200자) 남아 있어, 그것만 넘기면 긴 구간의 뒷부분이 회의록에 들어가지 못했다
+export function finalizeResults(items: FinalizeItem[]) {
+  return items.map(({ id, kind, at, heard, heardNote, applied, status, note, chat, request, resolution, redo }) => ({
+    id, kind, at, status, note, heard: heard ?? heardNote, corrected: status === 'applied' ? applied ?? null : null,
+    ...(request ? { user_request: request } : {}), ...(resolution ? { confirmed: resolution } : {}),
+    chat: (chat ?? []).map((c) => `사용자: ${c.user}\n답: ${c.assistant}`).join('\n---\n') || null,
+    ...(redo?.appliedAt && redo.lines?.length ? { recovered: redo.lines.map((l) => `[${clock(l.start)}]${l.label ? ` [${l.label}]` : ''} ${l.text}`).join('\n') } : {}),
+  }));
 }
