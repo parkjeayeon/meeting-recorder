@@ -9,7 +9,7 @@ const dictation = require('./dictation');
 const { complete, parseJson } = require('./cleanup');
 const sandbox = require('./sandbox');
 const glossary = require('./glossary');
-const { nameSpeakers, writeFileAtomic, writeJsonAtomic, copyFileAtomic, cleanGuess, inlineGuesses, toReviewItems, noteVariants, stampFor, locateHeard, searchKeys, checkMinutes, smoothTurns } = require('../lib/core/index.mjs'); // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
+const { nameSpeakers, writeFileAtomic, writeJsonAtomic, copyFileAtomic, cleanGuess, inlineGuesses, toReviewItems, finalizeResults, noteVariants, stampFor, locateHeard, searchKeys, checkMinutes, smoothTurns } = require('../lib/core/index.mjs'); // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
 
 const LONG_TIMEOUT_MS = 10 * 60 * 1000; // 1시간짜리 회의도 여유 있게
 const SPEAKER = { mic: '나', system: '상대방' };
@@ -695,6 +695,7 @@ const FINALIZE_SYSTEM = `You finalize Korean meeting minutes (Markdown) after th
 You get the current minutes and the review results: corrections applied to the transcript (heard → corrected), items the user confirmed without changing the transcript (status resolved, confirmed = what was confirmed — treat as resolved and reflect it in the sentence), what the user explained in chat or asked when adding an item (user_request), and items the user chose to leave unresolved.
 Return the full minutes in the same Markdown structure, changing only what the review affects:
 - Where a correction or the user's explanation changes a statement, name, owner, decision or to-do, rewrite just that sentence. Add a short bullet only when the chat revealed content the minutes left out.
+- An item with "recovered" holds transcript lines that were lost or garbled and have now been re-transcribed (the full text; the chat shows only its beginning). Add what those lines say to the sections where it belongs — discussion bullets, decisions, to-dos — as much as the minutes would have written had those lines been there from the start: more for a long substantive passage, nothing for small talk or content the minutes already cover. Follow the minutes' existing style: bullets of 1–2 sentences, to-dos as "- [ ] task — 담당: …", timestamps quoted exactly as in the lines (e.g. (1:24:53)). Never invent beyond the lines.
 - In "## 확인 필요": drop items that were resolved; keep unresolved ones, each starting with "확인 불가: ". Remove the section if nothing is left.
 - Remove an inline guess in parentheses (e.g. "(안정성으로 추정)") once its item is resolved; for an unresolved one keep the sentence as it is.
 - Keep every other sentence exactly as it is. Do not summarize again, reorder or restyle.
@@ -1375,10 +1376,7 @@ async function finalizeReview(dir) {
   let provider = null;
   if (meaningful.length) {
     const md = readText(dir, 'minutes.md');
-    const results = review.items.map(({ id, kind, at, heard, heardNote, applied, status, note, chat, request, resolution }) => ({
-      id, kind, at, status, note, heard: heard ?? heardNote, corrected: status === 'applied' ? applied : null, ...(request ? { user_request: request } : {}), ...(resolution ? { confirmed: resolution } : {}),
-      chat: (chat ?? []).map((c) => `사용자: ${c.user}\n답: ${c.assistant}`).join('\n---\n') || null,
-    }));
+    const results = finalizeResults(review.items);
     const settings = dictation.getSettings();
     const out = await complete({
       system: FINALIZE_SYSTEM,
