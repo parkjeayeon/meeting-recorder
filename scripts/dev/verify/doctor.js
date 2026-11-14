@@ -18,6 +18,7 @@ const newest = (dir, ext) => {
 let electron = null;
 try { electron = require(path.join(ROOT, 'node_modules/electron')); } catch {}
 row('Electron', Boolean(electron && fs.existsSync(electron)), electron ?? 'npm install 필요');
+row('Playwright', fs.existsSync(path.join(ROOT, 'node_modules/@playwright/test')), 'drive.js·verify:journeys가 앱을 띄우는 도구 (없으면 npm install)');
 const core = path.join(ROOT, 'lib/core/index.mjs');
 const built = fs.existsSync(core) ? newest(path.join(ROOT, 'lib/core'), '.mjs') : 0;
 const src = newest(path.join(ROOT, 'src/core'), '.mts');
