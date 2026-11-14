@@ -1,6 +1,6 @@
 // 화면 확인용 가짜 recorderApi. 메인 프로세스 없이 src/renderer/index.html만 띄워 화면을 본다.
 // src/preload.js의 함수 이름을 그대로 읽어 같은 모양을 만들고, 몇 가지만 예시 데이터를 돌려준다.
-// 녹음·fn·권한·설치는 실제로 하지 않는다. 예시 회의는 STUB_MEETING_DIR(scripts/dev/screens.js가 만든 임시 폴더)에서 읽는다.
+// 녹음·fn·권한·설치는 실제로 하지 않는다. 예시 회의는 STUB_MEETING_DIR(시험이 만든 임시 폴더)에서 읽는다. Playwright 시험(e2e/)과 검증 도구(scripts/dev/verify/)가 쓴다.
 const { contextBridge } = require('electron');
 const fs = require('fs');
 const path = require('path');
@@ -115,7 +115,7 @@ const impl = {
     calls.saveSvg = { name, svg };
     return `/tmp/stub/${name}.svg`;
   },
-  // ── 기능 시험(scripts/dev/feature-test.js)이 쓰는 흉내: 회의 폴더(STUB_MEETING_DIR)의 파일을 실제로 바꾼다 ──
+  // ── 기능 시험(e2e/)이 쓰는 흉내: 회의 폴더(STUB_MEETING_DIR)의 파일을 실제로 바꾼다 ──
   setReviewStatus: async (_d, ids, status) => {
     const review = JSON.parse(read('review.json'));
     for (const it of review.items) if (ids.includes(it.id)) it.status = status;

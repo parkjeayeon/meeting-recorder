@@ -5,7 +5,7 @@
 TS + React 전환과 `legacy/` 삭제 완료. `app/`이 조립을 맡고 `app/boot.ts`의 `startRenderer()`가 시작 순서를 관리한다.
 
 - 녹음 위 막대·회의 시작 창 마크업도 React로 옮겨, index.html에는 빈 자리(호스트)만 남았다.
-- 다음 단계: E2E 시험을 Playwright로 전환.
+- E2E 시험도 Playwright Electron으로 옮겼다(2026-11-14, 아래 "시험 도구 전환"). 전환 계획은 모두 끝.
 
 ## 조건 (사용자 결정, 2026-11-11)
 - **동작은 그대로, 안쪽만 바꾼다.** 사용자가 보는 화면 글자·버튼 이름(aria)·흐름·결과가 같아야 한다. 동작을 바꾸고 싶어지면 옮기는 일과 따로, 먼저 묻는다.
@@ -13,7 +13,7 @@ TS + React 전환과 `legacy/` 삭제 완료. `app/`이 조립을 맡고 `app/bo
 - 구조는 FSD(Feature-Sliced Design): app · pages · widgets · features · entities · shared, 조각마다 ui/model/api와 시험.
 
 ## 합격 기준
-화면 하나를 옮길 때마다 아래가 **시험을 고치지 않고** 통과해야 한다.
+화면 하나를 옮길 때마다 아래가 **시험을 고치지 않고** 통과해야 한다. (옮기는 동안의 기준이다. 아래 옛 시험 도구는 끝난 뒤 Playwright로 옮겼다 — `npm run test:e2e`·`test:screens`)
 - `npm run test:ui` (화면 시험 48건: 입력칸 진짜 키, 진행 중 표시, 툴팁 …)
 - `npm run test:feature` (기능 시험 46건: 사용자가 하는 일마다 화면 결과와 본체 호출)
 - `npm run verify:journeys` (검증 스킬의 흐름, 지금 10개, `.claude/skills/verify-meeting-recorder/`)
@@ -51,17 +51,17 @@ TS + React 전환과 `legacy/` 삭제 완료. `app/`이 조립을 맡고 `app/bo
    - 옮기는 화면이 읽는 상태는 창구(읽기 스냅샷 + 명령)로 열고, 상태 한 칸을 옮길 땐 그 칸의 쓰기와 IPC 구독을 한 번에 옮긴다. 입력칸은 uncontrolled, 시험이 찾는 클래스는 그대로.
    - 녹음 처리는 `features/recording/capture.ts`로 옮겼다. 오디오 워크릿(`recorder-worklet.js`)은 그대로다.
 
-## 시험 도구 전환
-**다음 단계는 E2E 시험의 Playwright 전환.** 화면 전환은 끝났고, 기존 E2E 시험은 유지한다. 시험 도구와 제품 동작은 동시에 바꾸지 않는다.
+## 시험 도구 전환 (끝남, 2026-11-14)
+화면 전환이 끝난 뒤, 시험 도구만 따로 바꿨다(시험과 제품 동작을 동시에 바꾸지 않는다). 제품 코드는 그대로.
 
-| 층 | 지금 | 옮긴 뒤 | 언제 |
-|---|---|---|---|
-| 코어·로직 | Vitest | 그대로 (+ `@vitest/coverage-v8`) | — |
-| 컴포넌트 | Vitest + jsdom, FSD 조각 옆에 | 필요하면 `@testing-library/react` + `@testing-library/user-event` 추가 | 시험 도구 전환 때 |
-| 기능(E2E) | `feature-test.js`·`ui-test.js`·`verify/drive.js` (직접 만든 Electron 도구 + 가짜 API) | Playwright Electron(`_electron.launch`), `getByRole`·자동 대기·trace | 다음 단계: 묶음마다 옮기고 두 시험을 함께 돌리다가 같아지면 옛 도구 삭제 |
-| 화면 비교 | `screens.js` 캡처를 눈으로 | Playwright `toHaveScreenshot()` | Playwright로 옮길 때 |
+| 층 | 전 | 지금 |
+|---|---|---|
+| 코어·로직·컴포넌트 | Vitest (+ jsdom, FSD 조각 옆에) | 그대로 |
+| 기능·화면(E2E) | `feature-test.js`·`ui-test.js`·`overlay-check.js` (직접 만든 Electron 도구 + 가짜 API) | Playwright Electron(`e2e/`, `_electron.launch`) — 역할·이름으로 찾기, 될 때까지 기다리기, 진짜 마우스·키보드, 실패하면 trace, 넷이 동시에 |
+| 검증 스킬 흐름 | `verify/drive.js`·`run-all.js` | 흐름 JSON은 그대로, 실행만 Playwright(`verify/steps.js`) — `drive.js`(증거)와 `e2e/journeys.e2e.ts`가 같이 씀 |
+| 화면 비교 | `screens.js` 캡처를 눈으로 | `toHaveScreenshot()` 픽셀 비교(`e2e/screens.e2e.ts`, 기준은 이 컴퓨터의 `.work/`) |
 
-가짜 API(`scripts/dev/stub-preload.js`)는 계속 쓴다. 화면과 본체가 HTTP가 아니라 IPC로 이야기하므로 MSW 같은 네트워크 흉내는 필요 없다. Playwright에는 가짜 API를 쓰는 작은 시험용 진입점(메인 창 하나만 띄움)을 준다.
+가짜 API(`scripts/dev/stub-preload.js`)는 그대로 쓴다. 화면과 본체가 HTTP가 아니라 IPC로 이야기하므로 MSW 같은 네트워크 흉내는 필요 없다. Playwright에는 가짜 API로 메인 창 하나만 띄우는 시험용 진입점(`e2e/main.cjs`)을 준다. 옮긴 방법과 확인은 [결정 68](decisions.md).
 
 ## 도구 (pstack)
 구조·타입은 `/pstack:architect`로 먼저 잡고, 화면 하나씩 옮긴 뒤 `verify-meeting-recorder` 스킬로 증명한다. 공통 부품과 회의 페이지는 한 흐름에서(나눠 맡기지 않는다).

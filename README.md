@@ -29,7 +29,8 @@ macOS용 Electron 앱. 두 가지 일을 한다.
 npm install
 npm start            # 개발 모드 실행 (fn 감지 헬퍼 빌드 포함)
 npm run selftest     # fn 꾹 누르기·탭·두 번·세 번 누르기, 처리 중 무시, 회의 중 fn 무시, 짧은 회의 녹음 검증
-npm run test:ui      # 화면 테스트: 입력칸마다 진짜 키 입력(영어·Backspace), 오류 알림 글자 대비, 오래 걸리는 작업 중복 방지 (가짜 데이터, 약 20초)
+npm run test:e2e     # E2E 시험(Playwright Electron): 기능·화면(입력칸 진짜 키, 오류 알림 대비, 작업 중복 방지)·떠 있는 막대·검증 흐름 (가짜 데이터, 약 25초)
+npm run test:screens # 화면 캡처 픽셀 비교 (기준은 바꾸기 전에 -- --update-snapshots)
 npm test             # 코어·명령줄 도구 단위 테스트 (Vitest, TypeScript 컴파일 포함)
 npm run test:crash   # 확인 필요 적용·되돌리기가 도중에 끊겼을 때 (강제 종료 포함, 약 30초)
 npm run test:diskfull # 디스크 가득 참에서 파일 쓰기 (RAM 디스크)
@@ -253,6 +254,6 @@ mr schema actions           # 출력 JSON Schema
 - `src/overlay/`: 화면 왼쪽 플로팅 독 (받아쓰기 진행 띠, 회의 녹음 시간)
 - `src/wav-writer.js`: 스트리밍 기록, 5초마다 헤더 갱신(크래시 대비)
 - `scripts/sign-app.sh`: 빌드한 앱 서명 (자체 서명 인증서가 있으면 그걸로, 없으면 ad-hoc)
-- `scripts/dev/`: 개발용 — 서명 인증서 만들기, 키보드 처리기 검사(`check-handlers.js`), 화면 테스트(`ui-test.js`), 화면 캡처, 샌드박스 확인, 고아 프로세스 점검, 회의 사본에 회의록 다시 돌리기, 실험 페이지(`lab/`), 검색 평가(`eval/`) ([docs/testing.md](docs/testing.md))
+- `scripts/dev/`: 개발용 — 서명 인증서 만들기, 키보드 처리기 검사(`check-handlers.js`), 화면 HTML 비교(`view-parity.js`), 샌드박스 확인, 고아 프로세스 점검, 회의 사본에 회의록 다시 돌리기, 실험 페이지(`lab/`), 검색 평가(`eval/`) ([docs/testing.md](docs/testing.md))
 - `eval-runs/`: 검색 평가 원본 결과·LLM 호출 기록·실제 회의 정답·금지어 목록 (git 제외, 실제 회의 내용이 들어감) → 걸러서 `docs/eval/`
 - `docs/images/diagrams.py`: README 아키텍처 그림(SVG) 생성기

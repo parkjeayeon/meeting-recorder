@@ -18,7 +18,7 @@ pstack `architect`로 설계했다(2026-11-12): 같은 문제를 Opus·Codex가 
 npm start                 # build:fn + build:ts + build:renderer + electron .
 npm run dev               # 화면을 지켜보며 다시 묶고(개발 모드) 앱을 띄움 — 고친 뒤 창에서 ⌘R
 npm run build:renderer    # vite build -c vite.renderer.config.mts → lib/renderer/main.js, main.css, assets/
-npm run test:ui | test:feature | verify:journeys | dist     # 화면을 먼저 묶고 시험
+npm run test:e2e | test:screens | verify:journeys | dist     # 화면을 먼저 묶고 시험 (Playwright)
 npm run typecheck         # 코어 + 화면(tsconfig.renderer) + preload(tsconfig.preload) + 경계 검사
 ```
 화면 등록 (예: 사전) — `app/pages.ts`의 경로 표와 그 화면이 읽는 상태의 창구:

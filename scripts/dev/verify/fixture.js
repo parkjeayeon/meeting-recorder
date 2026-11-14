@@ -1,4 +1,4 @@
-// 검증용 예시 회의와 화면 도우미 (지어낸 내용). scripts/dev/feature-test.js와 scripts/dev/verify/drive.js가 같이 쓴다.
+// 검증용 예시 회의와 화면 도우미 (지어낸 내용). Playwright 시험(e2e/app.ts)과 검증 도구(steps.js — drive.js·verify:journeys)가 같이 쓴다.
 // 예시 회의 폴더는 임시 폴더에 새로 만든다 — 실제 녹음 폴더·설정은 건드리지 않는다.
 const fs = require('fs');
 const os = require('os');
@@ -43,7 +43,7 @@ const GLOSSARY = { terms: [
   { id: 'g1', term: 'QA', note: '출시 전에 기능이 제대로 동작하는지 확인하는 품질 검사', basis: 'general', status: 'confirmed', source: 'llm', at: ['00:11'] },
   { id: 'g2', term: '알림', note: '앱 푸시 알림 기능', basis: 'meeting', status: 'suggested', source: 'llm', at: ['00:40'] },
 ] };
-// 흐름도·액션 예시 (화면 캡처 screens.js와 같은 것)
+// 흐름도·액션 예시 (화면 캡처 e2e/screens.e2e.ts와 같은 것)
 const FLOW = { flows: [{
   id: 'f1', title: '배포 절차', summary: 'QA를 마친 뒤 화요일에 배포하고 지켜보는 순서', lanes: [],
   steps: [

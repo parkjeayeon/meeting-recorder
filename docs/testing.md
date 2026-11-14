@@ -7,15 +7,19 @@
 1. 타입 검사 `npm run typecheck` (`src/core`·`src/cli`의 TypeScript)
 2. 단위 테스트 `npm test` (컴파일 후 Vitest, 1초 안팎)
 3. 키보드 처리기 검사 `node scripts/dev/check-handlers.js` (1초 미만)
-4. 화면 테스트 `npm run test:ui` (약 20초, 떠 있는 막대 시험 `scripts/dev/overlay-check.js` 포함)
+4. E2E 시험 `playwright test --project=e2e` (`npm run test:e2e`와 같음, 약 25초): 기능 시험·화면 시험·떠 있는 막대·검증 스킬 흐름 59건, 아래
 5. 끊김 시험 `npm run test:crash` (약 30초, 아래)
 6. 질문으로 찾기 본체 시험 `electron scripts/dev/ask-engine-check.js` (1초 남짓, `test:crash`에도 들어 있음)
 7. 녹음 압축 시험 `electron scripts/dev/compress-check.js` (약 5초, `test:crash`에도 들어 있음): macOS 음성으로 만든 가짜 회의로 압축·풀기·길이 확인·끊긴 뒤 정리·16kHz 제외·그대로 두기
 
-3·4는 아래 "주의할 점"의 두 항목.
+3은 아래 "주의할 점"의 항목.
 
-## 기능 시험 — `npm run test:feature` (`scripts/dev/feature-test.js`)
-사용자가 하는 일 하나씩을 가짜 데이터로 앱을 띄워 해 보고, **화면에 보이는 결과**와 **본체로 간 호출**(가짜 API가 순서대로 남긴 기록 `window.stubLog()`)을 본다. React로 옮기기 전 지금 동작을 못 박아 두는 안전망이라, 클래스 이름이 아니라 **화면 글자·역할(`[role=tab]`)·aria**로 찾는다 — 옮긴 뒤에도 고치지 않고 그대로 통과해야 한다. 묶음마다 새 창과 새 예시 회의 폴더를 쓰고, 묶음이 켠 상태(폴더 막힘·회의록 멈춤)는 다음 묶음 전에 되돌린다. `npm run dist`가 화면 테스트 다음에 돌린다(약 100초). 묶음 이름 일부를 주면 그것만: `npx electron scripts/dev/feature-test.js 확인 필요`.
+## E2E 시험 — `npm run test:e2e` (Playwright Electron, `e2e/`)
+가짜 API(`scripts/dev/stub-preload.js`)로 메인 창을 숨긴 채 띄워(`e2e/main.cjs`, 본체 `src/main.js`는 띄우지 않음) 사용자가 하는 일을 해 보고, **화면에 보이는 결과**와 **본체로 간 호출**(`window.stubLog()`)을 본다. 시험마다 새 앱·새 예시 회의 폴더·새 설정 폴더(임시)를 쓰므로 앞 시험이 바꾼 것이 번지지 않고, 실제 기록·설정은 건드리지 않는다. 넷이 동시에 돌아 약 25초. 화면 오류(console error)가 나면 그 시험이 실패한다.
+- 이름 일부만: `npx playwright test --project=e2e 확인 필요` · 실패하면 `.work/e2e/results/`에 trace(`npx playwright show-trace …`로 단계마다 화면·DOM을 되감아 봄)와 `.work/e2e/report/`
+- 찾기는 역할·이름(`getByRole`)·글자 우선, 기다림은 정해진 시간 대신 될 때까지(`expect`·`expect.poll`). 누르기·입력·키는 진짜 마우스·키보드다. 옛 시험이 JS로 가려진 요소를 눌렀던 몇 곳(채팅이 열린 채 처리함·남은 것, 질문 창이 열린 채 탭 칩)만 `evaluate(b => b.click())`로 그대로 둔다
+- 파일: 기능 시험(`meeting`·`review`·`meetings`·`dictations`·`settings`·`navigation`.e2e.ts, 옛 `feature-test.js` 46건), 화면 시험(`e2e/ui/`, 옛 `ui-test.js` 48건 + 떠 있는 막대 3건 — `e2e/ui/overlay.cjs`로 막대 창을 띄움), 검증 스킬 흐름(`journeys.e2e.ts`, 흐름 하나 = 시험 하나), 공용 준비(`e2e/app.ts`: `stub`·`noMeeting`·`makeDir`·`entry` 옵션과 `called(이름)`·`go(주소)`)
+- 2026-11-14 옛 도구에서 옮겼다: 옛 묶음 하나 = `test` 하나, 옛 check 하나 = 같은 이름의 `test.step` 하나(97개 이름 일대일), 옛 시험과 같은 조건인지 Codex가 97건을 대조 검토, 전체를 세 번씩(177회) 돌려 흔들림 없음, 할 일 체크가 엉뚱한 번호를 보내게 앱을 일부러 고치면 실패함을 확인
 
 | 묶음 | 보는 것 |
 |---|---|
@@ -26,15 +30,15 @@
 | 이동·홈 | 사이드바, 뒤로·앞으로, ⌘K로 회의 찾아 Enter, 홈 챙길 일 → 그 갈래, 최근 회의 줄, 녹음 공간(압축할 수 있는 녹음만) |
 | 멈춘·막힌 상태 | 인터넷이 끊겨 멈춘 회의의 "회의록만 다시 쓰기", 녹음 폴더 접근이 막혔을 때 이유와 "권한 열기" |
 
-시험이 고장을 실제로 잡는지 확인했다: 할 일 체크가 엉뚱한 번호를 보내게, 그대로 두기가 상태를 open으로 하게 앱을 일부러 고치면 그 두 시험이 실패한다. 새 기능을 넣으면 여기에 묶음을 하나 더한다.
+시험이 고장을 실제로 잡는지 확인했다: 할 일 체크가 엉뚱한 번호를 보내게, 그대로 두기가 상태를 open으로 하게 앱을 일부러 고치면 그 두 시험이 실패한다(옮긴 뒤 할 일 체크는 다시 확인). 새 기능을 넣으면 `e2e/`에 시험을 하나 더한다.
 
 ## 검증 스킬 — `.claude/skills/verify-meeting-recorder/` (`npm run verify:journeys`)
 에이전트가 화면을 고친 뒤 사용자처럼 조작해 증명하는 프로젝트 전용 스킬(pstack `create-verification-skill`로 만듦). 도구는 `scripts/dev/verify/`:
-- `doctor.js` — 읽기만 하는 점검(Electron·코어 빌드가 최신인지·가짜 API·증거 폴더·설치된 앱이 켜졌는지·코드 판)
-- `drive.js <흐름.json>` — 가짜 API로 메인 창을 숨긴 채 띄워 단계(`go` `click` `fill` `key`(진짜 키) `confirm` `until` `expect` `snapshot` `screenshot`)대로 조작하고, 증거를 `verify-runs/<시각>-<흐름>/`(git 제외)에: 단계별 결과, 화면 접근성 스냅샷, 캡처, 본체로 간 모든 호출(`stub-log.json`), 끝난 뒤 예시 회의 파일
-- `run-all.js` — 흐름 전부(약 20초, 통과한 흐름의 증거는 안 남김). `npm run dist`가 돌린다
+- `doctor.js` — 읽기만 하는 점검(Electron·Playwright·코어 빌드가 최신인지·가짜 API·증거 폴더·설치된 앱이 켜졌는지·코드 판)
+- `node drive.js <흐름.json>` — Playwright Electron으로 메인 창을 숨긴 채 띄워 단계(`go` `click` `fill` `key`(진짜 키) `confirm` `until` `expect` `snapshot` `screenshot`)대로 조작하고, 증거를 `verify-runs/<시각>-<흐름>/`(git 제외)에: 단계별 결과, 화면 접근성 스냅샷(Playwright `ariaSnapshot`), 캡처, trace, 본체로 간 모든 호출(`stub-log.json`), 끝난 뒤 예시 회의 파일
+- `steps.js` — 단계를 실행하는 코드. `drive.js`와 `e2e/journeys.e2e.ts`(`npm run verify:journeys`, 흐름 전부 약 8초, `npm run dist`가 E2E 시험과 같이 돌림)가 같이 쓴다
 - `cleanup.js` — 실행 기록에 적힌 임시 예시 폴더만 지움(증거는 그대로, `--runs`면 증거까지)
-- `fixture.js` — 예시 회의·화면 도우미, 기능 시험과 같이 씀
+- `fixture.js` — 예시 회의·화면 도우미(이름으로 찾기), E2E 시험과 같이 씀
 
 기능 지도(`features/`)에 7가지: 확인 필요 · 회의 페이지 · 회의 목록 · 질문으로 찾기 · 녹음 압축 · 녹음 파일 가져오기 · 처음 설정. 처음 설정과 가져오기 전체 흐름은 다른 시험이 없던 곳이다. 만들다 찾은 가짜 API 버그: `onboardingGet`·`onboardingSet`이 이벤트 구독(`on…`)으로 잘못 분류돼 호출 기록에서 빠지던 것.
 
@@ -85,18 +89,14 @@ fn 이벤트를 흉내 내 실제 녹음 흐름을 시험한다 (`src/main.js`�
 
 셀프테스트는 임시 녹음 폴더(`SELFTEST recordings …`로 출력)에 녹음·받아쓰기 기록을 남겨 실제 녹음 폴더와 `dictations.jsonl`은 건드리지 않는다 (2026-11-05부터. 예전에는 실제 폴더에 써서 손으로 지웠고, `dictations.jsonl`을 통째로 되돌리다 실제 기록을 지운 적이 있다). 다만 앱 데이터(설정·모델·whisper-server 번호 파일)는 같이 쓰므로 설치된 앱은 먼저 끈다 — 켜 둔 채 돌리면 설치된 앱의 whisper-server를 고아로 보고 정리한다.
 
-## 화면 캡처 — `scripts/dev/screens.js`
-가짜 데이터(`scripts/dev/stub-preload.js`)로 메인 창을 **숨긴 채** 띄워 화면별 PNG를 남긴다. 메인 프로세스를 띄우지 않으므로 녹음·fn·권한·실제 기록에 영향이 없고, 설치된 앱이 켜져 있어도 된다.
+## 화면 캡처 비교 — `npm run test:screens` (`e2e/screens.e2e.ts`)
+가짜 데이터로 메인 창을 **숨긴 채** 띄워 화면마다 찍고 기준 그림과 **픽셀로** 비교한다(Playwright `toHaveScreenshot`, 차이 0픽셀). 메인 프로세스를 띄우지 않으므로 녹음·fn·권한·실제 기록에 영향이 없고, 설치된 앱이 켜져 있어도 된다. 12가지 × 화면들 = 93장: 밝은·어두운 모양·최소 창 크기(960×640) 각각 홈·받아쓰기·회의·가져오기 확인 창·회의 페이지·본문 찾기·확인 필요·구간 다시 받아쓰기(반영 전·후)·채팅(적용 전·후)·처리함·액션·용어 카드·용어 칸·사전·통계·설정·엔진, 녹음 폴더 막힘(홈·목록), 회의록 쓰기에서 멈춘 회의, 처음 설정 일곱 단계.
 
 ```bash
-npx electron scripts/dev/screens.js /tmp/mr-screens            # 홈·회의·가져오기 확인 창·회의 페이지·액션 탭·본문 찾기·확인 필요·구간 다시 받아쓰기(반영 전·후)·처리한 항목(고치기·되돌리기)·채팅(적용 전·후)·용어 카드·용어 칸·사전·통계·설정·엔진
-DARK=1 npx electron scripts/dev/screens.js /tmp/mr-screens     # 다크 모드
-OB_STEP=permissions npx electron scripts/dev/screens.js /tmp/mr-screens   # 처음 설정 단계 (welcome·permissions·token·engine·account·practice·done)
-W=960 H=640 npx electron scripts/dev/screens.js /tmp/mr-screens  # 최소 창 크기
-STUB_FOLDER=denied npx electron scripts/dev/screens.js /tmp/mr-screens   # macOS가 녹음 폴더 접근을 막은 상태 (홈 경고·빈 목록 안내)
-STUB_MINUTES=offline npx electron scripts/dev/screens.js /tmp/mr-screens # 인터넷이 끊겨 회의록 쓰기에서 멈춘 회의 (이어서 쓰기 버튼)
+npm run test:screens -- --update-snapshots   # 바꾸기 전: 기준 그림을 찍는다 (.work/e2e/screens/, 이 컴퓨터에만)
+npm run test:screens                         # 바꾼 뒤: 비교. 다르면 .work/e2e/report/에 기준·지금·차이 그림
 ```
-예시 회의는 임시 폴더에 만들어 쓴다 (실제 회의 내용이 찍히지 않음). 실제 데이터로 찍은 캡처는 공개 저장소에 올리지 않는다.
+기준 그림은 저장소에 올리지 않는다(가짜 기록의 시각이 '지금' 기준이라 날이 바뀌면 다시 찍는다, 화면 배율을 바꿔도). 예시 회의는 임시 폴더에 만들어 쓴다. `STUB_FLOW`·`STUB_ACTIONS=<json 경로>`로 흐름도·액션 예시를 바꿔 찍을 수 있는데, 실제 회의 내용이 찍히니 공개 저장소에 올리지 않는다.
 
 ## 옮긴 화면이 옛 화면과 같은지 — 캡처 픽셀 + `#view` HTML
 React로 화면을 옮기면 main과 나란히 찍어 비교한다. 캡처는 창 크기만큼만 보이고 가짜 데이터 기본값에선 안 그려지는 갈래(만드는 중 카드, 교정 부호 등)가 있으므로, 화면 HTML도 데이터를 바꿔 가며 비교한다.
@@ -104,7 +104,7 @@ React로 화면을 옮기면 main과 나란히 찍어 비교한다. 캡처는 �
 git worktree add --detach ~/.cache/mr-wt-main main && ln -s "$PWD/node_modules" ~/.cache/mr-wt-main/node_modules   # /tmp는 Mac을 재시작하면 비워진다
 cp scripts/dev/stub-preload.js ~/.cache/mr-wt-main/scripts/dev/          # 가짜 데이터 갈래를 새로 더했으면
 (cd ~/.cache/mr-wt-main && npm run build:ts && npm run build:renderer)
-npx electron scripts/dev/screens.js /tmp/shots-after; ( cd ~/.cache/mr-wt-main && npx electron scripts/dev/screens.js /tmp/shots-base )   # DARK=1로 한 번 더
+(cd ~/.cache/mr-wt-main && npm run test:screens -- --update-snapshots) && cp -R ~/.cache/mr-wt-main/.work/e2e/screens .work/e2e/ && npm run test:screens   # main을 기준으로 찍고 비교
 STUB_DICTS=3 STUB_HISTORY_DICTS=1 STUB_MANY=12 STUB_BUSY=1 STUB_DICT_EDITS=1 STUB_FOLDER=denied npx electron scripts/dev/dump-view.js '#home' /tmp/after.html
 ROOT=~/.cache/mr-wt-main STUB_DICTS=3 … npx electron scripts/dev/dump-view.js '#home' /tmp/base.html && diff /tmp/base.html /tmp/after.html
 git worktree remove --force ~/.cache/mr-wt-main
@@ -167,11 +167,11 @@ python3 -I scripts/dev/eval/audio-quality.py stats A B                          
 - 권한을 껐다 켰을 때 홈의 "확인할 문제"와 설정 › 권한
 
 ## 주의할 점
-- **설치된 앱과 개발 실행은 동시에 안 된다**: 같은 앱 데이터 폴더를 쓰는 단일 실행 잠금 때문에, 메인 프로세스(`src/main.js`)를 띄우는 테스트는 설치된 앱을 먼저 끄고(`osascript -e 'quit app id "local.meetingrecorder"'` — 앱 이름 뒤에 버전·빌드 시각이 붙어 이름으로는 못 찾는다) 한다. 화면 캡처(`screens.js`)는 상관없다.
+- **설치된 앱과 개발 실행은 동시에 안 된다**: 같은 앱 데이터 폴더를 쓰는 단일 실행 잠금 때문에, 메인 프로세스(`src/main.js`)를 띄우는 테스트는 설치된 앱을 먼저 끄고(`osascript -e 'quit app id "local.meetingrecorder"'` — 앱 이름 뒤에 버전·빌드 시각이 붙어 이름으로는 못 찾는다) 한다. E2E 시험·화면 캡처는 가짜 API로 따로 띄워 상관없다.
 - **사용자가 쓰는 창을 조작하지 않는다**: 화면이 보이는 테스트 창을 사용자가 실제로 쓰다가 자동 조작과 겹친 적이 있다. 화면 확인은 숨긴 창으로.
 - **운영체제 수준 키 입력(System Events)은 쓰지 않는다**: macOS 제어 허용 창이 뜬다.
 - **실제 회의를 바꾸는 시험은 복사본으로**: 확인 필요 적용·확인 마치기는 녹취·회의록을 고쳐 쓰므로 회의 폴더를 복사해서 시험하고 끝나면 지운다.
 - **실제 회의 결과를 바꿔 넣기 전에**: 화자 이름(`meta.json`의 `speakerNames`, 예전 회의는 스크립트의 `[이름]`)과 확인 필요 처리 상태를 먼저 확인한다. 새 결과로 바꿔 넣으면서 바꿔 둔 화자 이름을 잃은 적이 있다. 기존 결과는 회의 폴더 안 `이전 결과 (…)` 폴더로 옮겨 둔다.
 - **키보드 처리기 검사**: `node scripts/dev/check-handlers.js` (`npm run dist`가 먼저 돌린다). `onkeydown = (e) => 조건 && 동작`처럼 값을 돌려주는 처리기는 영어·Backspace 입력을 막는다.
-- **화면 테스트**: `npm run test:ui` (`npm run dist`가 키보드 처리기 검사 다음에 돌린다, 약 15초). 가짜 데이터로 메인 창을 숨긴 채 띄워 입력칸마다(회의 검색·사전 추가·⌘K·가져오기 메모·흐름도 입력·⌘F·확인 필요 고칠 말·채팅·처리함 고치기) 진짜 키(`sendInputEvent`로 a·b·Backspace)를 보내 값이 `a`인지, 오류 알림 글자색이 배경색과 다른지 본다. 오래 걸리는 작업(액션 찾기, 가짜 API가 2.5초 기다림)을 누르고 탭을 옮겼다 돌아와 "찾는 중" 표시와 비활성이 남는지, 다시 눌러도 한 번만 불리는지도 본다. "정리본 복사"·"회의록 복사"를 눌러 복사된 글(정리본은 마크다운 목록)과 화면 오류가 없는지도 본다. 회의 목록 위 "목록에 보이지 않는 폴더"(가짜 세 개)가 이유와 함께 보이고 하나를 휴지통으로 옮기면 그것만 빠지는지도 본다. 회의록에서 글자를 드래그해 "확인 필요에 추가"를 누르면 입력칸에 그 말이 들어가는지, 보내면 항목이 하나 늘고 입력칸이 비는지도 본다. 설정 › 다듬기에서 계정마다 남은 사용량 줄(남은 %, 20% 미만 주황)과 새로 고침이 다시 읽는지(force)도 본다. 회의 목록의 "목록에 보이지 않는 폴더", 녹음 가져오기 창의 회의 날짜(짐작한 값 채움, 미래 막기, 고친 시각이 넘어감)도 본다. 녹음 압축 안내(확인을 마친 회의, 모달 아님, 그대로 두기 → … 메뉴로 압축 → "압축함"). 아이콘만 있는 버튼의 설명 툴팁(늦게 뜨는지·내용·title 되돌림·글자 버튼엔 없음·대화상자 안). 받아쓰기 기록(`STUB_DICTS`, 기본 75개): 30개 → 스크롤 끝에서 60 → 75 "다 보았습니다", 첫 묶음 밖의 기록도 찾는지, 개수는 전체, 통계의 언어 카드. 질문으로 찾기(가짜 엔진, `STUB_ASK_MS`): 둥근 버튼이 홈·받아쓰기·회의·통계에 다 있는지, 질문 입력칸 진짜 키, '최근 몇 개'에 숫자만 들어가는지(1·2·a → 12), 기간 칩을 누르면 최근 7일이 채워지는지, 질문 속 기간(작년)과 기간 칩이 겹치지 않으면 경고만 뜨고 탭이 안 생기는지, '기간 칩 빼고'가 기간 없이 다시 보내는지, 다른 화면에서 끝나면 버튼 옆 알림·뱃지 → '보기'로 회의 화면의 그 탭(주제로 다룬 회의 / 잠깐 언급된 회의, 이유 줄)이 열리는지, 실패한 질문 표시와 탭 닫기, 멈추기(칩 '멈춤'·알림 없음), 끝난 소식을 놓쳐도 화면이 본체와 맞추는지. 확인 필요 채팅에서 녹취에 그대로 없는 고칠 대상을 제안받으면 입력칸·적용 버튼으로 보이고 고친 글자로 적용하는지, 녹취에 같은 글자가 없는 이름 항목의 카드에 "확인한 내용 + 확인됨"·"녹취 글자 → 고칠 말" 줄이 있는지, 채팅의 "확인됨으로"가 확인한 내용을 보내고 처리함에 "확인됨"으로 보이는지, 시각·단서 없는 유실 항목의 "구간 다시 받아쓰기"가 구간을 직접 고르는 줄을 열고 시작만 넣으면 1분 구간으로 보내는지. 질문으로 찾기 실패 문구(시간 초과·로그인 풀림: 명령줄 대신 "Claude Code 로그인이 풀렸습니다"와 할 일, 질문 탭에 CLI가 낸 이유, '조건을 푸는 중' 안 남음). 홈의 챙길 일(개수, '확인할 회의'를 누르면 회의 화면의 그 갈래)·녹음 공간(원본·압축 개수와 크기). 회의록 할 일 줄(체크박스와 글이 한 줄, 테두리 없음 — 홈 클래스가 `li.todo`와 겹쳤던 것). 흐름도 SVG 저장(시험 동안만 `flow.json`을 두고 `window.stubMeetingChanged`로 다시 읽게 해서, 저장 내용이 SVG 한 장·클래스와 CSS 변수 없음·배경·색·글자인지). JS로 value를 넣는 시험은 키 처리기 버그를 못 잡는다. 새 입력칸을 만들면 `scripts/dev/ui-test.js`의 `cases`에 한 줄 더한다.
+- **화면 시험** (`e2e/ui/`, `npm run test:e2e`에 들어 있음). 가짜 데이터로 메인 창을 숨긴 채 띄워 입력칸마다(회의 검색·사전 추가·⌘K·가져오기 메모·흐름도 입력·⌘F·확인 필요 고칠 말·채팅·처리함 고치기) 진짜 키(Playwright 키보드로 a·b·Backspace)를 보내 값이 `a`인지, 오류 알림 글자색이 배경색과 다른지 본다. 오래 걸리는 작업(액션 찾기, 가짜 API가 2.5초 기다림)을 누르고 탭을 옮겼다 돌아와 "찾는 중" 표시와 비활성이 남는지, 다시 눌러도 한 번만 불리는지도 본다. "정리본 복사"·"회의록 복사"를 눌러 복사된 글(정리본은 마크다운 목록)과 화면 오류가 없는지도 본다. 회의 목록 위 "목록에 보이지 않는 폴더"(가짜 세 개)가 이유와 함께 보이고 하나를 휴지통으로 옮기면 그것만 빠지는지도 본다. 회의록에서 글자를 드래그해 "확인 필요에 추가"를 누르면 입력칸에 그 말이 들어가는지, 보내면 항목이 하나 늘고 입력칸이 비는지도 본다. 설정 › 다듬기에서 계정마다 남은 사용량 줄(남은 %, 20% 미만 주황)과 새로 고침이 다시 읽는지(force)도 본다. 회의 목록의 "목록에 보이지 않는 폴더", 녹음 가져오기 창의 회의 날짜(짐작한 값 채움, 미래 막기, 고친 시각이 넘어감)도 본다. 녹음 압축 안내(확인을 마친 회의, 모달 아님, 그대로 두기 → … 메뉴로 압축 → "압축함"). 아이콘만 있는 버튼의 설명 툴팁(늦게 뜨는지·내용·title 되돌림·글자 버튼엔 없음·대화상자 안). 받아쓰기 기록(`STUB_DICTS`, 기본 75개): 30개 → 스크롤 끝에서 60 → 75 "다 보았습니다", 첫 묶음 밖의 기록도 찾는지, 개수는 전체, 통계의 언어 카드. 질문으로 찾기(가짜 엔진, `STUB_ASK_MS`): 둥근 버튼이 홈·받아쓰기·회의·통계에 다 있는지, 질문 입력칸 진짜 키, '최근 몇 개'에 숫자만 들어가는지(1·2·a → 12), 기간 칩을 누르면 최근 7일이 채워지는지, 질문 속 기간(작년)과 기간 칩이 겹치지 않으면 경고만 뜨고 탭이 안 생기는지, '기간 칩 빼고'가 기간 없이 다시 보내는지, 다른 화면에서 끝나면 버튼 옆 알림·뱃지 → '보기'로 회의 화면의 그 탭(주제로 다룬 회의 / 잠깐 언급된 회의, 이유 줄)이 열리는지, 실패한 질문 표시와 탭 닫기, 멈추기(칩 '멈춤'·알림 없음), 끝난 소식을 놓쳐도 화면이 본체와 맞추는지. 확인 필요 채팅에서 녹취에 그대로 없는 고칠 대상을 제안받으면 입력칸·적용 버튼으로 보이고 고친 글자로 적용하는지, 녹취에 같은 글자가 없는 이름 항목의 카드에 "확인한 내용 + 확인됨"·"녹취 글자 → 고칠 말" 줄이 있는지, 채팅의 "확인됨으로"가 확인한 내용을 보내고 처리함에 "확인됨"으로 보이는지, 시각·단서 없는 유실 항목의 "구간 다시 받아쓰기"가 구간을 직접 고르는 줄을 열고 시작만 넣으면 1분 구간으로 보내는지. 질문으로 찾기 실패 문구(시간 초과·로그인 풀림: 명령줄 대신 "Claude Code 로그인이 풀렸습니다"와 할 일, 질문 탭에 CLI가 낸 이유, '조건을 푸는 중' 안 남음). 홈의 챙길 일(개수, '확인할 회의'를 누르면 회의 화면의 그 갈래)·녹음 공간(원본·압축 개수와 크기). 회의록 할 일 줄(체크박스와 글이 한 줄, 테두리 없음 — 홈 클래스가 `li.todo`와 겹쳤던 것). 흐름도 SVG 저장(시험 동안만 `flow.json`을 두고 `window.stubMeetingChanged`로 다시 읽게 해서, 저장 내용이 SVG 한 장·클래스와 CSS 변수 없음·배경·색·글자인지). JS로 value를 넣는 시험은 키 처리기 버그를 못 잡는다. 새 입력칸을 만들면 `e2e/ui/inputs.e2e.ts`에 한 단계 더한다.
 - **진단 로그**: 테스트 창에서 재현되지 않는 문제는 설치본에 임시 로그를 넣어 확인한다 (영문 입력 버그를 이렇게 찾음). 원인을 찾으면 바로 뺀다.
