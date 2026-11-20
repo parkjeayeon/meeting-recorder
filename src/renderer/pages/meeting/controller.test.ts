@@ -8,6 +8,8 @@ import type { PageHandle } from '../../shared/page-host/index.tsx';
 import { meetingPage, type MeetingDeps, type MeetingDoc, type MeetingRecord } from './index.ts';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+// jsdom에는 캔버스가 없다 — 흐름도가 글자 폭을 잴 때만 쓴다
+HTMLCanvasElement.prototype.getContext = (() => ({ font: '', measureText: (t: string) => ({ width: t.length * 7 }) })) as unknown as HTMLCanvasElement['getContext'];
 
 const record = { id: 'm1', dir: '/m1', mode: 'meeting', startedAt: '2026-11-01T14:00:00Z', durationSec: 60, firstFile: null, minutes: { status: 'done', title: '배포 회의' } } as unknown as MeetingRecord;
 type Items = NonNullable<MeetingDoc['review']>['items'];
@@ -17,6 +19,7 @@ const doc = (): MeetingDoc => ({
   transcript: '[00:02] [화자 1] 다음 주 배포 일정\n[00:15] [화자 2] 랩캐시도 쪽 확인만\n',
   scriptClean: '',
   review: { items: items.map((it) => ({ ...it })) },
+  flow: { flows: [{ id: 'f1', title: '배포 순서', summary: '', lanes: [], steps: [{ id: 'a', title: '하나', detail: '첫째', at: '00:02', quote: '배포' }], edges: [], notes: [], annotations: [] }] } as unknown as MeetingDoc['flow'],
 });
 let handle: PageHandle;
 let api: Record<string, ReturnType<typeof vi.fn>>;
@@ -34,7 +37,8 @@ beforeEach(() => {
       for (const f of fixes) Object.assign(items.find((it) => it.id === f.id)!, { status: 'applied', applied: f.guess, count: 1 });
       return { items };
     }),
-    chatReview: vi.fn(),
+    chatReview: vi.fn(() => new Promise(() => {})), // 답이 오지 않는 채로 (기다리는 중)
+    chatFlow: vi.fn(() => new Promise(() => {})),
   };
   const deps: MeetingDeps = {
     api: api as unknown as MeetingDeps['api'],
@@ -53,7 +57,10 @@ beforeEach(() => {
     fullDate: () => '2026년 11월 1일 (일) 23:00',
   };
   handle = meetingPage('m1', deps);
-  document.body.append(handle.el);
+  const view = document.createElement('div');
+  view.id = 'view'; // 흐름도 폭을 재는 곳
+  view.append(handle.el);
+  document.body.append(view);
 });
 afterEach(() => handle.leave?.());
 
@@ -167,4 +174,67 @@ describe('한글 조합 중에는 그리기를 미룬다', () => {
     expect(after).not.toBe(add); // 미룬 그리기를 했다
     expect([document.activeElement === after, after.value, after.selectionStart]).toEqual([true, '안녕하세', 4]);
   });
+});
+
+describe('Escape는 채팅에 남은 일을 버리지 않는다', () => {
+  const esc = () => act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })));
+  const openReviewChat = async () => {
+    await settle();
+    await act(async () => clickFocused([...document.querySelectorAll<HTMLButtonElement>('.ritem[data-id="r1"] button')].find((b) => b.textContent === '채팅')!));
+    await settle();
+    return q<HTMLTextAreaElement>('.chat textarea')!;
+  };
+  const openFlowChat = async () => {
+    await settle();
+    await act(async () => q('[data-focus="tab:minutes"]')!.click());
+    await settle();
+    await act(async () => clickFocused([...document.querySelectorAll<HTMLButtonElement>('.flow-acts button')].find((b) => b.textContent === '채팅')!));
+    await settle();
+    return q<HTMLTextAreaElement>('.chat textarea')!;
+  };
+  // 브라우저에서 버튼을 누르면 그 버튼에 포커스가 간다 (jsdom의 click()은 옮기지 않는다)
+  const clickFocused = (b: HTMLButtonElement) => {
+    b.focus();
+    b.click();
+  };
+  const send = async (box: HTMLTextAreaElement) => {
+    type(box, '이 부분은 외부 분이에요', 5);
+    await act(async () => box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
+    await settle();
+  };
+
+  for (const [name, open, call] of [['확인 필요', openReviewChat, 'chatReview'], ['흐름도', openFlowChat, 'chatFlow']] as const) {
+    it(`${name} 채팅: 빈 입력칸이면 닫고 연 버튼으로 포커스`, async () => {
+      const box = await open();
+      expect(document.activeElement).toBe(box);
+      await esc();
+      await settle();
+      expect(q('.chat')).toBeNull();
+      expect([document.activeElement?.textContent, document.activeElement?.closest('.ritem, .flow') !== null]).toEqual(['채팅', true]);
+    });
+
+    it(`${name} 채팅: 입력칸에 글이 있으면(input 이벤트 전의 값도) 닫지 않고 글도 그대로, 비우면 닫는다`, async () => {
+      const box = await open();
+      box.value = '쓰던 말'; // input 이벤트 없이 — 주인의 draft는 아직 비어 있다
+      await esc();
+      await settle();
+      expect([q('.chat') !== null, q<HTMLTextAreaElement>('.chat textarea')!.value]).toEqual([true, '쓰던 말']);
+      const now = q<HTMLTextAreaElement>('.chat textarea')!;
+      type(now, '   ', 0);
+      await esc();
+      await settle();
+      expect(q('.chat')).toBeNull();
+    });
+
+    it(`${name} 채팅: 답을 기다리는 중이면 닫지 않는다 (닫으면 답이 버려진다)`, async () => {
+      await send(await open());
+      expect(api[call]).toHaveBeenCalled();
+      expect(q('.chat .msg.busy')).not.toBeNull();
+      expect(q<HTMLTextAreaElement>('.chat textarea')!.value).toBe('');
+      q<HTMLTextAreaElement>('.chat textarea')!.focus();
+      await esc();
+      await settle();
+      expect(q('.chat')).not.toBeNull();
+    });
+  }
 });

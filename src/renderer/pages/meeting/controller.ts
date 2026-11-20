@@ -71,6 +71,8 @@ interface FlowChat {
   flowId: string;
   messages: (FlowChatMessage & { applied?: boolean })[];
   busy: boolean;
+  /** '이대로 바꾸기'를 반영하는 중인 수 */
+  applying?: number;
   draft: string;
 }
 
@@ -519,6 +521,7 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
       }),
       apply: async (index: number) => {
         const m = fc.messages[index]!;
+        fc.applying = (fc.applying ?? 0) + 1;
         try {
           await api.applyFlow(r.dir, f.id, m.revision);
           m.applied = true;
@@ -526,6 +529,7 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
         } catch (err) {
           toast('반영하지 못했습니다', errText(err), { bad: true });
         }
+        fc.applying -= 1;
         void refreshDoc(r);
       },
     };
@@ -1145,8 +1149,15 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
     const onBody = t === document.body || Boolean(t.closest?.('#view') && !t.closest('input, textarea, select, [contenteditable]'));
     if (!inChat && !onBody) return;
     e.preventDefault();
+    // Escape는 버릇처럼 누르는 키라 채팅에 남은 일을 버리지 않는다 (× 버튼은 그대로 닫는다):
+    // 답·다시 받아쓰기·적용을 기다리는 중이면 닫지 않는다 — 닫으면 그 결과가 들어갈 곳이 없어 버려진다.
+    // 입력칸에 쓴 글이 있어도 닫지 않는다 (draft는 input 이벤트 때만 바뀌므로 입력칸의 지금 값을 읽는다)
+    if (chatWaiting()) return;
+    const box = page.querySelector<HTMLTextAreaElement>('.chat textarea');
+    if ((box?.value ?? chat?.draft ?? flowChat?.draft ?? '').trim()) return;
     closeChat();
   };
+  const chatWaiting = () => (chat ? chat.busy || Boolean(chat.redoing) || chat.applying.size > 0 : Boolean(flowChat?.busy || flowChat?.applying));
   document.addEventListener('keydown', onEscChat);
 
   // 스페이스: 재생·멈춤 (입력칸·대화상자·⌘ 조합은 빼고)
