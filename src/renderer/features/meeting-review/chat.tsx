@@ -33,6 +33,9 @@ export interface ReviewChatProps {
   readonly applying: ReadonlySet<string>;
   readonly draft: string;
   readonly setDraft: (text: string) => void;
+  /** 제안 칸(녹취에서 못 찾은 제안의 '고칠 대상')에 쓰던 글 — 열쇠는 data-focus와 같다 (unmatched:메시지:번째) */
+  readonly fieldDrafts: ReadonlyMap<string, string>;
+  readonly setFieldDraft: (key: string, text: string) => void;
   readonly send: (text: string) => void;
   readonly close: () => void;
   readonly apply: (fixes: readonly Fix[]) => void;
@@ -46,7 +49,7 @@ const Text = ({ text }: { readonly text: string }) => (
   <div className="msg-text">{text.split(/\*\*(.+?)\*\*/g).map((part, i) => (part ? (i % 2 ? <b key={i}>{part}</b> : part) : null))}</div>
 );
 
-function Unmatched({ p, applyUnmatched }: { readonly p: NonNullable<ChatMessage['unmatched']>[number]; readonly applyUnmatched: ReviewChatProps['applyUnmatched'] }) {
+function Unmatched({ p, focusKey, draft, setDraft, applyUnmatched }: { readonly p: NonNullable<ChatMessage['unmatched']>[number]; readonly focusKey: string; readonly draft: string | undefined; readonly setDraft: (text: string) => void; readonly applyUnmatched: ReviewChatProps['applyUnmatched'] }) {
   const target = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const go = () => {
@@ -58,7 +61,7 @@ function Unmatched({ p, applyUnmatched }: { readonly p: NonNullable<ChatMessage[
   return (
     <div className="proposal unmatched">
       <div className="proposal-row">
-        <Field inputRef={target} initial={p.heard ?? ''} placeholder="녹취에 있는 글자" aria-label="고칠 대상" onEnter={go} />
+        <Field inputRef={target} data-focus={focusKey} initial={draft ?? p.heard ?? ''} onInput={setDraft} placeholder="녹취에 있는 글자" aria-label="고칠 대상" onEnter={go} />
         <Icon id="i-right" />
         <b>{p.guess}</b>
         <button className={busy ? 'btn small busy' : 'btn small'} onClick={go}>적용</button>
@@ -174,7 +177,10 @@ export function ReviewChatBody(p: ReviewChatProps) {
                   ) : null}
                 </div>
               ) : null}
-              {unmatched.length ? <div className="proposals">{unmatched.map((x, k) => <Unmatched key={k} p={x} applyUnmatched={p.applyUnmatched} />)}</div> : null}
+              {unmatched.length ? <div className="proposals">{unmatched.map((x, k) => {
+                const key = `unmatched:${mi}:${k}`;
+                return <Unmatched key={k} p={x} focusKey={key} draft={p.fieldDrafts.get(key)} setDraft={(t) => p.setFieldDraft(key, t)} applyUnmatched={p.applyUnmatched} />;
+              })}</div> : null}
               {m.redo && !m.redo.empty ? <RedoResult redo={m.redo} applied={Boolean(itemOf(m.redo.id)?.redo?.appliedAt)} applyRedo={p.applyRedo} /> : null}
             </div>
           );
@@ -183,7 +189,7 @@ export function ReviewChatBody(p: ReviewChatProps) {
         {p.busy ? <div className="msg assistant busy"><div className="msg-text">녹취를 보고 있습니다…</div></div> : null}
       </div>
       <div className="chat-input">
-        <textarea ref={input} rows={2} placeholder="예: 화자 1 이름은 김민준이에요 / 그 부분은 기억 안 나요" />
+        <textarea ref={input} data-focus="chat" rows={2} placeholder="예: 화자 1 이름은 김민준이에요 / 그 부분은 기억 안 나요" />
         <button className="icon-btn send" aria-label="보내기" disabled={p.busy || undefined} onClick={go}><Icon id="i-send" /></button>
       </div>
     </>

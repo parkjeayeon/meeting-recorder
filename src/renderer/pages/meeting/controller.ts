@@ -13,7 +13,7 @@ import type { FlowDoc } from '../../entities/flow/index.ts';
 import type { RecorderApi } from '../../shared/api/index.ts';
 import { clock, createSource, dayLabel, PROVIDER_NAME, sizeLabel, TIME, type Jobs } from '../../shared/lib/index.ts';
 import { commit, createIslands, reactPage, type PageHandle } from '../../shared/page-host/index.tsx';
-import { el, icon } from '../../shared/ui/index.tsx';
+import { el, focusMark, icon, restoreFocus, type FocusWant } from '../../shared/ui/index.tsx';
 import type { MeetingMenu, MeetingView, StateCard, TabBody } from './ui.tsx';
 import { MeetingPage } from './ui.tsx';
 
@@ -90,12 +90,35 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
   const viewSource = createSource(() => view, () => [view]);
   const show = (v: Partial<MeetingView>) => {
     view = { version: ++version, gone: null, head: null, menu: null, speakerBar: null, player: null, compress: null, state: null, tabs: [], tab: null, body: { kind: 'none' }, chat: null, flowChat: null, ...v };
-    commit(() => viewSource.changed());
+    paint();
   };
+  // 그리기 = 안을 통째로 새로 만들기라 포커스·커서가 풀린다 → 그리기 전 자리를 열쇠(data-focus)로 적어 두고 그린 뒤 같은 열쇠의 새 요소로 되돌린다.
+  // 주인이 이번 그리기에 정해 둔 곳(focusWant: 처리한 다음 항목·고른 탭·채팅 입력칸·채팅을 연 버튼)이 먼저다.
+  // 한글을 조합하는 중이면 입력칸을 바꾸면 조합이 깨진다(다음 자모가 새 글자로 붙는다) → 조합이 끝날 때까지 그리기를 미룬다
+  let root: HTMLElement | null = null; // 그린 페이지 (지워진 회의 화면에는 없음)
+  let focusWant: FocusWant | null = null;
+  let composing = false;
+  let held = false;
+  function paint() {
+    if (composing) {
+      held = true;
+      return;
+    }
+    held = false;
+    const mark = root ? focusMark(root) : null;
+    const want = focusWant;
+    focusWant = null;
+    commit(() => viewSource.changed());
+    if (!root) return;
+    restoreFocus(root, mark, want);
+    if (findBar) runFind({ keep: true }); // 탭을 바꾸거나 다시 그려도 찾던 말을 그대로 표시
+  }
   const rec = () => deps.records().find((m) => m.id === id);
   const recNow = () => rec()!;
   const commands = {
     setTab: (t: string) => queueMicrotask(() => {
+      // 탭 줄에서 (←/→·누르기) 바꿨으면 새로 고른 탭에 포커스
+      if (document.activeElement?.getAttribute('role') === 'tab' && root?.contains(document.activeElement)) focusWant = { key: `tab:${t}` };
       tab = t;
       void draw();
     }),
@@ -157,11 +180,10 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
   const guessDraft = new Map<string, string>(); // 항목별로 고쳐 쓴 '고칠 말'
   const redoPick = new Set<string>(); // 구간을 몰라 직접 고르는 중인 항목 (유실·의미 불명)
   let reviewFilter: 'open' | 'done' = 'open';
-  let reviewFocus: string | null = null; // 방금 처리한 항목 다음에 볼 항목 (다음 그리기에서 그 카드로 포커스를 옮기고 지운다)
+  const fieldDraft = new Map<string, string>(); // 그 밖의 입력칸에 쓰던 글 (열쇠는 data-focus와 같다: resolve:r3, redo-start:r6, flow-focus …)
   let chat: ReviewChat | null = null;
   let flowChat: FlowChat | null = null;
   let chatOpener: (() => HTMLElement | null) | null = null; // 채팅을 연 버튼을 다시 그린 뒤에 찾는 법 (닫으면 그리로 포커스)
-  let afterDraw: (() => void) | null = null; // 다음 그리기가 끝난 뒤 한 번 할 일
   if (deps.takeOpenReview(id)) tab = 'review';
   let lastKey: string | null = null;
   // 회의록 진행 상태와 확인 필요 숫자(제목 아래 배지)가 바뀌면 다시 그린다. 녹음 압축·그대로 두기도
@@ -176,6 +198,20 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
   }
   const handle = reactPage(MeetingPage, { source: viewSource, commands }, { reload: () => reloadPage(), update: () => updatePage(), leave: () => leavePage() });
   const page = handle.el;
+  root = page;
+  page.addEventListener('compositionstart', () => {
+    composing = true;
+  });
+  // 조합이 끝나면 미룬 그리기를 한다. 한 박자 뒤에 — 한글은 한 글자를 끝내자마자 같은 키로 다음 글자 조합을 시작한다.
+  // 미룬 view에는 그때의 쓰던 글이 들어 있으므로 view를 다시 만든다(draw)
+  const composed = () => {
+    composing = false;
+    setTimeout(() => {
+      if (held && !composing) void draw();
+    });
+  };
+  page.addEventListener('compositionend', composed);
+  page.addEventListener('focusout', () => composing && composed());
 
   if (audioFor !== id) {
     audio.pause();
@@ -230,8 +266,6 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
       body = { kind: 'script', clean: tab === 'clean', props: text ? scriptView(r, parseScript(text), color, matcher) : null, making: false };
     } else if (tab === 'speakers') body = { kind: 'speakers', props: speakersView(r, raw, color) };
 
-    // 탭에 포커스가 있었으면(←/→로 탭을 바꾼 경우 등) 새로 그린 뒤 고른 탭으로 되돌린다 — 다시 그리면 요소가 바뀌어 포커스가 풀린다
-    const onTab = document.activeElement?.getAttribute('role') === 'tab' && page.contains(document.activeElement);
     show({
       head: {
         title,
@@ -256,11 +290,6 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
       chat: chat ? chatDrawer(r, doc) : null,
       flowChat: flowChat ? flowChatDrawer(r, doc) : null,
     });
-    if (onTab) page.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
-    const after = afterDraw; // 다음 그리기에서 한 번만 (채팅을 닫은 뒤 연 버튼으로 포커스 되돌리기)
-    afterDraw = null;
-    after?.();
-    if (findBar) runFind({ keep: true }); // 탭을 바꾸거나 다시 그려도 찾던 말을 그대로 표시
   }
 
   // 스크립트·화자: 이름 바꾸기는 여기서 파일에 (끝나면 다시 그린다)
@@ -434,6 +463,8 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
       data: data ?? null,
       jobs,
       jobKey: key,
+      draft: fieldDraft.get('flow-focus') ?? '',
+      setDraft: (text: string) => void fieldDraft.set('flow-focus', text),
       make: async (focus: string) => {
         if (jobs.has(key)) return;
         try {
@@ -452,8 +483,8 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
     rememberOpener();
     chat = null;
     flowChat = { flowId, messages: [], busy: false, draft: '' };
+    focusWant = { key: 'flow-chat' };
     void draw();
-    setTimeout(() => document.querySelector<HTMLTextAreaElement>('.chat textarea')?.focus(), 50);
   }
 
   function flowChatDrawer(r: MeetingRecord, doc: MeetingDoc) {
@@ -482,8 +513,9 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
           fc.messages.push({ role: 'assistant', text: `답을 받지 못했습니다: ${(err as Error).message}` });
         }
         fc.busy = false;
-        if (flowChat === fc) void draw();
-        setTimeout(() => document.querySelector<HTMLTextAreaElement>('.chat textarea')?.focus(), 30);
+        if (flowChat !== fc) return;
+        if (chatIdle()) focusWant = { key: 'flow-chat' };
+        void draw();
       }),
       apply: async (index: number) => {
         const m = fc.messages[index]!;
@@ -532,12 +564,8 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
       reviewFilter = 'open';
       removeAddBtn();
       window.getSelection()?.removeAllRanges();
+      focusWant = { key: 'review-add', caret: 'end' };
       void draw();
-      requestAnimationFrame(() => {
-        const box = page.querySelector<HTMLTextAreaElement>('.review-add textarea');
-        box?.focus();
-        box?.setSelectionRange(box.value.length, box.value.length);
-      });
     } : null;
     const host = el('div', { class: 'term-add', style: `top:${Math.max(8, rect.top - 38)}px;left:${Math.min(rect.left, innerWidth - 300)}px` });
     addBtn = host;
@@ -592,9 +620,10 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
 
   async function applyFixes(r: MeetingRecord, fixes: readonly Fix[], { focusNext = false } = {}): Promise<void> {
     if (!fixes.length) return;
-    if (focusNext) reviewFocus = nextOpen(fixes.map((f) => f.id));
+    const next = focusNext ? nextOpen(fixes.map((f) => f.id)) : null;
     try {
       const review = await api.applyReview(r.dir, fixes);
+      if (next) focusWant = { key: `card:${next}`, reveal: true }; // 다음 항목에서 이어서 하게 (다시 읽어 그릴 때)
       const applied = (review.items as ReviewItem[]).filter((it) => fixes.some((f) => f.id === it.id) && it.status === 'applied');
       const kept = fixes.filter((f) => f.keep).length;
       const resolved = (review.items as ReviewItem[]).filter((it) => fixes.some((f) => f.id === it.id && f.resolve) && it.status === 'resolved');
@@ -646,8 +675,9 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
   }
 
   async function keepItems(r: MeetingRecord, ids: readonly string[]) {
-    reviewFocus = nextOpen(ids);
+    const next = nextOpen(ids);
     await api.setReviewStatus(r.dir, ids, 'kept');
+    if (next) focusWant = { key: `card:${next}`, reveal: true };
     ids.forEach((i) => reviewSel.delete(i));
     toast(`${ids.length}개를 그대로 두었습니다`, '나중에 다시 열 수 있습니다');
     void refreshDoc(r);
@@ -690,9 +720,15 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
     rememberOpener();
     flowChat = null;
     chat = { ids: [...ids], messages: [], busy: false, applying: new Set() };
+    for (const k of [...fieldDraft.keys()]) if (k.startsWith('unmatched:')) fieldDraft.delete(k); // 앞 채팅의 제안 칸
+    focusWant = { key: 'chat' };
     void draw();
-    setTimeout(() => document.querySelector<HTMLTextAreaElement>('.chat textarea')?.focus(), 50);
   }
+  // 답이 왔을 때 채팅 입력칸으로 돌아가도 되나: 포커스가 채팅 안이거나 아무 데도 없을 때만 (그사이 다른 입력칸으로 옮겼으면 그대로)
+  const chatIdle = () => {
+    const a = document.activeElement;
+    return !a || a === document.body || !a.isConnected || Boolean(a.closest('.chat'));
+  };
 
   // 채팅을 연 버튼을 다시 그린 뒤에도 찾을 수 있게: 같은 항목(data-id) 안에서 같은 이름의 버튼 중 몇 번째인지
   function openerOf(node: Element | null): (() => HTMLElement | null) | null {
@@ -716,23 +752,15 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
     flowChat = null;
     const find = chatOpener;
     chatOpener = null;
-    afterDraw = () => {
+    focusWant = () => {
       const panel = page.querySelector('[role="tabpanel"]');
-      const target = find?.() ?? panel?.querySelector<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), textarea, select, [tabindex]:not([tabindex="-1"])') ?? page.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
-      target?.focus();
+      return find?.() ?? panel?.querySelector<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), textarea, select, [tabindex]:not([tabindex="-1"])') ?? page.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
     };
     void draw();
   }
 
   // 확인 필요: 그리기는 features/meeting-review. 다시 그리는 명령은 한 박자 뒤에(later) — 누른 부품을 그 처리 중에 다시 만들지 않게
   const later = <A extends unknown[]>(fn: (...a: A) => unknown) => (...a: A) => queueMicrotask(() => void fn(...a));
-  // 다음 그리기에서 포커스를 둘 항목. 방금 처리한 항목의 다음 항목(한 번 쓰고 지운다)이 먼저이고, 없으면 지금 포커스가 있는 카드 —
-  // 탭을 새로 그릴 때마다 요소가 바뀌어 포커스가 풀리므로(기록 목록이 바뀌어 한 번 더 그릴 때 등) 같은 카드로 되돌려 놓는다
-  const takeFocus = () => {
-    const f = reviewFocus ?? document.activeElement?.closest<HTMLElement>('.review-list .ritem')?.dataset.id ?? null;
-    reviewFocus = null;
-    return f;
-  };
   function reviewView(r: MeetingRecord, doc: MeetingDoc) {
     const items = doc.review?.items ?? [];
     for (const rid of [...reviewSel]) if (!items.some((it) => it.id === rid && it.status === 'open')) reviewSel.delete(rid);
@@ -746,11 +774,11 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
       guessDraft: new Map(guessDraft),
       redoPick: new Set(redoPick),
       addDraft,
+      drafts: new Map(fieldDraft),
       seek: seekOf(r),
       now: () => audio.currentTime,
       jobs,
       addKey,
-      focusId: takeFocus(),
       actions: {
         setFilter: later((f: 'open' | 'done') => {
           reviewFilter = f;
@@ -767,6 +795,7 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
           void draw();
         }),
         setGuess: (rid: string, v: string) => void guessDraft.set(rid, v),
+        setDraft: (key: string, v: string) => void fieldDraft.set(key, v),
         apply: (fixes: readonly Fix[]) => void applyFixes(r, fixes, { focusNext: true }),
         keep: (ids: readonly string[]) => void keepItems(r, ids),
         openChat: later((ids: readonly string[]) => openChat(ids)),
@@ -777,7 +806,10 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
         }),
         toggleRedoPick: later((rid: string) => {
           if (redoPick.has(rid)) redoPick.delete(rid);
-          else redoPick.add(rid);
+          else {
+            redoPick.add(rid);
+            focusWant = { key: `redo-start:${rid}` }; // 연 줄의 시작 칸에서 바로 쓰게
+          }
           void draw();
         }),
         reopen: async (rid: string) => {
@@ -868,6 +900,8 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
       setDraft: (text: string) => {
         c.draft = text; // 화면을 다시 그려도 쓰던 글이 남게
       },
+      fieldDrafts: new Map(fieldDraft),
+      setFieldDraft: (key: string, text: string) => void fieldDraft.set(key, text),
       close: later(closeChat),
       apply: later(apply),
       applyUnmatched: async (fix: Fix) => {
@@ -889,8 +923,9 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
           c.messages.push({ role: 'assistant', text: `답을 받지 못했습니다: ${(err as Error).message}` });
         }
         c.busy = false;
-        if (chat === c) void draw();
-        setTimeout(() => document.querySelector<HTMLTextAreaElement>('.chat textarea')?.focus(), 30);
+        if (chat !== c) return;
+        if (chatIdle()) focusWant = { key: 'chat' };
+        void draw();
       }),
     };
   }

@@ -1,5 +1,6 @@
 // 회의 페이지. 무엇을 보일지는 주인(controller.ts의 draw)이 만든 view로 받고,
 // 주인이 다시 그릴 때마다(version) 안을 새로 만든다 — 옛 화면처럼 열어 둔 고치기 줄·누른 버튼 표시가 다시 그릴 때 풀린다.
+// 포커스·커서는 주인이 열쇠(data-focus)로 되돌린다 — 포커스를 받을 새 칸을 만들면 열쇠를 단다 (shared/ui focus-keys.ts)
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from 'react';
 import { ActionsBody, type ActionsProps } from '../../features/meeting-actions/index.ts';
 import { FlowChatBody, type FlowChatProps } from '../../features/meeting-flow/index.ts';
@@ -158,7 +159,7 @@ function Head({ h, menu, c }: { readonly h: MeetingHead; readonly menu: MeetingM
           {h.speakers ? <span className="tag">{`화자 ${h.speakers}명`}</span> : null}
           {h.speakersHint ? <span className="tag">{`참석 인원 ${h.speakersHint}로 지정`}</span> : null}
           {h.review ? (
-            <button className={`tag tag-btn${h.review.finalized ? '' : ' accent'}`} title="확인 필요 보기" onClick={() => c.setTab('review')}>
+            <button className={`tag tag-btn${h.review.finalized ? '' : ' accent'}`} data-focus="head-review" title="확인 필요 보기" onClick={() => c.setTab('review')}>
               {h.review.finalized ? '확정된 회의록' : h.review.open ? `초안 · 확인 ${h.review.open}개 남음` : '초안 · 확인 마치기 전'}
             </button>
           ) : null}
@@ -292,7 +293,7 @@ function Gone({ canBack, c }: { readonly canBack: boolean; readonly c: MeetingCo
 const TABPANEL = 'meeting-tabpanel';
 
 /** 탭 줄의 키: ←/→로 앞뒤 탭(끝에서는 반대쪽 끝으로), Home/End로 처음·마지막 탭을 연다.
- * 연 뒤 페이지를 새로 그려도 포커스는 주인이 새로 고른 탭으로 옮긴다 (controller.ts draw) */
+ * 연 뒤 페이지를 새로 그려도 포커스는 주인이 새로 고른 탭으로 옮긴다 (controller.ts setTab · 탭마다 data-focus 열쇠) */
 function tabKey(e: KeyboardEvent<HTMLDivElement>, v: MeetingView, c: MeetingCommands) {
   const ids = v.tabs.map(([id]) => id);
   const i = ids.indexOf(v.tab ?? '');
@@ -318,7 +319,7 @@ function Page({ v, c }: { readonly v: MeetingView; readonly c: MeetingCommands }
         {v.tabs.length > 0 ? (
           <div className="tabs" role="tablist" onKeyDown={(e) => tabKey(e, v, c)}>
             {v.tabs.map(([id, label, n]) => (
-              <button key={id} id={`tab-${id}`} className="tab" role="tab" aria-selected={id === v.tab} aria-controls={TABPANEL} tabIndex={id === v.tab ? 0 : -1} onClick={() => c.setTab(id)}>{label}{n ? <Num>{n}</Num> : null}</button>
+              <button key={id} id={`tab-${id}`} data-focus={`tab:${id}`} className="tab" role="tab" aria-selected={id === v.tab} aria-controls={TABPANEL} tabIndex={id === v.tab ? 0 : -1} onClick={() => c.setTab(id)}>{label}{n ? <Num>{n}</Num> : null}</button>
             ))}
           </div>
         ) : null}
