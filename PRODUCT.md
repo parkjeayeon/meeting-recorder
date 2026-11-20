@@ -35,7 +35,7 @@ Wispr Flow와 같은 조작감이지만, 음성 인식이 기기 안(whisper.cpp
 
 - 받아쓰기: 로컬 Whisper(약 0.3초) → 다듬기(Claude Code 약 2.5초, Codex 약 3.5~5초, API 키) → 클립보드+⌘V, 원래 클립보드 복원. 긴 글은 나눠서 동시에 다듬음
 - 회의: 48kHz WAV 저장 → Whisper large-v3 녹취 + pyannote community-1 화자 구분(동시) → 정리본·회의록. 2시간 5분 회의 실측 약 20분
-- 받아쓰기 데이터: dictations.jsonl (시각, 길이, 입력한 앱, 정리 전/후 글, 글자·단어 수, WPM, 소요 시간). 통계 화면은 아직 없음
+- 받아쓰기 데이터: dictations.jsonl (시각, 길이, 입력한 앱, 정리 전/후 글, 글자·단어 수, WPM, 소요 시간). 통계 화면이 이 데이터로 그린다
 - 필요한 macOS 권한: 마이크, 입력 모니터링, 손쉬운 사용 (+ 화상 회의 녹음을 켜면 시스템 오디오 녹음)
 - 회의 결과: 회의 폴더마다 transcript.txt(원본 대화 스크립트), script-clean.txt(대화 흐름과 무관한 말을 쳐낸 정리본), minutes.md, minutes.json
 - whisper-server는 Homebrew 설치본에 의존(앱에 포함 안 됨)
