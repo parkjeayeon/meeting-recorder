@@ -17,6 +17,8 @@ const compress = require('./compress');
 const setup = require('./setup');
 // 회의 데이터 읽기는 명령줄 도구(mr)와 같이 쓰는 코어(TypeScript·ESM, npm run build:ts → lib/)로 (결정 43)
 const core = require('../lib/core/index.mjs');
+// IPC 처리기 중 공유 상태가 적은 구역(기록·질문으로 찾기·토큰·권한·처음 설정·녹음 폴더 바꾸기)은 src/app (TypeScript, 결정 70)
+const appIpc = require('../lib/app/index.mjs');
 
 const SELFTEST = process.argv.includes('--selftest');
 const TAP_MAX_MS = 300; // 이보다 짧게 눌렀다 떼면 실수로 누른 것으로 보고 버린다
@@ -789,103 +791,17 @@ function readJson(file) {
   }
 }
 
-// 받아쓰기 기록 전체 (최신순). 파일이 그대로면 읽어 둔 것을 쓴다 (찾기·나눠 보기·통계가 부를 때마다 다시 읽지 않게)
-let dictCache = { key: null, records: [] };
-function dictationRecords() {
-  let key = null;
-  try {
-    const st = fs.statSync(DICTATION_LOG);
-    key = `${DICTATION_LOG}:${st.size}:${st.mtimeMs}`;
-  } catch {
-    return [];
-  }
-  if (dictCache.key !== key) {
-    let text = '';
-    try {
-      text = fs.readFileSync(DICTATION_LOG, 'utf8');
-    } catch {}
-    dictCache = { key, records: core.parseDictationLog(text) }; // 말이 없었거나 지어낸 문장으로 걸러진 시도는 빼고
-  }
-  return dictCache.records;
-}
-// 화면이 쓰는 모양 (회의 기록과 같은 history 항목)
-const dictationItem = (d) => ({
-  id: d.id,
-  mode: 'memo',
-  startedAt: d.startedAt,
-  durationSec: d.durationSec,
-  app: d.app,
-  words: d.words,
-  chars: d.chars,
-  wpm: d.wpm,
-  language: d.language ?? null,
-  transcript: { raw: d.raw, text: d.text, cleanupProvider: d.cleanupProvider, cleanupError: d.cleanupError, timing: d.timing },
-});
-function readDictationLog() {
-  return dictationRecords().map(dictationItem);
-}
-
-// 회의 목록에 '초안 · 확인 N개' / '확정'을 표시하기 위한 요약
-// 받아쓰기는 최근 limit개, 회의는 모두 (전에는 둘을 합쳐 300개로 잘라 받아쓰기가 많으면 오래된 회의가 목록에서 조용히 빠졌다)
-function listHistory(limit = 300) {
-  const byTime = (a, b) => new Date(b.startedAt) - new Date(a.startedAt);
-  const dicts = dictationRecords().slice(0, limit).map(dictationItem); // 홈·⌘K용 최근 것만. 받아쓰기 화면·통계는 dict:page·dict:stats로 전체를
-  return [...dicts, ...listFolders()].sort(byTime);
-}
-
-function listFolders(limit) {
-  let names = [];
-  try {
-    names = fs.readdirSync(RECORDINGS_DIR).filter((n) => /^\d{4}-\d{2}-\d{2}_/.test(n));
-  } catch {}
-  return names
-    .sort()
-    .reverse()
-    .slice(0, limit)
-    .map((name) => {
-      const dir = path.join(RECORDINGS_DIR, name);
-      const meta = readJson(path.join(dir, 'meta.json'));
-      if (!meta) return null; // 녹음 중이거나 깨진 폴더
-      const transcript = readJson(path.join(dir, 'transcript.json'));
-      let minutesState = readJson(path.join(dir, 'minutes.json'));
-      // 이전 실행에서 만들다 끊긴 회의록은 실패로 보여 줘서 다시 만들 수 있게 한다
-      if (minutesState && ['queued', 'transcribe', 'write'].includes(minutesState.status) && !activeMinutes.has(dir)) {
-        minutesState = { ...minutesState, status: 'error', stage: minutesState.status === 'write' ? 'write' : 'transcribe', error: '앱이 종료되어 중단됨' };
-      }
-      // 인터넷이 끊겨 멈춘 회의는 앱을 다시 켜도 연결을 기다렸다가 이어서 쓴다
-      if (minutesState?.status === 'error' && minutesState.offline && !activeMinutes.has(dir) && !waitingOnline.has(dir)) waitForOnline(dir);
-      const durationSec = core.durationOf(meta);
-      const summary = core.readSummary(dir, meta.speakerNames);
-      return {
-        id: name,
-        dir,
-        mode: meta.mode,
-        startedAt: meta.startedAt,
-        durationSec,
-        tracks: Object.keys(meta.files ?? {}),
-        speakersHint: meta.speakers ?? null,
-        firstFile: Object.values(meta.files ?? {})[0]?.file ?? null,
-        transcript,
-        minutes: minutesState,
-        summary,
-        review: core.reviewSummary(dir),
-        audio: compress.audioInfo(dir, meta), // 녹음 크기·압축 여부 (확인을 마치면 압축 안내)
-      };
-    })
-    .filter(Boolean);
-}
-
-ipcMain.handle('history:list', () => listHistory());
-// 녹음 폴더에 있지만 목록에 나오지 않는 폴더 (날짜를 못 읽은 이름·끊긴 녹음·깨진 meta.json). 화면에 표시해 지울 수 있게
-ipcMain.handle('recordings:stray', () => core.findStrayFolders(RECORDINGS_DIR, { skip: recording ? [recording.dir] : [] }));
-// 녹음 폴더를 읽을 수 있는지. macOS가 문서 폴더 접근을 막으면(다시 설치해 서명이 바뀐 앱 등) 목록이 조용히 비므로 화면에 알린다
-ipcMain.handle('recordings:access', () => {
-  try {
-    fs.readdirSync(RECORDINGS_DIR);
-    return { ok: true, dir: RECORDINGS_DIR };
-  } catch (err) {
-    return { ok: false, dir: RECORDINGS_DIR, code: err.code ?? null };
-  }
+// 받아쓰기 기록·회의 목록 읽기(읽어 둔 것 포함)와 history:list·recordings:stray·recordings:access·dict:page·dict:stats는 src/app/history.mts.
+// 녹음 폴더·받아쓰기 기록 경로·녹음 중인 것은 부를 때 읽게 getter로 넘긴다. 목록 둘은 메뉴바(pasteLast)와 질문으로 찾기가 쓴다
+const { listFolders, listHistory } = appIpc.registerHistory(ipcMain, {
+  recordingsDir: () => RECORDINGS_DIR,
+  dictationLog: () => DICTATION_LOG,
+  recording: () => recording,
+  activeMinutes,
+  waitingOnline,
+  waitForOnline,
+  readJson,
+  compress,
 });
 ipcMain.handle('clipboard:write', (_e, text) => clipboard.writeText(text));
 ipcMain.handle('dict:repaste', async (_e, text) => {
@@ -898,95 +814,14 @@ ipcMain.handle('dict:repaste', async (_e, text) => {
 });
 ipcMain.handle('dict:providers', (_e, opts) => dictation.cleanupProviders(opts));
 ipcMain.handle('usage:get', (_e, opts) => usageMod.usage(opts));
-// 받아쓰기 기록: 최신순으로 나눠 받기(찾기는 전체에서), 통계는 전체 기록으로
-ipcMain.handle('dict:page', (_e, opts) => {
-  const page = core.pageDictations(dictationRecords(), opts ?? {});
-  return { ...page, items: page.items.map(dictationItem) };
-});
-// 통계는 기록 파일이 바뀔 때만 다시 센다 (기록을 읽을 때마다 화면이 부른다). 날이 바뀌면 오늘·연속 사용일이 달라지므로 날짜도 열쇠에
-let statsCache = { key: null, value: null };
-ipcMain.handle('dict:stats', () => {
-  const records = dictationRecords();
-  const key = `${dictCache.key}|${new Date().toDateString()}`;
-  if (statsCache.key !== key) statsCache = { key, value: core.dictationStats(records) };
-  return statsCache.value;
-});
 
 // ── 질문으로 회의 찾기 (src/ask.js, 결정 51): 메인 프로세스에서 돌아 화면을 옮기거나 창을 닫아도 이어진다 ──
-// 회의 상태는 화면의 meetState와 같은 말로 (done 확정·확인할 것 없음 / open 확인 남음 / draft 마치기 전 / fail / short / none 녹음만 / busy)
-function askMeetings() {
-  return listFolders().filter((r) => r.mode === 'meeting').map((r) => {
-    const s = r.minutes?.status;
-    const rv = r.review;
-    const status = ['queued', 'transcribe', 'write'].includes(s) ? 'busy' : s === 'error' ? 'fail' : s === 'short' || s === 'empty' ? 'short' : s !== 'done' ? 'none'
-      : !rv || rv.finalized ? 'done' : rv.open ? 'open' : rv.total ? 'draft' : 'done';
-    return { id: r.id, dir: r.dir, startedAt: r.startedAt, title: r.minutes?.title ?? null, summary: r.summary ?? null, status };
-  });
-}
-ipcMain.handle('ask:start', (_e, question, scope) => askMod.start(question, scope));
-ipcMain.handle('ask:list', () => askMod.list());
-ipcMain.handle('ask:stop', (_e, id) => askMod.stop(id));
-ipcMain.handle('ask:remove', (_e, id) => askMod.remove(id));
-ipcMain.handle('ask:seen', (_e, id) => askMod.seen(id));
+// 처리기와 엔진에 넘길 회의 목록(askMeetings)은 src/app/ask.mts. 엔진은 init()에서 켠다
+const { askMeetings } = appIpc.registerAsk(ipcMain, { ask: askMod, listFolders });
 
 // ── 연결 설정 창: 토큰·키 저장, 삭제, 확인 ─────────────────────────────────
-const DIARIZE_MODEL = 'pyannote/speaker-diarization-community-1';
-const EXTERNAL_LINKS = new Set([
-  'https://huggingface.co/settings/tokens',
-  `https://huggingface.co/${DIARIZE_MODEL}`,
-  'https://console.anthropic.com/settings/keys',
-  'https://brew.sh',
-]);
-
-ipcMain.handle('tokens:status', () => dictation.tokenSources());
-ipcMain.handle('tokens:save', (_e, kind, value) => {
-  const v = String(value ?? '').trim();
-  if (!v) return dictation.tokenSources();
-  dictation.saveSettings(kind === 'hf' ? { hfToken: v } : { apiKey: v });
-  return dictation.tokenSources();
-});
-ipcMain.handle('tokens:clear', (_e, kind) => {
-  dictation.saveSettings(kind === 'hf' ? { hfToken: '' } : { apiKey: '' });
-  return dictation.tokenSources();
-});
-ipcMain.handle('tokens:verify', async (_e, kind) => {
-  try {
-    if (kind === 'hf') {
-      const token = dictation.hfToken() ?? dictation.hfCliToken();
-      if (!token) return { ok: false, message: '저장된 토큰이 없습니다' };
-      const headers = { Authorization: `Bearer ${token}` };
-      const who = await fetch('https://huggingface.co/api/whoami-v2', { headers, signal: AbortSignal.timeout(10000) });
-      if (!who.ok) return { ok: false, message: '토큰이 맞지 않습니다 (만료되었거나 잘못 입력됨)' };
-      const user = (await who.json()).name;
-      // 약관에 동의하지 않은 계정은 모델 파일을 받을 수 없다 (403)
-      const model = await fetch(`https://huggingface.co/${DIARIZE_MODEL}/resolve/main/config.yaml`, {
-        method: 'HEAD',
-        headers,
-        redirect: 'manual',
-        signal: AbortSignal.timeout(10000),
-      });
-      const access = model.status < 400;
-      return {
-        ok: access,
-        user,
-        message: access ? `${user} 계정 · 화자 구분 모델 사용 가능` : `${user} 계정 · 모델 약관에 아직 동의하지 않았습니다`,
-      };
-    }
-    const key = dictation.apiKey();
-    if (!key) return { ok: false, message: '저장된 API 키가 없습니다' };
-    const Anthropic = require('@anthropic-ai/sdk').default;
-    await new Anthropic({ apiKey: key, timeout: 10000, maxRetries: 0 }).models.list({ limit: 1 });
-    return { ok: true, message: 'API 키 사용 가능' };
-  } catch (err) {
-    const status = err?.status;
-    if (status === 401) return { ok: false, message: 'API 키가 맞지 않습니다' };
-    if (status === 403) return { ok: false, message: '이 키로는 접근 권한이 없습니다' };
-    return { ok: false, message: `확인하지 못했습니다: ${err.message}` };
-  }
-});
-ipcMain.on('app:openExternal', (_e, url) => {
-  if (EXTERNAL_LINKS.has(url)) shell.openExternal(url);
-});
+// 처리기(tokens:status·save·clear·verify, app:openExternal)와 열어도 되는 링크 목록은 src/app/tokens.mts
+appIpc.registerTokens(ipcMain, { dictation, shell, anthropic: () => require('@anthropic-ai/sdk').default });
 
 function pasteLast() {
   const text = lastTranscript ?? listHistory(50).find((r) => r.transcript?.text || r.transcript?.raw)?.transcript;
@@ -994,6 +829,7 @@ function pasteLast() {
   if (value) dictation.paste(value, helperPath('permissions'));
 }
 
+// ── 받아쓰기 설정·음성 인식 설치·앱 정보 ───────────────────────────────────
 ipcMain.handle('dict:settings', () => ({ ...dictation.getSettings(), engine: dictation.engineStatus(), diarizeReady: minutes.diarizeAvailable() }));
 ipcMain.handle('dict:saveSettings', (_e, patch) => {
   const settings = saveDictSettings(patch);
@@ -1017,14 +853,8 @@ ipcMain.handle('app:info', async () => ({
 }));
 
 // ── 권한 확인 / 요청 ─────────────────────────────────────────────────────
-const SETTINGS_PANE = {
-  microphone: 'Privacy_Microphone',
-  inputMonitoring: 'Privacy_ListenEvent',
-  systemAudio: 'Privacy_AudioCapture',
-  accessibility: 'Privacy_Accessibility',
-  files: 'Privacy_FilesAndFolders',
-};
-
+// 처리기(perm:status·fnKey·openKeyboard·request·openSettings)와 시스템 설정 창 열기는 src/app/permissions.mts.
+// 권한 상태 읽기와 권한 도우미는 녹음 시작(rec:start)·창 띄우기(init)도 써서 여기 둔다
 function runPermissionsHelper(args) {
   return new Promise((resolve) => {
     execFile(helperPath('permissions'), args, { timeout: 130000 }, (err, stdout) => resolve(err ? null : stdout.trim()));
@@ -1044,134 +874,32 @@ async function permissionStatus() {
   return status;
 }
 
-function openPrivacySettings(kind) {
-  // macOS 13부터의 주소. 예전 com.apple.preference.security?… 는 macOS 26에서 아무 창도 열지 않는다
-  shell.openExternal(`x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?${SETTINGS_PANE[kind]}`);
-}
-
-ipcMain.handle('perm:status', permissionStatus);
-// 🌐(fn) 키가 다른 동작(입력 소스 변경·이모지·받아쓰기)과 겹치는지
-ipcMain.handle('perm:fnKey', () => fnUsageWarning());
-ipcMain.on('perm:openKeyboard', () => shell.openExternal('x-apple.systempreferences:com.apple.Keyboard-Settings.extension'));
+appIpc.registerPermissions(ipcMain, { permissionStatus, runPermissionsHelper, fnUsageWarning, systemPreferences, shell });
 
 // ── 처음 설정(온보딩): 어디까지 했는지 저장해 두고, 끝나면 본 화면으로 ─────────
-ipcMain.handle('onboarding:get', () => dictation.storedSettings().onboarding ?? { completed: false, step: 0 });
-ipcMain.on('onboarding:fnTest', (_e, on) => (fnTestMode = Boolean(on)));
-// 권한을 허용하고 돌아왔을 때 창을 앞으로
-ipcMain.on('app:focus', () => {
-  win.show();
-  app.focus({ steal: true });
-  win.focus();
-});
-ipcMain.handle('onboarding:set', (_e, patch) => {
-  const next = { ...(dictation.storedSettings().onboarding ?? {}), ...patch };
-  dictation.saveSettings({ onboarding: next });
-  return next;
-});
-ipcMain.handle('perm:request', async (_e, kind) => {
-  const before = (await permissionStatus())[kind];
-  if (kind === 'microphone' && before === 'not-determined') await systemPreferences.askForMediaAccess('microphone');
-  else if (kind === 'inputMonitoring' && before !== 'granted') {
-    await runPermissionsHelper(['request', 'input']); // 시스템 설정 목록에 앱을 추가
-    openPrivacySettings(kind); // 입력 모니터링은 사용자가 직접 켜야 한다
-  } else if (kind === 'accessibility' && before !== 'granted') {
-    await runPermissionsHelper(['request', 'accessibility']); // 시스템 설정 목록에 앱을 추가
-    openPrivacySettings(kind);
-  } else if (kind === 'systemAudio' && before === 'unknown') await runPermissionsHelper(['request', 'audio']);
-  else if (before !== 'granted') openPrivacySettings(kind);
-  return permissionStatus();
-});
-ipcMain.on('perm:openSettings', (_e, kind) => openPrivacySettings(kind));
+// 처리기(onboarding:get·set·fnTest, app:focus)는 src/app/onboarding.mts. fn 키 확인 단계 표시(fnTestMode)는 fn 상태 머신이 읽어 여기 둔다
+appIpc.registerOnboarding(ipcMain, { dictation, setFnTestMode: (on) => (fnTestMode = on), win: () => win, app });
 
 ipcMain.on('app:reveal', (_e, p) => shell.showItemInFolder(p));
 // ── 녹음 폴더 바꾸기: 고른 폴더로 기존 녹음을 옮기거나, 옮기지 않고 새 폴더만 쓴다 ──
-const RECORDING_ENTRY = /^\d{4}-\d{2}-\d{2}_/;
-
-async function moveEntry(from, to) {
-  try {
-    await fs.promises.rename(from, to);
-  } catch (err) {
-    if (err.code !== 'EXDEV') throw err;
-    // 다른 디스크면 복사한 뒤 지운다
-    await fs.promises.cp(from, to, { recursive: true, errorOnExist: true, force: false });
-    await fs.promises.rm(from, { recursive: true, force: true });
-  }
-}
-
-ipcMain.handle('recordings:choose', async () => {
-  if (recording || activeMinutes.size) throw new Error('녹음 중이거나 회의록을 만드는 중에는 바꿀 수 없습니다');
-  const picked = await dialog.showOpenDialog(win, {
-    title: '녹음 폴더 고르기',
-    defaultPath: RECORDINGS_DIR,
-    buttonLabel: '이 폴더 사용',
-    properties: ['openDirectory', 'createDirectory'],
-  });
-  if (picked.canceled || !picked.filePaths[0]) return null;
-  const next = path.resolve(picked.filePaths[0]);
-  const prev = RECORDINGS_DIR;
-  if (next === prev) return { dir: prev, moved: 0, skipped: 0 };
-  try {
-    fs.accessSync(next, fs.constants.W_OK);
-  } catch {
-    throw new Error('이 폴더에는 쓸 수 없습니다');
-  }
-  let entries = [];
-  try {
-    entries = fs.readdirSync(prev).filter((n) => RECORDING_ENTRY.test(n) || n === 'dictations.jsonl' || n === 'settings.json');
-  } catch {}
-  let move = false;
-  if (entries.length) {
-    const meetings = entries.filter((n) => n.endsWith('_meeting')).length;
-    const { response } = await dialog.showMessageBox(win, {
-      type: 'question',
-      buttons: ['옮기기', '옮기지 않고 바꾸기', '취소'],
-      defaultId: 0,
-      cancelId: 2,
-      message: '지금까지의 녹음을 새 폴더로 옮길까요?',
-      detail: `회의 ${meetings}개${entries.includes('dictations.jsonl') ? '와 받아쓰기 기록' : ''}을 옮깁니다. 옮기지 않으면 이전 녹음은 원래 폴더에 남고 앱에서는 보이지 않습니다.`,
-    });
-    if (response === 2) return null;
-    move = response === 0;
-  }
-  let moved = 0;
-  let skipped = 0;
-  if (move) {
-    for (const name of entries) {
-      const to = path.join(next, name);
-      if (fs.existsSync(to)) {
-        skipped++; // 같은 이름이 이미 있으면 덮어쓰지 않는다
-        continue;
-      }
-      try {
-        await moveEntry(path.join(prev, name), to);
-        moved++;
-      } catch {
-        skipped++;
-      }
-    }
-  }
-  setRecordingsDir(next);
-  mergePortableSettings(); // 새 폴더에 예전 설정이 있으면 사전을 합친다
-  writePortableSettings();
-  dictation.saveSettings({ recordingsDir: next === DEFAULT_RECORDINGS_DIR ? null : next });
-  updateTray();
-  return { dir: next, moved, skipped, total: entries.length, isDefault: next === DEFAULT_RECORDINGS_DIR };
+// 처리기(recordings:choose·reset, app:openRecordings)와 옮기기(moveEntry)는 src/app/recordings.mts.
+// 녹음 폴더·녹음 중인지·창은 부를 때 읽게 getter로, 폴더 바꾸기·설정 백업·메뉴바 갱신은 여기 함수를 넘긴다
+appIpc.registerRecordingsFolder(ipcMain, {
+  recordingsDir: () => RECORDINGS_DIR,
+  defaultRecordingsDir: DEFAULT_RECORDINGS_DIR,
+  setRecordingsDir,
+  recording: () => recording,
+  activeMinutes,
+  mergePortableSettings,
+  writePortableSettings,
+  updateTray,
+  win: () => win,
+  dialog,
+  shell,
+  dictation,
 });
 
-ipcMain.handle('recordings:reset', async () => {
-  if (recording || activeMinutes.size) throw new Error('녹음 중이거나 회의록을 만드는 중에는 바꿀 수 없습니다');
-  fs.mkdirSync(DEFAULT_RECORDINGS_DIR, { recursive: true });
-  setRecordingsDir(DEFAULT_RECORDINGS_DIR);
-  dictation.saveSettings({ recordingsDir: null });
-  mergePortableSettings();
-  writePortableSettings();
-  return { dir: DEFAULT_RECORDINGS_DIR, isDefault: true };
-});
-
-ipcMain.on('app:openRecordings', () => {
-  fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
-  shell.openPath(RECORDINGS_DIR);
-});
+// ── 녹음 버튼·참석 인원·화면 알림 (창에서) ─────────────────────────────────
 ipcMain.on('rec:toggle', (_e, mode) => uiToggle(mode));
 ipcMain.on('rec:pause', (_e, on) => setPaused(Boolean(on)));
 ipcMain.on('rec:cancel', () => uiCancel());

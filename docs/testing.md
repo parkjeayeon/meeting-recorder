@@ -67,7 +67,7 @@
 - `src/renderer/shared/page-host/index.test.tsx` (`npm test`, jsdom): 이음새 `reactPage`.
 
 ## 단위 테스트 — `npm test`
-`src/core`(회의 데이터 읽기), `src/llm`(LLM 층의 글 다루기), `src/review`(확인 필요 적용·되돌리기 — 임시 폴더에서), `src/meeting`(소리 변환·조각 내기 — 지어낸 WAV로, 스크립트 조립·화자 붙이기·반복 구간, 녹취 실행·회의록 만들기·구간 다시 받아쓰기 — 가짜 Whisper·LLM·파이썬 환경을 `configure()`로 넘겨서), `src/cli`(명령줄 도구 `mr`)를 Vitest로 시험한다. 가짜 녹음 폴더(`src/test/fixture.mts`, 지어낸 예시)와 회의 시험용 지어낸 소리·가짜 바깥 함수(`src/test/meeting.mts`)를 임시 폴더에 만들어 쓴다.
+`src/core`(회의 데이터 읽기), `src/llm`(LLM 층의 글 다루기), `src/review`(확인 필요 적용·되돌리기 — 임시 폴더에서), `src/meeting`(소리 변환·조각 내기 — 지어낸 WAV로, 스크립트 조립·화자 붙이기·반복 구간, 녹취 실행·회의록 만들기·구간 다시 받아쓰기 — 가짜 Whisper·LLM·파이썬 환경을 `configure()`로 넘겨서), `src/cli`(명령줄 도구 `mr`), `src/app`(본체 IPC 처리기 — 가짜 ipc(`src/test/ipc.mts`)·대화상자·토큰 저장소·네트워크와 임시 폴더로)를 Vitest로 시험한다. 가짜 녹음 폴더(`src/test/fixture.mts`, 지어낸 예시)와 회의 시험용 지어낸 소리·가짜 바깥 함수(`src/test/meeting.mts`)를 임시 폴더에 만들어 쓴다.
 - 화자 이름 바꿔 끼우기(조사 맞추기, '화자 1'과 '화자 10', '나'가 낱말 속에서 안 바뀜, 맞바꾸기), 스크립트 해석·말한 시간
 - 녹음 폴더 찾기 순서, 목록(받아쓰기·녹음 중 폴더 제외, 최근부터, `--limit`·`--since`), id 고르기(`latest`·앞부분·여럿이면 오류·폴더 밖 경로 거부)
 - 명령마다 출력이 `src/core/schema.mts`의 스키마에 맞는지, 오류 형식·종료 코드, 설치
