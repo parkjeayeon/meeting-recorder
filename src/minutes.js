@@ -3,18 +3,18 @@
 // minutes.md(회의록), minutes.json(상태)으로 남는다.
 const path = require('path');
 const fs = require('fs');
-const { spawn, execFile } = require('child_process');
+const { spawn } = require('child_process');
 const { app, net } = require('electron');
 const dictation = require('./dictation');
 const { complete, parseJson } = require('./cleanup');
 const sandbox = require('./sandbox');
 const glossary = require('./glossary');
-const { nameSpeakers, writeFileAtomic, writeJsonAtomic, copyFileAtomic, cleanGuess, inlineGuesses, toReviewItems, finalizeResults, noteVariants, stampFor, locateHeard, searchKeys, checkMinutes, smoothTurns, meetingVad } = require('../lib/core/index.mjs'); // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
+const { nameSpeakers, writeFileAtomic, writeJsonAtomic, copyFileAtomic, cleanGuess, inlineGuesses, toReviewItems, finalizeResults, noteVariants, stampFor, locateHeard, searchKeys, checkMinutes, meetingVad } = require('../lib/core/index.mjs'); // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
+// 소리 변환·조각 내기(src/meeting/audio.mts)와 스크립트 조립(src/meeting/transcript.mts)은 TypeScript로 옮겼다 (결정 70)
+const { SPEAKER, trackPath, recordedTracks, decodeTo16k, to16k, splitAtPauses, writeWav, sliceTo16k, findLoops, assignSpeakers, buildTranscript, formatLine, clock } = require('../lib/meeting/index.mjs');
 
 const LONG_TIMEOUT_MS = 10 * 60 * 1000; // 1시간짜리 회의도 여유 있게
-const SPEAKER = { mic: '나', system: '상대방' };
 const MEETING_MODEL = 'ggml-large-v3.bin'; // 회의는 속도보다 정확도 (없으면 받아쓰기용 turbo로)
-const PIECE_SEC = 600; // 긴 녹음은 약 10분씩, 조용한 지점에서 잘라 녹취한다
 
 const MINUTES_SYSTEM = `You write meeting minutes in Korean from a speech-recognition script of a meeting, usually already pruned of fillers, backchannels and small talk.
 The meeting was usually held in person and recorded with one microphone, so speakers are not identified.
@@ -145,118 +145,6 @@ async function cleanScript(transcript, settings) {
   return { text: results.flat().join('\n'), provider, chunks: chunks.length, failed };
 }
 
-// 트랙의 녹음 파일 (압축했으면 .m4a, 아니면 .wav — meta.json의 files가 정한다). 없으면 null
-function trackPath(dir, meta, track) {
-  const file = path.join(dir, meta.files?.[track]?.file ?? `${track}.wav`);
-  return fs.existsSync(file) ? file : null;
-}
-const recordedTracks = (dir, meta) => Object.keys(meta.files ?? {}).filter((t) => trackPath(dir, meta, t));
-
-// 압축한 녹음(AAC .m4a)을 16kHz 모노 WAV(44바이트 머리, 아래 함수들이 읽는 형식)로 푼다. 2시간에 약 1초
-async function decodeTo16k(src, dst) {
-  const tmp = `${dst}.af.wav`;
-  await new Promise((resolve, reject) => execFile('/usr/bin/afconvert', ['-f', 'WAVE', '-d', 'LEI16@16000', '-c', '1', src, tmp], (err, _o, stderr) => (err ? reject(new Error((stderr || err.message).trim().split('\n')[0])) : resolve())));
-  // afconvert는 확장 WAV 머리(FLLR 등 덧붙은 칸)를 쓴다 → data 칸만 꺼내 표준 44바이트 머리로 다시 쓴다
-  const fd = fs.openSync(tmp, 'r');
-  let offset = 12;
-  let size = 0;
-  try {
-    const total = fs.fstatSync(fd).size;
-    const h8 = Buffer.alloc(8);
-    while (offset + 8 <= total) {
-      fs.readSync(fd, h8, 0, 8, offset);
-      const id = h8.toString('ascii', 0, 4);
-      const len = h8.readUInt32LE(4);
-      if (id === 'data') {
-        size = Math.min(len, total - offset - 8);
-        offset += 8;
-        break;
-      }
-      offset += 8 + len + (len & 1);
-    }
-  } finally {
-    fs.closeSync(fd);
-  }
-  if (!size) throw new Error('압축한 녹음을 풀지 못했습니다');
-  const head = Buffer.alloc(44);
-  head.write('RIFF', 0);
-  head.writeUInt32LE(36 + size, 4);
-  head.write('WAVEfmt ', 8);
-  head.writeUInt32LE(16, 16);
-  head.writeUInt16LE(1, 20);
-  head.writeUInt16LE(1, 22);
-  head.writeUInt32LE(16000, 24);
-  head.writeUInt32LE(32000, 28);
-  head.writeUInt16LE(2, 32);
-  head.writeUInt16LE(16, 34);
-  head.write('data', 36);
-  head.writeUInt32LE(size, 40);
-  await new Promise((resolve, reject) => {
-    const out = fs.createWriteStream(dst);
-    out.on('error', reject).on('finish', resolve);
-    out.write(head);
-    fs.createReadStream(tmp, { start: offset, end: offset + size - 1 }).on('error', reject).pipe(out);
-  });
-  fs.rmSync(tmp, { force: true });
-}
-
-// 녹음 → 16kHz 모노 WAV: 원본 WAV는 줄이고, 압축한 녹음은 푼다
-const to16k = (src, dst) => (/\.wav$/i.test(src) ? downsampleTo16k(src, dst) : decodeTo16k(src, dst));
-
-// 48kHz 16bit 모노 WAV(WavWriter 형식)를 16kHz로 줄인다. 3샘플 평균이라 말소리 대역엔 충분하다.
-// 1시간 회의 기준 345MB → 115MB라 Whisper에 넘기는 시간과 메모리가 줄어든다.
-async function downsampleTo16k(src, dst) {
-  const header = Buffer.alloc(44);
-  const fd = fs.openSync(src, 'r');
-  fs.readSync(fd, header, 0, 44, 0);
-  fs.closeSync(fd);
-  const rate = header.readUInt32LE(24);
-  const factor = Math.max(1, Math.round(rate / 16000));
-  const out = fs.createWriteStream(dst);
-  out.write(Buffer.alloc(44)); // 헤더는 마지막에 채운다
-  let carry = Buffer.alloc(0);
-  let written = 0;
-  for await (const chunk of fs.createReadStream(src, { start: 44 })) {
-    const buf = carry.length ? Buffer.concat([carry, chunk]) : chunk;
-    const frames = Math.floor(buf.length / (2 * factor));
-    const outBuf = Buffer.alloc(frames * 2);
-    for (let i = 0; i < frames; i++) {
-      let sum = 0;
-      for (let k = 0; k < factor; k++) sum += buf.readInt16LE((i * factor + k) * 2);
-      outBuf.writeInt16LE(Math.round(sum / factor), i * 2);
-    }
-    carry = buf.subarray(frames * factor * 2);
-    written += outBuf.length;
-    if (!out.write(outBuf)) await new Promise((r) => out.once('drain', r));
-  }
-  await new Promise((resolve, reject) => out.end((err) => (err ? reject(err) : resolve())));
-  const h = Buffer.alloc(44);
-  h.write('RIFF', 0);
-  h.writeUInt32LE(36 + written, 4);
-  h.write('WAVE', 8);
-  h.write('fmt ', 12);
-  h.writeUInt32LE(16, 16);
-  h.writeUInt16LE(1, 20);
-  h.writeUInt16LE(1, 22);
-  h.writeUInt32LE(rate / factor, 24);
-  h.writeUInt32LE((rate / factor) * 2, 28);
-  h.writeUInt16LE(2, 32);
-  h.writeUInt16LE(16, 34);
-  h.write('data', 36);
-  h.writeUInt32LE(written, 40);
-  const wfd = fs.openSync(dst, 'r+');
-  fs.writeSync(wfd, h, 0, 44, 0);
-  fs.closeSync(wfd);
-}
-
-function clock(sec) {
-  const s = Math.floor(sec);
-  const h = Math.floor(s / 3600);
-  const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
-  const ss = String(s % 60).padStart(2, '0');
-  return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
-}
-
 function writeStatus(dir, status) {
   writeJsonAtomic(path.join(dir, 'minutes.json'), { ...status, updatedAt: new Date() });
 }
@@ -289,73 +177,11 @@ function makeMinutes(dir, { onStage = () => {}, speakers = null, resume = false 
   return job;
 }
 
-// 16kHz WAV를 약 PIECE_SEC마다 가장 조용한 지점(앞뒤 5초 안)에서 잘라 조각 파일로 만든다
-function splitAtPauses(wavPath, outDir) {
-  const buf = fs.readFileSync(wavPath);
-  const rate = buf.readUInt32LE(24);
-  const pcm = new Int16Array(buf.buffer, buf.byteOffset + 44, Math.floor((buf.length - 44) / 2));
-  const win = Math.round(rate * 0.1);
-  const energyAt = (i) => {
-    let e = 0;
-    for (let k = i; k < Math.min(i + win, pcm.length); k++) e += Math.abs(pcm[k]);
-    return e;
-  };
-  const cuts = [0];
-  for (let target = PIECE_SEC * rate; target < pcm.length - 30 * rate; target += PIECE_SEC * rate) {
-    let best = target;
-    let bestE = Infinity;
-    for (let i = target - 5 * rate; i <= target + 5 * rate; i += win) {
-      const e = energyAt(i);
-      if (e < bestE) [best, bestE] = [i, e];
-    }
-    cuts.push(best);
-  }
-  cuts.push(pcm.length);
-  const pieces = [];
-  for (let i = 0; i < cuts.length - 1; i++) {
-    const file = path.join(outDir, `.piece-${i}.wav`);
-    writeWav(file, buf, Buffer.from(pcm.buffer, pcm.byteOffset + cuts[i] * 2, (cuts[i + 1] - cuts[i]) * 2));
-    pieces.push({ file, offset: cuts[i] / rate });
-  }
-  return pieces;
-}
-
-// 원본 WAV의 헤더를 본떠 PCM 일부를 새 파일로 쓴다
-function writeWav(file, src, body) {
-  const h = Buffer.from(src.subarray(0, 44));
-  h.writeUInt32LE(36 + body.length, 4);
-  h.writeUInt32LE(body.length, 40);
-  fs.writeFileSync(file, Buffer.concat([h, body]));
-}
-
 // ── 같은 문장 반복 구간 다시 받아쓰기 ─────────────────────────────────────
 // Whisper는 앞 문장을 이어 받아 쓰는데, 작은 목소리·잡음 구간에서 한 문장에 갇히면 조각이 끝날 때까지
 // 1초마다 같은 문장을 적는다 (30분 회의에서 3.5분, 2시간 회의에서 8.5분이 이렇게 빠짐).
 // 매번 생기는 게 아니라 같은 녹음도 다시 돌리면 대개 제대로 나오므로, 그 구간만 앞 문장 없이 다시 받아쓴다.
-const LOOP_MIN_REPEATS = 3; // 같은 줄(또는 같은 두세 줄 묶음)이 3번 이상
-const LOOP_MAX_PERIOD = 3;
-const LOOP_MIN_SEC = 15;
-
-// 같은 줄이 이어지거나("A A A …"), 두세 줄이 번갈아 되풀이되는("A 네 A 네 …") 구간
-function findLoops(segs) {
-  const norm = (t) => t.replace(/[\s.,!?…~]/g, '');
-  const texts = segs.map((x) => norm(x.text));
-  const loops = [];
-  for (let i = 0; i < segs.length; ) {
-    let best = i; // 반복이 끝나는 줄 (포함)
-    for (let p = 1; p <= LOOP_MAX_PERIOD; p++) {
-      let j = i + p;
-      while (j < segs.length && texts[j] === texts[j - p]) j++;
-      if ((j - i) / p >= LOOP_MIN_REPEATS && j - 1 > best) best = j - 1;
-    }
-    const long = segs[best].end - segs[i].start >= LOOP_MIN_SEC;
-    // 한 줄 안에서 같은 말을 되풀이한 경우 ("네 네 네 네 네 …")
-    const stutter = best === i && long && /(.{2,}?)\1{4,}/.test(texts[i]);
-    if ((best > i && long) || stutter) loops.push({ start: segs[i].start, end: segs[best].end });
-    i = best + 1;
-  }
-  return loops;
-}
+// 반복 구간 찾기(findLoops)는 src/meeting/transcript.mts
 
 async function redoLoops(pieceFile, segs, settings, port) {
   const loops = findLoops(segs);
@@ -453,58 +279,7 @@ function diarize(wavPath, speakers) {
   });
 }
 
-const NEAREST_SPEAKER_SEC = 2; // 겹치는 화자가 없으면 이 안에 있는 가장 가까운 화자에게 붙인다
-
-// 녹취 구간마다 가장 많이 겹치는 화자를 붙이고, 처음 말한 순서대로 "화자 1, 2…"로 부른다
-// names: 이미 정한 번호(화자 구분 결과 → '화자 N')를 이어 쓸 때 넘긴다 (구간 다시 받아쓰기)
-function assignSpeakers(lines, turns, names = new Map()) {
-  turns = smoothTurns(turns); // 같은 사람 말 중간에 몇 초만 다른 사람으로 잡힌 조각을 되돌린다 (src/core/turns.mts)
-  for (const line of lines) {
-    let best = null;
-    let bestOverlap = 0;
-    let nearest = null;
-    let nearestGap = NEAREST_SPEAKER_SEC;
-    for (const t of turns) {
-      const gap = Math.max(t.start - line.end, line.start - t.end, 0);
-      if (gap < nearestGap || (gap === 0 && !nearest)) [nearest, nearestGap] = [t.speaker, gap];
-      if (t.end <= line.start || t.start >= line.end) continue;
-      const overlap = Math.min(t.end, line.end) - Math.max(t.start, line.start);
-      if (overlap > bestOverlap) [best, bestOverlap] = [t.speaker, overlap];
-    }
-    best ??= nearest;
-    if (!best) continue;
-    if (!names.has(best)) names.set(best, `화자 ${names.size + 1}`);
-    line.label = names.get(best);
-  }
-  return names.size;
-}
-
-// 같은 사람이 같은 말을 연달아 한 줄(조용할 때 Whisper가 적는 "그" 반복, 같은 문장 두 번 적기)은 하나로 합친다
-function collapseRepeats(lines) {
-  const norm = (t) => t.replace(/[\s.,!?…~]/g, '');
-  const kept = [];
-  for (const line of lines) {
-    const prev = kept.at(-1);
-    if (prev && prev.label === line.label && norm(prev.text) === norm(line.text)) {
-      prev.end = Math.max(prev.end, line.end);
-      continue;
-    }
-    kept.push({ ...line });
-  }
-  return kept;
-}
-
-// 녹취 구간 + 화자 구간 → 대화 스크립트 텍스트
-function buildTranscript(segments, diarization, tracks) {
-  const lines = segments.map((l) => ({ ...l, label: null }));
-  let speakerCount = 0;
-  if (diarization?.segments) speakerCount = assignSpeakers(lines.filter((l) => l.track === 'mic'), diarization.segments);
-  for (const l of lines) l.label ??= tracks.length > 1 ? SPEAKER[l.track] : null;
-  const text = collapseRepeats(lines)
-    .map((l) => `[${clock(l.start)}]${l.label ? ` [${l.label}]` : ''} ${l.text}`)
-    .join('\n');
-  return { text, speakerCount };
-}
+// 화자 붙이기(assignSpeakers)·연달아 같은 말 합치기·스크립트 조립(buildTranscript)은 src/meeting/transcript.mts
 
 async function run(dir, onStage, { speakers = null, prev = null } = {}) {
   const settings = dictation.getSettings();
@@ -682,56 +457,6 @@ const { readText, readJsonFile, readReview, writeReview, restoreRedoRange, parse
 // 소리가 작으면 키워서 넣는다. 결과는 확인 항목에 두었다가 '녹취에 반영'할 때만 그 구간 줄을 바꾼다 (다른 줄은 그대로)
 const REDO_PAD_SEC = 0.5;
 
-function wav16k(file, pcm) {
-  const body = Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength);
-  const h = Buffer.alloc(44);
-  h.write('RIFF', 0);
-  h.writeUInt32LE(36 + body.length, 4);
-  h.write('WAVEfmt ', 8);
-  h.writeUInt32LE(16, 16);
-  h.writeUInt16LE(1, 20);
-  h.writeUInt16LE(1, 22);
-  h.writeUInt32LE(16000, 24);
-  h.writeUInt32LE(32000, 28);
-  h.writeUInt16LE(2, 32);
-  h.writeUInt16LE(16, 34);
-  h.write('data', 36);
-  h.writeUInt32LE(body.length, 40);
-  fs.writeFileSync(file, Buffer.concat([h, body]));
-}
-
-// 녹음에서 [from, to)초를 16kHz로 잘라 낸다. 가장 큰 소리가 작으면(목소리가 멀거나 작음) 최대 8배까지 키운다
-function sliceTo16k(wavPath, from, to, out) {
-  const fd = fs.openSync(wavPath, 'r');
-  try {
-    const head = Buffer.alloc(44);
-    fs.readSync(fd, head, 0, 44, 0);
-    const rate = head.readUInt32LE(24);
-    const factor = Math.max(1, Math.round(rate / 16000));
-    const total = (fs.fstatSync(fd).size - 44) / 2;
-    const a = Math.max(0, Math.floor(from * rate));
-    const b = Math.min(total, Math.ceil(to * rate));
-    if (b <= a) throw new Error('녹음 길이를 벗어난 구간입니다');
-    const raw = Buffer.alloc((b - a) * 2);
-    fs.readSync(fd, raw, 0, raw.length, 44 + a * 2);
-    const n = Math.floor((b - a) / factor);
-    const pcm = new Int16Array(n);
-    let peak = 1;
-    for (let i = 0; i < n; i++) {
-      let sum = 0;
-      for (let k = 0; k < factor; k++) sum += raw.readInt16LE((i * factor + k) * 2);
-      pcm[i] = Math.round(sum / factor);
-      peak = Math.max(peak, Math.abs(pcm[i]));
-    }
-    const gain = Math.min(8, Math.max(1, (0.5 * 32767) / peak));
-    if (gain > 1.05) for (let i = 0; i < n; i++) pcm[i] = Math.max(-32768, Math.min(32767, Math.round(pcm[i] * gain)));
-    wav16k(out, pcm);
-    return { start: a / rate, gain: Number(gain.toFixed(2)) };
-  } finally {
-    fs.closeSync(fd);
-  }
-}
-
 // 새로 받아쓴 줄에 이 회의의 화자 번호를 그대로 붙인다 (기존 녹취 전체로 번호 표를 먼저 만든다)
 function labelRedoLines(dir, segs, track, tracks) {
   const lines = segs.map((s) => ({ ...s, track, label: null }));
@@ -780,8 +505,6 @@ function speakerTurns(dir) {
   const missing = merged.filter(([a, b]) => b - a >= MISSING_MIN_SEC).map(([start, end]) => ({ start, end }));
   return { turns: out, missing };
 }
-
-const formatLine = (l) => `[${clock(l.start)}]${l.label ? ` [${l.label}]` : ''} ${l.text}`;
 
 function retranscribeRange(dir, itemId, start, end) {
   const job = queue.then(async () => {
