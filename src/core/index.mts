@@ -12,3 +12,4 @@ export { chooseLanguage, AUTO_LANGUAGES, SHORT_VOICED_MS, type LanguageChoice } 
 export { parseDictationLog, pageDictations, dictationStats, type DictRecord, type DictationStats } from './dictlog.mjs';
 export { checkMinutes, type CheckIssue, type CheckCode } from './check.mjs';
 export { smoothTurns, ISLAND_MAX_SEC, ISLAND_GAP_SEC, type Turn } from './turns.mjs';
+export { meetingVad, VAD_THRESHOLD, VAD_PAD_MS, VAD_MIN_SILENCE_MS, type MeetingVad } from './vad.mjs';

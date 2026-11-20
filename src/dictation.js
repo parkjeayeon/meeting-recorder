@@ -250,11 +250,14 @@ function stopServer() {
 
 // 회의용 고성능 서버: 지정한 모델로 따로 띄우고, 다 쓰면 stop()으로 내린다 (받아쓰기 서버는 그대로 둔다)
 // -pp: 받아쓰는 도중 "progress = 27%"를 출력한다 → onProgress(cb)로 받은 콜백에 0~1로 넘긴다
-async function startDedicatedServer(modelFile) {
+// vad: { model, threshold, padMs, minSilenceMs }를 주면 말소리 구간만 받아쓴다 (재 보기용 개발자 스위치, core/vad.mts). 안 주면 지금과 같다
+async function startDedicatedServer(modelFile, { vad = null } = {}) {
   const bin = whisperServerBin();
   if (!bin || !fs.existsSync(modelFile)) return null;
   const port = await freePort();
-  const proc = spawn(...sandbox.wrap(bin, ['-m', modelFile, '--host', '127.0.0.1', '--port', String(port), '-sns', '-t', '8', '-pp'], { network: 'local' }), {
+  const args = ['-m', modelFile, '--host', '127.0.0.1', '--port', String(port), '-sns', '-t', '8', '-pp'];
+  if (vad) args.push('--vad', '-vm', vad.model, '-vt', String(vad.threshold), '-vp', String(vad.padMs), '-vsd', String(vad.minSilenceMs));
+  const proc = spawn(...sandbox.wrap(bin, args, { network: 'local' }), {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let progressCb = null;
