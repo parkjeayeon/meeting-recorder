@@ -19,7 +19,7 @@ function mount(over: Partial<MinutesProps> = {}) {
   const jobs = createJobs();
   const p: MinutesProps = {
     md, seek: vi.fn(), matcher: termMatcher([{ id: 'g1', term: 'QA', note: '품질 검사', status: 'confirmed' }]), openTerm: vi.fn(), flows: null,
-    flowRow: { data: null, jobs, jobKey: 'd|흐름도', make: vi.fn() }, actionsRow: { found: false, jobs, jobKey: 'd|액션', find: vi.fn() },
+    flowRow: { data: null, jobs, jobKey: 'd|흐름도', draft: '', setDraft: vi.fn(), make: vi.fn() }, actionsRow: { found: false, jobs, jobKey: 'd|액션', find: vi.fn() },
     glossary: { terms: [], exists: false, openCard: vi.fn(), change: vi.fn(), make: vi.fn(async () => {}) },
     review: { finalized: false, open: 1, go: vi.fn() }, toggleTodo: vi.fn(), ...over,
   };

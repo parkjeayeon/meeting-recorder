@@ -84,14 +84,21 @@ export interface FlowRowProps {
   readonly data: FlowData | null;
   readonly jobs: Jobs;
   readonly jobKey: string;
+  /** 그릴 흐름 칸에 쓰던 글 (다시 그려도 남게, 주인이 들고 있다) */
+  readonly draft: string;
+  readonly setDraft: (text: string) => void;
   /** 만들기 (focus: 그릴 흐름, 빈칸이면 알아서) */
   readonly make: (focus: string) => void;
 }
 
 /** 흐름도가 없을 때 회의록 아래 줄 (div.flow-row 안): 무엇을 그릴지(선택) 적고 만들기 */
-export function FlowRowBody({ data, jobs, jobKey, make }: FlowRowProps) {
+export function FlowRowBody({ data, jobs, jobKey, draft, setDraft, make }: FlowRowProps) {
   const input = useRef<HTMLInputElement>(null);
   const busy = jobs.has(jobKey);
+  useLayoutEffect(() => {
+    input.current!.value = draft;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- 그릴 때 한 번 (페이지가 다시 그릴 때마다 새로 그린다)
+  useNativeEvent(input, 'input', (el) => setDraft(el.value));
   return (
     <>
       <div className="flow-row-text">
@@ -99,7 +106,7 @@ export function FlowRowBody({ data, jobs, jobKey, make }: FlowRowProps) {
         <span>{data ? `그릴 흐름을 찾지 못했습니다 · ${data.reason ?? ''}` : '인수인계·업무 절차처럼 단계와 순서를 설명한 회의는 그림으로 정리할 수 있습니다. 원본·정리본·회의록을 모두 보고 만듭니다.'}</span>
       </div>
       <div className="flow-row-acts">
-        <input ref={input} type="text" className="flow-focus" placeholder="그릴 흐름 (선택) · 예: 데이터 처리 순서만" maxLength={200} aria-label="그릴 흐름" disabled={busy || undefined} />
+        <input ref={input} data-focus="flow-focus" type="text" className="flow-focus" placeholder="그릴 흐름 (선택) · 예: 데이터 처리 순서만" maxLength={200} aria-label="그릴 흐름" disabled={busy || undefined} />
         <JobButton jobs={jobs} jobKey={jobKey} className="btn small" icon="i-plus" label="흐름도 만들기" onClick={() => {
           input.current!.disabled = true;
           make(input.current!.value);
@@ -182,7 +189,7 @@ export function FlowChatBody({ f, messages, busy, draft, setDraft, send, apply, 
         {busy ? <div className="msg assistant busy"><div className="msg-text">녹취를 다시 보고 있습니다…</div></div> : null}
       </div>
       <div className="chat-input">
-        <textarea ref={input} rows={2} placeholder="예: 마지막에 백업 단계도 넣어 주세요" />
+        <textarea ref={input} data-focus="flow-chat" rows={2} placeholder="예: 마지막에 백업 단계도 넣어 주세요" />
         <button className="icon-btn send" aria-label="보내기" disabled={busy || undefined} onClick={go}><Icon id="i-send" /></button>
       </div>
     </>

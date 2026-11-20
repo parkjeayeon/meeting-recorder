@@ -55,6 +55,7 @@ API 타입: `src/preload.js`에 함수를 더하면 그것만 고친다. 화면 
 - API 함수의 인자·결과 타입은 처음엔 any/unknown. 99개를 미리 지어내지 않고 쓰는 곳이 생길 때 적는다. 인자 개수도 그때부터 검사된다.
 - 옮긴 화면도 시험이 찾는 클래스 이름을 전역 그대로 둔다(Playwright로 바꿀 때까지). 스타일은 조각별로 옮긴다.
 - 묶음을 줄이지 않는다(minify 끔) — 오류 위치를 읽을 수 있게.
+- 회의 페이지는 다시 그리기 = 안을 통째로 새로 만들기(`<Page key={version}>`)라 포커스·커서가 풀린다. 주인(`pages/meeting/controller.ts`)이 그리기 전후로 열쇠(`data-focus`)를 보고 되돌린다(`shared/ui`의 `focusMark`·`restoreFocus`, 주인이 정한 곳은 `focusWant`로 먼저). 회의 페이지에 포커스를 받는 칸을 새로 만들면 열쇠를 달고, 쓰던 글을 주인이 들게 한다 — 안 그러면 상관없는 다시 그리기에 쓰던 글과 포커스가 날아간다. 포커스를 옮기려고 타이머(`setTimeout`·`requestAnimationFrame`)를 쓰지 않는다: 늦게 와서 그사이 사용자가 옮겨 간 칸을 빼앗는다.
 
 ## 버린 대안
 - **Vite 개발 서버 + HMR** (`loadURL`): 출처가 둘(별도 `localStorage`), 개발용 CSP(ws·inline), `main.js` 분기, 시험 5곳의 여는 코드 수정, 시험이 안 도는 개발 경로. 겉은 빠르지만 창이 코드를 받는 길이 늘어난다.

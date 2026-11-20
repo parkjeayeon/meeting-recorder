@@ -41,9 +41,23 @@ test('입력칸 · 실제 영어와 Backspace', async ({ page, go, id }) => {
   await test.step('확인 필요 직접 추가', async () => {
     // 채팅이 열린 채 '남은 것'이 가려져 있다 — 옛 시험처럼 요소를 바로 누른다
     await page.getByRole('button', { name: /^남은 것/ }).evaluate((b: HTMLElement) => b.click());
-    // 갈래를 누르면 한 박자 뒤에 탭을 새로 그린다 — 그리기 전에 잡은 입력칸은 포커스를 잃는다 (부하가 걸리면 이 틈에 걸렸다)
-    await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
     await checkKeys(page.locator('.review-add textarea'));
+  });
+  await test.step('쓰는 중에 페이지를 다시 그려도 포커스·커서가 남는다', async () => {
+    // 다시 그리기 = 페이지 안을 통째로 새로 만들기. 파일이 바뀐 소식(stubMeetingChanged)으로 일부러 다시 그리게 한다
+    const box = page.locator('.review-add textarea');
+    await box.fill('');
+    await box.pressSequentially('abcd');
+    await box.press('ArrowLeft');
+    await box.press('ArrowLeft'); // 커서는 ab|cd
+    const before = await box.elementHandle();
+    await page.evaluate((meetingId) => (window as unknown as { stubMeetingChanged: (id: string) => void }).stubMeetingChanged(meetingId), id);
+    await page.waitForFunction((el) => !el?.isConnected, before); // 정말 새 입력칸으로 바뀌었다
+    await expect(box).toBeFocused();
+    await expect(box).toHaveValue('abcd');
+    expect(await box.evaluate((el: HTMLTextAreaElement) => [el.selectionStart, el.selectionEnd])).toEqual([2, 2]);
+    await page.keyboard.press('x'); // 다음 실제 키가 같은 입력칸의 같은 자리에
+    await expect(box).toHaveValue('abxcd');
   });
   await test.step('처리함 고치기', async () => {
     await page.locator('.chat-head').getByRole('button', { name: '닫기', exact: true }).click();

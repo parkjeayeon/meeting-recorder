@@ -22,9 +22,9 @@ beforeEach(() => {
   document.body.append(host);
 });
 function mount(over: Partial<ReviewProps> = {}) {
-  const actions = Object.fromEntries(['setFilter', 'select', 'selectAll', 'setGuess', 'apply', 'keep', 'openChat', 'redo', 'toggleRedoPick', 'reopen', 'revert', 'cancelEdit', 'setAddDraft', 'add', 'warn'].map((k) => [k, vi.fn()])) as unknown as ReviewActions;
+  const actions = Object.fromEntries(['setFilter', 'select', 'selectAll', 'setGuess', 'setDraft', 'apply', 'keep', 'openChat', 'redo', 'toggleRedoPick', 'reopen', 'revert', 'cancelEdit', 'setAddDraft', 'add', 'warn'].map((k) => [k, vi.fn()])) as unknown as ReviewActions;
   Object.assign(actions, { reapply: vi.fn(async () => {}), makeReview: vi.fn(async () => true), finalize: vi.fn(async () => false), reopenAll: vi.fn(async () => true) });
-  const p: ReviewProps = { review: { items }, minutes: '', transcript: '', filter: 'open', selected: new Set(), guessDraft: new Map(), redoPick: new Set(), addDraft: '', seek: vi.fn(), now: () => 75, jobs: createJobs(), addKey: 'd|확인추가', actions, ...over };
+  const p: ReviewProps = { review: { items }, minutes: '', transcript: '', filter: 'open', selected: new Set(), guessDraft: new Map(), redoPick: new Set(), addDraft: '', drafts: new Map(), seek: vi.fn(), now: () => 75, jobs: createJobs(), addKey: 'd|확인추가', actions, ...over };
   act(() => createIslands().mount(host, ReviewBody, p));
   return actions;
 }
@@ -100,7 +100,7 @@ describe('확인 필요 탭', () => {
 describe('확인 필요 채팅', () => {
   it('제안: 적용·그대로 두기·확인됨, 처리한 것은 결과로, 녹취에서 못 찾은 제안은 녹취 글자로 고쳐 적용', async () => {
     const p = {
-      items: [items[0]!, items[1]!, { ...items[4]!, id: 'r9' }], busy: false, redoing: null, applying: new Set<string>(), draft: '',
+      items: [items[0]!, items[1]!, { ...items[4]!, id: 'r9' }], busy: false, redoing: null, applying: new Set<string>(), draft: '', fieldDrafts: new Map<string, string>(), setFieldDraft: vi.fn(),
       messages: [{ role: 'assistant' as const, text: '**Memcached**로 보입니다', proposals: [{ id: 'r1', heard: '랩캐시도', guess: 'Memcached' }, { id: 'r3', resolve: '외부 개발자' }, { id: 'r9', heard: '큐에이', guess: 'QA' }], unmatched: [{ id: 'r1', heard: '랩 캐시 도', guess: 'Memcached' }] }],
       setDraft: vi.fn(), send: vi.fn(), close: vi.fn(), apply: vi.fn(), applyUnmatched: vi.fn(async () => {}), redo: vi.fn(), applyRedo: vi.fn(),
     };

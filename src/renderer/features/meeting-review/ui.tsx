@@ -21,13 +21,13 @@ export interface ReviewProps {
   /** 구간을 몰라 직접 고르는 중인 항목 */
   readonly redoPick: ReadonlySet<string>;
   readonly addDraft: string;
+  /** 그 밖의 입력칸에 쓰던 글 (열쇠는 data-focus와 같다: resolve:r3, from:r3, to:r3, redo-start:r6, redo-end:r6) */
+  readonly drafts: ReadonlyMap<string, string>;
   /** 녹음이 있으면 시각을 눌러 그 자리부터, 재생 중인 위치 */
   readonly seek: ((sec: number) => void) | null;
   readonly now: () => number;
   readonly jobs: Jobs;
   readonly addKey: string;
-  /** 방금 처리한 항목 다음에 볼 항목 — 그 카드의 입력칸으로 포커스를 옮긴다 (없으면 그대로) */
-  readonly focusId?: string | null;
   readonly actions: ReviewActions;
 }
 export interface ReviewActions {
@@ -35,6 +35,8 @@ export interface ReviewActions {
   readonly select: (id: string, on: boolean) => void;
   readonly selectAll: (on: boolean) => void;
   readonly setGuess: (id: string, value: string) => void;
+  /** 그 밖의 입력칸에 쓰는 글 (다시 그려도 남게) */
+  readonly setDraft: (key: string, value: string) => void;
   readonly apply: (fixes: readonly Fix[]) => void;
   readonly keep: (ids: readonly string[]) => void;
   readonly openChat: (ids: readonly string[]) => void;
@@ -58,18 +60,21 @@ export interface ReviewActions {
   readonly warn: (title: string) => void;
 }
 
+// 카드에서 포커스를 받을 첫 요소: 입력칸, 없으면 할 일 버튼
+const CARD_ENTRY = '.ritem-fix input, .ritem-acts button, .ritem-done button';
+
 const Stamp = ({ at, seek }: { readonly at: string; readonly seek: ((sec: number) => void) | null }) =>
   seek ? <button className="seek" title="여기부터 듣기" onClick={() => seek(parseStamp(at))}>{at}</button> : null;
 
 /** 속성으로만 체크하는 체크 상자 (옛 화면처럼 HTML 속성을 남기지 않게), 바뀌면 직접 단 처리기로 */
-function Check({ checked, indeterminate = false, label, onChange }: { readonly checked: boolean; readonly indeterminate?: boolean; readonly label: string; readonly onChange: (on: boolean) => void }) {
+function Check({ checked, indeterminate = false, label, focusKey, onChange }: { readonly checked: boolean; readonly indeterminate?: boolean; readonly label: string; readonly focusKey: string; readonly onChange: (on: boolean) => void }) {
   const ref = useRef<HTMLInputElement>(null);
   useLayoutEffect(() => {
     ref.current!.checked = checked;
     ref.current!.indeterminate = indeterminate;
   });
   useNativeEvent(ref, 'change', (el) => onChange(el.checked));
-  return <input ref={ref} type="checkbox" aria-label={label} />;
+  return <input ref={ref} type="checkbox" aria-label={label} data-focus={focusKey} />;
 }
 
 /** 확인 필요 섹션이 있는데 아직 항목으로 나누지 않은 회의록 */
@@ -120,7 +125,7 @@ function ReviewAdd({ draft, jobs, jobKey, setDraft, add }: { readonly draft: str
   });
   return (
     <div className="review-add">
-      <textarea ref={input} rows={1} placeholder={'놓친 게 있나요? 예: "통신 한정성"은 "안정성"이야 · 12분쯤 나온 회사 이름이 이상해'} disabled={jobs.has(jobKey) || undefined} />
+      <textarea ref={input} data-focus="review-add" rows={1} placeholder={'놓친 게 있나요? 예: "통신 한정성"은 "안정성"이야 · 12분쯤 나온 회사 이름이 이상해'} disabled={jobs.has(jobKey) || undefined} />
       <JobButton jobs={jobs} jobKey={jobKey} className="btn small" icon="i-plus" label="확인 필요에 추가" onClick={send} />
     </div>
   );
@@ -165,13 +170,12 @@ function Finalize({ review, openCount, doneCount, finalize, reopenAll }: { reado
 }
 
 // 구간 직접 고르기: 시작·끝(mm:ss)을 넣거나 '지금 재생 위치'로. 끝을 비우면 시작부터 1분, 최대 10분
-function RedoPicker({ it, now, redo, warn }: { readonly it: ReviewItem; readonly now: () => number; readonly redo: ReviewActions['redo']; readonly warn: (t: string) => void }) {
+// 열 때 시작 칸으로 포커스를 옮기는 것은 주인(다시 그릴 때마다 새로 그려지므로 여기서 하면 다른 칸의 포커스를 빼앗는다)
+function RedoPicker({ it, now, drafts, redo, warn, setDraft }: { readonly it: ReviewItem; readonly now: () => number; readonly drafts: ReadonlyMap<string, string>; readonly redo: ReviewActions['redo']; readonly warn: (t: string) => void; readonly setDraft: ReviewActions['setDraft'] }) {
   const start = useRef<HTMLInputElement>(null);
   const end = useRef<HTMLInputElement>(null);
-  useLayoutEffect(() => {
-    const t = setTimeout(() => start.current?.focus());
-    return () => clearTimeout(t);
-  }, []);
+  const startKey = `redo-start:${it.id}`;
+  const endKey = `redo-end:${it.id}`;
   const ok = (v: string) => /^\d{1,2}(:\d{2}){1,2}$/.test(v.trim());
   const go = () => {
     const s = start.current!;
@@ -184,20 +188,21 @@ function RedoPicker({ it, now, redo, warn }: { readonly it: ReviewItem; readonly
     if (b - a > 600) return warn('한 번에 10분까지 다시 받아쓸 수 있습니다');
     redo(it.id, { start: a, end: b });
   };
-  const here = (input: { current: HTMLInputElement | null }) => (
+  const here = (input: { current: HTMLInputElement | null }, key: string) => (
     <button className="btn small ghost" title="재생 중인 위치를 넣습니다" onClick={() => {
       input.current!.value = clock(Math.floor(now() || 0));
+      setDraft(key, input.current!.value);
     }}>지금 재생 위치</button>
   );
   return (
     <div className="redo-pick">
       <span className="hint" style={{ margin: 0 }}>메모에 시각이 없어 구간을 모릅니다. 녹음을 들어 보고 그 구간을 넣어 주세요.</span>
       <div className="redo-pick-row">
-        <Field inputRef={start} inputMode="numeric" placeholder="시작 12:30" aria-label="시작 시각" onEnter={go} />
-        {here(start)}
+        <Field inputRef={start} data-focus={startKey} initial={drafts.get(startKey)} onInput={(v) => setDraft(startKey, v)} inputMode="numeric" placeholder="시작 12:30" aria-label="시작 시각" onEnter={go} />
+        {here(start, startKey)}
         <span className="hint" style={{ margin: 0 }}>~</span>
-        <Field inputRef={end} inputMode="numeric" placeholder="끝 (비우면 1분)" aria-label="끝 시각" onEnter={go} />
-        {here(end)}
+        <Field inputRef={end} data-focus={endKey} initial={drafts.get(endKey)} onInput={(v) => setDraft(endKey, v)} inputMode="numeric" placeholder="끝 (비우면 1분)" aria-label="끝 시각" onEnter={go} />
+        {here(end, endKey)}
         <button className="btn small primary" onClick={go}>다시 받아쓰기</button>
       </div>
     </div>
@@ -246,7 +251,7 @@ function OpenItem({ it, p }: { readonly it: ReviewItem; readonly p: ReviewProps 
         <div className="ritem-fix">
           <span className="heard">{it.heard}</span>
           <Icon id="i-right" />
-          <Field inputRef={guessRef} initial={guess} placeholder="고칠 말 (기억나는 대로)" onInput={(v) => actions.setGuess(it.id, v)} onEnter={applyGuess} />
+          <Field inputRef={guessRef} data-focus={`guess:${it.id}`} initial={guess} placeholder="고칠 말 (기억나는 대로)" onInput={(v) => actions.setGuess(it.id, v)} onEnter={applyGuess} />
           <button className="btn small primary" onClick={applyGuess}>적용</button>
         </div>
         {variants.length === 2 ? (
@@ -268,17 +273,19 @@ function OpenItem({ it, p }: { readonly it: ReviewItem; readonly p: ReviewProps 
       if (a && b) actions.apply([{ id: it.id, heard: a, guess: b }]);
       else (a ? to : from).current!.focus();
     };
+    // 쓰던 글은 주인이 들고 있다 (다시 그려도 남게)
+    const kept = (role: string) => ({ 'data-focus': `${role}:${it.id}`, initial: p.drafts.get(`${role}:${it.id}`), onInput: (v: string) => actions.setDraft(`${role}:${it.id}`, v) });
     fix = (
       <>
         {it.heardNote ? <div className="ritem-fix muted"><span className="heard">{it.heardNote}</span><span className="hint" style={{ margin: 0 }}>녹취에 이 글자 그대로는 없습니다</span></div> : null}
         <div className="ritem-fix">
-          <Field inputRef={what} placeholder="확인한 내용 (예: 외부 개발자, 이름은 그대로)" aria-label="확인한 내용" onEnter={resolve} />
+          <Field inputRef={what} {...kept('resolve')} placeholder="확인한 내용 (예: 외부 개발자, 이름은 그대로)" aria-label="확인한 내용" onEnter={resolve} />
           <button className="btn small primary" onClick={resolve}><Icon id="i-check" />확인됨</button>
         </div>
         <div className="ritem-fix ritem-pair">
-          <Field inputRef={from} placeholder="녹취에 적힌 글자" aria-label="녹취에 적힌 글자" />
+          <Field inputRef={from} {...kept('from')} placeholder="녹취에 적힌 글자" aria-label="녹취에 적힌 글자" />
           <Icon id="i-right" />
-          <Field inputRef={to} placeholder="고칠 말" aria-label="고칠 말" onEnter={pair} />
+          <Field inputRef={to} {...kept('to')} placeholder="고칠 말" aria-label="고칠 말" onEnter={pair} />
           <button className="btn small" onClick={pair}>적용</button>
         </div>
       </>
@@ -297,7 +304,7 @@ function OpenItem({ it, p }: { readonly it: ReviewItem; readonly p: ReviewProps 
         ) : null}
         <button className="btn small ghost" onClick={() => actions.keep([it.id])}>{it.kind === 'lost' ? '유실 그대로 두기' : '그대로 두기'}</button>
       </div>
-      {p.redoPick.has(it.id) && !range ? <RedoPicker it={it} now={p.now} redo={actions.redo} warn={actions.warn} /> : null}
+      {p.redoPick.has(it.id) && !range ? <RedoPicker it={it} now={p.now} drafts={p.drafts} redo={actions.redo} warn={actions.warn} setDraft={actions.setDraft} /> : null}
     </>
   );
 }
@@ -367,17 +374,13 @@ export function ReviewBody(p: ReviewProps) {
   const applicable = sel.filter((it) => it.heard && guessOf(it).trim());
   const locked = Boolean(review.finalizedAt);
   const list = useRef<HTMLDivElement>(null);
-  // 카드의 첫 입력칸(없으면 첫 버튼)으로 포커스를 옮기고 화면 안으로
+  // 카드의 첫 입력칸(없으면 첫 버튼)으로 포커스를 옮기고 화면 안으로. 처리한 다음 항목으로 옮기는 것은 주인이 카드 열쇠(card:id)로 한다
   const focusCard = (card: Element | null | undefined) => {
-    const target = card?.querySelector<HTMLElement>('.ritem-fix input, .ritem-acts button, .ritem-done button');
+    const target = card?.querySelector<HTMLElement>(CARD_ENTRY);
     if (!target) return;
     target.focus({ preventScroll: true });
     card!.scrollIntoView?.({ block: 'nearest' });
   };
-  // 항목을 처리하면 페이지가 새로 그려진다 → 다음 항목에서 이어서 하게 (주인이 focusId로 알려 준다)
-  useLayoutEffect(() => {
-    if (p.focusId) focusCard(list.current?.querySelector(`.ritem[data-id="${CSS.escape(p.focusId)}"]`));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- 그릴 때 한 번
   // 키보드로 훑기: ⌥↓·⌥↑(입력칸 밖에서는 J·K)로 항목 사이를 옮기고, ⌘.으로 그대로 둔다. 적용은 입력칸에서 Enter
   const onKey = (e: React.KeyboardEvent) => {
     if (e.nativeEvent.isComposing) return;
@@ -406,7 +409,7 @@ export function ReviewBody(p: ReviewProps) {
       <div className="review-bar">
         {p.filter === 'open' && open.length > 0 ? (
           <label className="review-all">
-            <Check checked={open.length > 0 && sel.length === open.length} indeterminate={sel.length > 0 && sel.length < open.length} label="모두 고르기" onChange={actions.selectAll} />
+            <Check checked={open.length > 0 && sel.length === open.length} indeterminate={sel.length > 0 && sel.length < open.length} label="모두 고르기" focusKey="select-all" onChange={actions.selectAll} />
             {sel.length ? `${sel.length}개 선택` : '모두 고르기'}
           </label>
         ) : null}
@@ -421,8 +424,8 @@ export function ReviewBody(p: ReviewProps) {
         ) : null}
         <span style={{ flex: 1 }} />
         <div className="chips" style={{ margin: 0 }}>
-          <button className="chip" aria-pressed={p.filter === 'open'} onClick={() => actions.setFilter('open')}>남은 것<Num>{open.length}</Num></button>
-          <button className="chip" aria-pressed={p.filter === 'done'} onClick={() => actions.setFilter('done')}>처리함<Num>{done.length}</Num></button>
+          <button className="chip" data-focus="filter:open" aria-pressed={p.filter === 'open'} onClick={() => actions.setFilter('open')}>남은 것<Num>{open.length}</Num></button>
+          <button className="chip" data-focus="filter:done" aria-pressed={p.filter === 'done'} onClick={() => actions.setFilter('done')}>처리함<Num>{done.length}</Num></button>
         </div>
       </div>
       {/* 항목이 먼저, 그 아래에 놓친 것 더하기와 마치기 — 탭을 열면 첫 항목이 바로 보이게 */}
@@ -430,9 +433,10 @@ export function ReviewBody(p: ReviewProps) {
         {!shown.length ? (
           <div className="empty"><b>{p.filter === 'open' ? '확인할 항목이 없습니다' : '아직 처리한 항목이 없습니다'}</b>{p.filter === 'open' && items.length ? '모두 처리했습니다.' : ''}</div>
         ) : shown.map((it) => (
-          <div key={it.id} data-id={it.id} className={`ritem${p.selected.has(it.id) ? ' on' : ''} ${it.status}`}>
+          // 카드 열쇠: 카드 안의 열쇠 없는 버튼에 있었거나 주인이 이 카드를 고르면 카드의 첫 입력칸(없으면 첫 버튼)으로
+          <div key={it.id} data-id={it.id} data-focus={`card:${it.id}`} data-focus-entry={CARD_ENTRY} className={`ritem${p.selected.has(it.id) ? ' on' : ''} ${it.status}`}>
             <div className="ritem-head">
-              {it.status === 'open' ? <Check checked={p.selected.has(it.id)} label={`고르기: ${it.heard ?? it.heardNote ?? it.note}`.slice(0, 60)} onChange={(on) => actions.select(it.id, on)} /> : null}
+              {it.status === 'open' ? <Check checked={p.selected.has(it.id)} label={`고르기: ${it.heard ?? it.heardNote ?? it.note}`.slice(0, 60)} focusKey={`select:${it.id}`} onChange={(on) => actions.select(it.id, on)} /> : null}
             {/* 형식 검사가 올린 항목은 '근거 확인' (core/check.mts) */}
               <span className={`tag kind-${it.kind}`}>{it.source === 'check' ? '근거 확인' : REVIEW_KIND[it.kind] ?? '확인'}</span>
               {it.at ? <Stamp at={it.at} seek={p.seek} /> : null}

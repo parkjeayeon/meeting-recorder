@@ -17,6 +17,16 @@ import { clock, formatLine } from './transcript.mjs';
 // 앞 문장을 이어 받지 않고(반복에 갇히지 않게), 소리가 작으면 키워서 넣는다. 결과는 확인 항목에 두었다가 '녹취에 반영'할 때만 그 구간 줄을 바꾼다 (다른 줄은 그대로)
 export const REDO_PAD_SEC = 0.5;
 
+// 새 줄은 바꿀 구간 [start, end) 안에서 시작하게 한다. 가운데가 구간 안이라 넣은 말이 앞 여유분에서 시작하면(10~15초에 9.7초)
+// 구간 시작으로 당긴다. 반영과 되돌리기는 시각이 구간 안인 줄·녹취 구간만 바꾸므로, 밖에서 시작한 줄은 되돌려도 남았다(결정 74)
+export function clampToRange<T extends { start: number; end: number }>(lines: readonly T[], start: number, end: number): T[] {
+  const last = Math.max(start, end - 0.01); // 끝은 구간에 들지 않는다
+  return lines.map((l) => {
+    const at = Math.min(Math.max(l.start, start), last);
+    return at === l.start ? l : { ...l, start: at, end: Math.max(l.end, at) };
+  });
+}
+
 export function retranscribeRange(dir: string, itemId: string, start: number | string, end: number | string): Promise<{ start: number; end: number; gain: number; text: string; empty: boolean }> {
   return enqueue(async () => {
     const s = Number(start);
@@ -45,7 +55,7 @@ export function retranscribeRange(dir: string, itemId: string, start: number | s
       const segs = (await transcribeSegments(tmp, meetingAsr(settings), server?.port ?? null, { noContext: true }))
         .map((x) => ({ start: x.start + cut.start, end: x.end + cut.start, text: x.text }))
         .filter((x) => (x.start + x.end) / 2 >= s && (x.start + x.end) / 2 < e); // 앞뒤 여유분에 걸친 말은 옆 줄과 겹치므로 뺀다
-      const lines = labelRedoLines(dir, segs, track, tracks);
+      const lines = clampToRange(labelRedoLines(dir, segs, track, tracks), s, e); // 화자는 들린 시각으로 정한 뒤 당긴다
       // 지난 반영이 도중에 끊겼으면(원래 줄만 기록되고 반영 표시가 없음) 그 구간을 먼저 원래대로 돌린 뒤 새 결과로 바꾼다
       if (item.redo?.replaced && !item.redo.appliedAt) restoreRedoRange(dir, item.redo);
       item.redo = { start: s, end: e, track, gain: cut.gain, lines, model: server ? 'large-v3' : 'large-v3-turbo', at: new Date() };
@@ -66,9 +76,11 @@ export function applyRetranscribe(dir: string, itemId: string): Review {
   const item = review?.items.find((it) => it.id === itemId);
   if (!item?.redo) throw new Error('다시 받아쓴 결과가 없습니다');
   const { start, end, track } = item.redo;
-  const lines = item.redo.lines as RedoLine[];
-  if (!lines.length) throw new Error('다시 받아써도 알아들을 수 있는 말이 없었습니다');
+  if (!(item.redo.lines as RedoLine[]).length) throw new Error('다시 받아써도 알아들을 수 있는 말이 없었습니다');
   if (item.redo.appliedAt) return review!; // 이미 반영함 (두 번 눌러도 원래 줄 기록을 덮지 않게)
+  // 고치기 전에 받아 둔 결과도 구간 안으로 당긴다. 넣는 줄과 기록(redo.lines)이 같아야 되돌릴 때 기록으로 찾을 수 있다
+  const lines = clampToRange(item.redo.lines as RedoLine[], start, end);
+  item.redo.lines = lines;
   const inRange = (l: string) => {
     const m = /^\[([\d:]+)\]/.exec(l);
     return m && parseClock(m[1]!) >= Math.floor(start) && parseClock(m[1]!) < end;

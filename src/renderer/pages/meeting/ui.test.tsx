@@ -92,7 +92,7 @@ describe('회의 페이지', () => {
     mount(base({ state: { kind: 'short' }, tabs: [], tab: null }));
     expect(document.querySelector('[role="tabpanel"]')).toBeNull();
     expect(document.querySelector('.page')!.className).toBe('page');
-    const chat = { items: [], messages: [], busy: false, redoing: null, applying: new Set<string>(), draft: '', setDraft: vi.fn(), send: vi.fn(), close: vi.fn(), apply: vi.fn(), applyUnmatched: vi.fn(async () => {}), redo: vi.fn(), applyRedo: vi.fn() };
+    const chat = { items: [], messages: [], busy: false, redoing: null, applying: new Set<string>(), draft: '', setDraft: vi.fn(), fieldDrafts: new Map(), setFieldDraft: vi.fn(), send: vi.fn(), close: vi.fn(), apply: vi.fn(), applyUnmatched: vi.fn(async () => {}), redo: vi.fn(), applyRedo: vi.fn() };
     act(() => {
       view = base({ version: 2, chat });
       source.changed();

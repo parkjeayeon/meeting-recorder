@@ -6,6 +6,7 @@ export { el, icon } from './dom.ts';
 export { glide, scrollSpy } from './scroll-spy.ts';
 export { createToaster, confirmBox } from './feedback.ts';
 export { installTooltips } from './tooltips.ts';
+export { findFocusKey, focusMark, restoreFocus, type FocusMark, type FocusWant } from './focus-keys.ts';
 
 /** SVG 묶음(index.html의 <symbol id="i-…">)의 아이콘 하나 */
 export function Icon({ id }: { readonly id: string }) {

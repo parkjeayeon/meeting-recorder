@@ -45,7 +45,7 @@ describe('흐름도', () => {
 
   it('만들기 줄: 적은 흐름으로 만들고 입력칸을 막는다', () => {
     const make = vi.fn();
-    act(() => createIslands().mount(host, FlowRowBody, { data: null, jobs: createJobs(), jobKey: 'd|흐름도', make }));
+    act(() => createIslands().mount(host, FlowRowBody, { data: null, jobs: createJobs(), jobKey: 'd|흐름도', draft: '', setDraft: vi.fn(), make }));
     const input = host.querySelector<HTMLInputElement>('.flow-focus')!;
     input.value = '데이터 처리 순서만';
     act(() => host.querySelector('button')!.click());

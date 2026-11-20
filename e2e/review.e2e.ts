@@ -188,7 +188,15 @@ test('확인 필요 · 채팅은 항목을 덮지 않고 Escape로 닫힌다', a
     // 비켜 선 만큼 본문 칸에 가로 막대가 생기지 않는다
     expect(await page.locator('#view').evaluate((v) => v.scrollWidth <= v.clientWidth)).toBe(true);
   });
-  await test.step('Escape로 닫으면 연 채팅 버튼으로 포커스가 돌아온다', async () => {
+  await test.step('입력칸에 쓴 글이 있으면 Escape로 닫지 않고 글도 그대로', async () => {
+    const box = chat.getByRole('textbox');
+    await box.pressSequentially('abc');
+    await page.keyboard.press('Escape');
+    await expect(chat).toBeVisible();
+    await expect(box).toHaveValue('abc');
+    await box.fill('');
+  });
+  await test.step('비운 뒤 Escape로 닫으면 연 채팅 버튼으로 포커스가 돌아온다', async () => {
     await page.keyboard.press('Escape');
     await expect(chat).toHaveCount(0);
     await expect(card.getByRole('button', { name: /채팅/ })).toBeFocused();
