@@ -62,6 +62,7 @@
 ## 화면 묶음과 경계
 - 화면은 `lib/renderer/main.js`로 묶어 띄운다 — 시험 스크립트를 `electron …`으로 바로 돌릴 땐 먼저 `npm run build:renderer` (`npm run test:*`·`dist`는 알아서). 묶음이 없으면 가짜 API가 콘솔에 크게 알리고, `verify/doctor.js`가 원본보다 오래됐는지 본다.
 - `node scripts/dev/check-boundaries.js` (`npm run typecheck`가 돌림): 화면 가져오기 경계 — FSD 층 순서(같은 층의 다른 조각도 금지), 다른 조각은 `index`로만, Node·Electron 금지(화면 밖은 `src/core` 순수 모듈과 preload 타입만), 문자열이 아닌 동적 import 금지.
+- `node scripts/dev/check-css-scope.js` (`npm run typecheck`가 돌림, 시험 `scripts/dev/check-css-scope.test.mjs`): 화면 스타일의 `@scope` 나눔 — 어느 `@scope`에서 만든 클래스가 밖(전역, 밖의 `@media` 안 포함)이나 다른 뿌리의 `@scope`에 또 나오면, `@scope` 안 선택자에 뿌리 자신을 쓰면 막는다. 일부러 같이 쓰는 이름은 `style.css` 머리의 '공유 클래스' 주석에. 정규식으로 읽어 덩어리의 첫 클래스만 보고(상태 클래스 `.on` 등은 안 봄) 마크업은 모른다 — 모양이 그대로인지는 화면 캡처 비교가 본다.
 - `src/renderer/shared/page-host/index.test.tsx` (`npm test`, jsdom): 이음새 `reactPage`.
 
 ## 단위 테스트 — `npm test`
@@ -90,7 +91,7 @@ fn 이벤트를 흉내 내 실제 녹음 흐름을 시험한다 (`src/main.js`�
 셀프테스트는 임시 녹음 폴더(`SELFTEST recordings …`로 출력)에 녹음·받아쓰기 기록을 남겨 실제 녹음 폴더와 `dictations.jsonl`은 건드리지 않는다 (2026-11-05부터. 예전에는 실제 폴더에 써서 손으로 지웠고, `dictations.jsonl`을 통째로 되돌리다 실제 기록을 지운 적이 있다). 다만 앱 데이터(설정·모델·whisper-server 번호 파일)는 같이 쓰므로 설치된 앱은 먼저 끈다 — 켜 둔 채 돌리면 설치된 앱의 whisper-server를 고아로 보고 정리한다.
 
 ## 화면 캡처 비교 — `npm run test:screens` (`e2e/screens.e2e.ts`)
-가짜 데이터로 메인 창을 **숨긴 채** 띄워 화면마다 찍고 기준 그림과 **픽셀로** 비교한다(Playwright `toHaveScreenshot`, 차이 0픽셀). 메인 프로세스를 띄우지 않으므로 녹음·fn·권한·실제 기록에 영향이 없고, 설치된 앱이 켜져 있어도 된다. 12가지 × 화면들 = 93장: 밝은·어두운 모양·최소 창 크기(960×640) 각각 홈·받아쓰기·회의·가져오기 확인 창·회의 페이지·본문 찾기·확인 필요·구간 다시 받아쓰기(반영 전·후)·채팅(적용 전·후)·처리함·액션·용어 카드·용어 칸·사전·통계·설정·엔진, 녹음 폴더 막힘(홈·목록), 회의록 쓰기에서 멈춘 회의, 처음 설정 일곱 단계. 어두운 모양은 `e2e/app.ts`가 Playwright에 `colorScheme: 'dark'`로도 넘긴다 — Playwright의 Electron 실행기는 색 모드를 기본 'light'로 흉내 내 앱의 nativeTheme 설정을 덮어, 2026-11-14~20에는 어두운 모양 캡처가 실제로는 밝게 찍혔다.
+가짜 데이터로 메인 창을 **숨긴 채** 띄워 화면마다 찍고 기준 그림과 **픽셀로** 비교한다(Playwright `toHaveScreenshot`, 차이 0픽셀). 메인 프로세스를 띄우지 않으므로 녹음·fn·권한·실제 기록에 영향이 없고, 설치된 앱이 켜져 있어도 된다. 12가지 × 화면들 = 73장: 밝은·어두운 모양·최소 창 크기(960×640) 각각 홈·받아쓰기·회의·가져오기 확인 창·회의 페이지·본문 찾기·확인 필요·구간 다시 받아쓰기(반영 전·후)·채팅(적용 전·후)·처리함·액션·용어 카드·용어 칸·사전·통계·설정·엔진, 녹음 폴더 막힘(홈·목록), 회의록 쓰기에서 멈춘 회의, 처음 설정 일곱 단계. 어두운 모양은 `e2e/app.ts`가 Playwright에 `colorScheme: 'dark'`로도 넘긴다 — Playwright의 Electron 실행기는 색 모드를 기본 'light'로 흉내 내 앱의 nativeTheme 설정을 덮어, 2026-11-14~20에는 어두운 모양 캡처가 실제로는 밝게 찍혔다.
 
 ```bash
 npm run test:screens -- --update-snapshots   # 바꾸기 전: 기준 그림을 찍는다 (.work/e2e/screens/, 이 컴퓨터에만)

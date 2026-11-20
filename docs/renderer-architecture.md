@@ -41,6 +41,7 @@ API 타입: `src/preload.js`에 함수를 더하면 그것만 고친다. 화면 
 - **상태와 구독은 주인에게.** 기록 목록은 `app/history.ts`, 설정·엔진·계정은 `entities/settings`, 문제 알림은 `entities/issue`, 질문은 `features/ask`가 맡는다. 화면은 읽기 창구와 명령을 받는다.
 - **이음새 `reactPage`** (`shared/page-host`): 첫 그리기 동기(flushSync), `display: contents` 껍데기라 `#view` 아래 상자 구조가 같음, `update()`는 같은 뿌리를 다시 그려 입력·포커스 유지, `leave()` 한 번만, `reload`는 넘겨줄 때만.
 - **경계 검사** (`scripts/dev/check-boundaries.js`, typecheck·dist): ① FSD 층 순서(app > pages > widgets > features > entities > shared), 같은 층 다른 조각 금지 ② 다른 조각은 `index`로만 ③ `node:`·Electron 금지, 화면 밖은 `src/core` 순수 모듈과 preload 타입만 ④ 문자열이 아닌 동적 import 금지.
+- **스타일은 한 파일, 화면마다 `@scope`** ([결정 75](decisions.md)): `style.css` 하나에 화면별로 `@scope (뿌리) { … }` 묶음을 둔다 — 홈 `.page.home`, 회의 목록 `.page.wide`, 회의 탭 본문 `#meeting-tabpanel`, 채팅 `.chat`, 재생 막대 `.player`, 설정 `.settings`, 처음 설정 `.onboard`, ⌘K `.palette`, 녹음 시트 `.sheet`, 위쪽 녹음 알약 `.topbar`, 질문 창 `.ask-root`. 클래스 이름은 그대로라 시험·HTML 비교는 그대로다. 클래스를 새로 만들면 그 화면 묶음 안에 넣고, 여러 화면이 같이 쓸 때만 밖(전역)에 둔다. body에 따로 붙는 것(용어 카드·알림·확인 창·설명 풍선)은 뿌리 밖이라 전역이다. `@scope` 안 선택자에 뿌리 자신은 못 쓴다(뿌리 아래만 본다 — `.page.home .num` 같은 규칙은 밖에). 안 규칙은 특이성이 같으면 밖 규칙을 순서와 상관없이 이기므로, 화면 클래스를 덮는 규칙(밖의 `@media` 안 것 포함)도 같은 묶음에 넣는다. `node scripts/dev/check-css-scope.js`(typecheck)가 같은 이름이 묶음 안팎이나 두 묶음에 나오면 막는다 — 일부러 같이 쓰는 이름은 파일 머리의 '공유 클래스' 주석에.
 - **코어는 원본에서.** 화면이 `../../core/*.mts`를 바로 가져오고 Vite가 묶는다(`lib/core`는 본체·명령줄 도구용).
 - **설치본**: `lib/**`(묶음 포함)는 그대로 들어가고, 화면 원본(`*.ts(x)`, `style.css`, `fonts/`)은 뺀다. `index.html`·`recorder-worklet.js`는 들어간다.
 
@@ -53,7 +54,7 @@ API 타입: `src/preload.js`에 함수를 더하면 그것만 고친다. 화면 
 - 고친 뒤 바로 반영(HMR)이 없는 대신 경로가 하나다(개발·시험·설치본). 필요해지면 개발 전용으로 약 30줄이면 붙는다.
 - 시험 전에 화면을 묶는다(`npm run test:*`가 묶음). 시험 스크립트를 `electron …`으로 바로 돌리면 이미 있는 묶음을 쓴다 — 오래됐으면 `doctor.js`가 알려 주고, 없으면 가짜 API가 크게 알린다(자동으로 묶지는 않음).
 - API 함수의 인자·결과 타입은 처음엔 any/unknown. 99개를 미리 지어내지 않고 쓰는 곳이 생길 때 적는다. 인자 개수도 그때부터 검사된다.
-- 옮긴 화면도 시험이 찾는 클래스 이름을 전역 그대로 둔다(Playwright로 바꿀 때까지). 스타일은 조각별로 옮긴다.
+- 옮긴 화면도 시험이 찾는 클래스 이름을 그대로 둔다. 스타일은 파일을 나누지 않고 화면마다 `@scope`로 묶었다(2026-11-21, 결정 75).
 - 묶음을 줄이지 않는다(minify 끔) — 오류 위치를 읽을 수 있게.
 - 회의 페이지는 다시 그리기 = 안을 통째로 새로 만들기(`<Page key={version}>`)라 포커스·커서가 풀린다. 주인(`pages/meeting/controller.ts`)이 그리기 전후로 열쇠(`data-focus`)를 보고 되돌린다(`shared/ui`의 `focusMark`·`restoreFocus`, 주인이 정한 곳은 `focusWant`로 먼저). 회의 페이지에 포커스를 받는 칸을 새로 만들면 열쇠를 달고, 쓰던 글을 주인이 들게 한다 — 안 그러면 상관없는 다시 그리기에 쓰던 글과 포커스가 날아간다. 포커스를 옮기려고 타이머(`setTimeout`·`requestAnimationFrame`)를 쓰지 않는다: 늦게 와서 그사이 사용자가 옮겨 간 칸을 빼앗는다.
 
