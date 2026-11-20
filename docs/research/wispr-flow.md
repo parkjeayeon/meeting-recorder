@@ -10,8 +10,9 @@
 ## 받아쓰기 단축키 규칙
 - 기준값 `DICTATION_DEBOUNCE_DELAY = 500`(ms), 최대 길이 `DICTATION_DURATION_TIMEOUT = 20분`, 경고 `DICTATION_DURATION_WARNING_TIMEOUT = 19분`.
 - 누르면 바로 듣기 시작.
-- 뗄 때: 시작 후 500ms 이상이면 끝내고 입력. 500ms 안이면 500ms 더 기다렸다가 두 번째 누름이 없으면 버림 ("PTT stopping after timeout waiting for double press").
-- 듣는 중 시작 후 500ms 안에 다시 누름: 잠금(손을 떼도 계속 듣기, 내부 이름 "POPO lock"). 같은 녹음을 이어간다.
+- 뗄 때: 시작 후 500ms 이상이면 끝내고 입력. 500ms 안이면 500ms 더 기다렸다가 두 번째 누름이 없으면 버림 ("PTT stopping after timeout waiting for double press"). 이 기다림은 *뗀 때부터* 잰다 — 타이머가 울릴 때 키를 누르고 있는지는 보지 않는다.
+- 듣는 중 시작 후 500ms 안에 다시 누름: 잠금(손을 떼도 계속 듣기, 내부 이름 "POPO lock"). 같은 녹음을 이어간다. 이 창은 *처음 누른 때부터* 잰다 ("Action down twice in quick succession --> lock").
+- 두 기준이 달라 생기는 틈(예: 0에 누르고 400ms에 떼면 900ms까지 기다리는데 600ms에 다시 누름): 늦은 누름은 아무 일도 하지 않고(잠그지도 끝내지도 않음), 그 누름을 기다림 안에 떼면 잠기지 않은 듣는 중의 뗌이고 시작 후 500ms 이상이라 처음 누른 때부터의 녹음을 끝내고 입력 ("key_release"). 그대로 누르고 있다가 타이머가 울리면 버림. v1.6.1483 메인 프로세스 묶음(`.webpack/main/index.js`)을 읽어서 본 것이고, 실행해서 확인한 것은 아니다 → 이 앱도 같게 ([결정 76](../decisions.md)).
 - 잠긴 상태에서 다시 누름: 끝내고 입력 ("re_press"). 시작 후 500ms 안에 세 번째로 누르면 취소 ("Action dismiss on quick triple action press").
 - 앞 받아쓰기를 처리하는 중 누르면 무시하고 "처리 중" 알림 (알림은 500ms에 한 번).
 - 온보딩 중에는 연습 단계가 아니면 단축키를 무시 ("Action down but onboarding not complete").

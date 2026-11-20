@@ -149,12 +149,48 @@ describe('fn 규칙 (시간표)', () => {
     expect(r.state).toBe('idle');
   });
 
-  it('탭 뒤 시작 0.5초가 지나서 누르면 아무 일도 없고(상태 tapped 그대로), 탭 타이머가 울릴 때 버린다', () => {
-    const r = play([[0, 'down'], [400, 'up'], [600, 'down'], [700, 'up']], { until: 899 });
+  it('탭 뒤 시작 0.5초가 지나서 누르면 누름은 아무 일도 없다 (상태 tapped 그대로)', () => {
+    const r = play([[0, 'down'], [400, 'up'], [600, 'down']], { until: 650 });
     expect(r.trace).toEqual(['0 cmd start memo']);
     expect(r.state).toBe('tapped');
-    // 그 누름을 꾹 누르고 있어도 녹음은 0.9초에 버려진다
-    expect(play([[0, 'down'], [400, 'up'], [600, 'down'], [2000, 'up']]).trace).toEqual(['0 cmd start memo', '900 cmd cancel', '900 onboarding:tap']);
+  });
+
+  // 결정 76: 잠금은 처음 누른 때부터, 기다림은 뗀 때부터 잰다. 그 사이의 늦은 누름을 떼면 Wispr Flow처럼 끝내고 입력
+  it.each([700, 899])('탭(0→400) 뒤 600에 늦게 누르고 %i에 떼면 처음부터의 녹음을 끝내고 입력 — 버리지 않는다', (upAt) => {
+    const r = play([[0, 'down'], [400, 'up'], [600, 'down'], [upAt, 'up']], { until: upAt });
+    expect(r.trace).toEqual(['0 cmd start memo', `${upAt} cmd stop`]);
+    expect(r.state).toBe('idle');
+    expect(r.pendingAtEnd).toEqual([]); // 탭 타이머가 지워졌다
+    // 0.9초가 지나도 버림·연습 단계 안내가 없다
+    expect(play([[0, 'down'], [400, 'up'], [600, 'down'], [upAt, 'up']]).trace).toEqual(['0 cmd start memo', `${upAt} cmd stop`]);
+  });
+
+  it('늦은 누름을 0.9초가 지나도록 누르고 있으면 전처럼 0.9초에 버리고, 그 뒤 뗌은 아무것도', () => {
+    const r = play([[0, 'down'], [400, 'up'], [600, 'down'], [2000, 'up']]);
+    expect(r.trace).toEqual(['0 cmd start memo', '900 cmd cancel', '900 onboarding:tap']);
+    expect(r.state).toBe('idle');
+  });
+
+  it('늦은 누름 뒤 chord는 전처럼 무시, 0.9초에 버린다', () => {
+    const r = play([[0, 'down'], [400, 'up'], [600, 'down'], [700, 'chord']]);
+    expect(r.trace).toEqual(['0 cmd start memo', '900 cmd cancel', '900 onboarding:tap']);
+  });
+
+  it('두 번째 누름 경계: 시작 후 499ms는 잠금(뗌은 삼킴), 500ms는 잠그지 않고 그 뗌에서 끝내고 입력', () => {
+    const locked = play([[0, 'down'], [100, 'up'], [499, 'down'], [550, 'up']], { until: 2000 });
+    expect(locked.trace).toEqual(['0 cmd start memo', '499 overlay:state']);
+    expect(locked.state).toBe('handsfree');
+    const late = play([[0, 'down'], [100, 'up'], [500, 'down'], [550, 'up']]);
+    expect(late.trace).toEqual(['0 cmd start memo', '550 cmd stop']);
+    expect(late.state).toBe('idle');
+  });
+
+  it('늦은 누름을 떼어 멈춘 뒤 바로 누르면 꾹 눌러 뗀 때와 같이 처리 중 (멈추는 중 표시와 5초 안전 타이머)', () => {
+    const world: World = { ...defaultWorld(), recording: { mode: 'memo' } };
+    const r = play([[0, 'down'], [400, 'up'], [600, 'down'], [700, 'up'], [700, 'down'], [750, 'up']], { world, selftest: true, until: 750 });
+    expect(r.trace).toEqual(['0 cmd start memo', '700 cmd stop', '700 overlay overlay:stage {"stage":"busy"}', '700 log SELFTEST busy-ignored']);
+    expect(r.pendingAtEnd).toEqual([[5700, 5000]]);
+    expect(r.state).toBe('idle');
   });
 
   it('누르는 동안 다른 키(chord)를 쓰면 바로 버린다 — 0.5초 안이어도', () => {
@@ -487,7 +523,19 @@ const stepArb: fc.Arbitrary<Step> = fc.oneof(
 );
 
 // 같으면 null, 다르면 몇 번째 걸음에서 무엇이 달랐는지. seen에는 새 모듈이 거친 상태와 보낸 것의 종류를 모은다 (무작위 입력이 규칙을 두루 밟는지 보려고)
-function runBoth(start: number, selftest: boolean, steps: Step[], mutate: (d: FnDeps) => FnDeps = (d) => d, seen?: Set<string>) {
+// 옮긴 뒤 일부러 바꾼 것 하나(결정 76)만 옛 코드 쪽에 덧씌운다: 옛 코드가 tapped일 때 chord가 아닌 뗌이 시작 후 0.5초 이상에 오면
+// 옛 코드에도 뗌을 그대로 넣고, 그 뗌이 아무것도 하지 않았으면(상태 tapped 그대로·보낸 것 없음) 새 규칙(탭 타이머 지우기·idle·멈춤)을 얹는다.
+// 얹는 방법은 옛 코드의 uiToggle — tapped에서 탭 타이머를 지우고 command('stop')·idle로 하는, 새 규칙과 같은 일이다
+// (handsfreeMode = null도 하지만 handsfreeMode는 handsfree로 갈 때마다 새로 정해져 밖에서 보이지 않는다). 시작 시각은 옛 코드가 idle → holding이 된 누름의 시각.
+// 그 밖의 다름은 모두 그대로 걸린다. deviation: false면 덧씌우지 않는다 (새 규칙을 빼면 걸리는지 보려고). hits에는 덧씌운 횟수를 센다
+function runBoth(
+  start: number,
+  selftest: boolean,
+  steps: Step[],
+  mutate: (d: FnDeps) => FnDeps = (d) => d,
+  seen?: Set<string>,
+  { deviation = true, hits }: { deviation?: boolean; hits?: { n: number } } = {},
+) {
   const world = defaultWorld();
   const recOf = (mode: string | undefined | null) => (mode === null ? null : { mode });
   // 옛 코드
@@ -510,18 +558,30 @@ function runBoth(start: number, selftest: boolean, steps: Step[], mutate: (d: Fn
   const no = recorder(nc, start);
   const neu = createFnMachine(mutate(newDeps(world, nc, no, selftest)));
   const snap = (c: ReturnType<typeof manualClock>, o: ReturnType<typeof recorder>, state: string) => JSON.stringify({ trace: o.trace, pending: c.pending(), state, now: c.now() });
+  let oldStartAt = 0; // 옛 코드의 dictationStartAt (밖에서 안 보여 따로 적는다)
+  let oldFnTest = false;
   for (const [i, s] of [...steps, { k: 'advance', ms: 20_000 } as Step].entries()) {
     old.world(world);
     switch (s.k) {
-      case 'down':
+      case 'down': {
+        const was = old.fnState();
         old.onFnDown();
+        if (was === 'idle' && old.fnState() === 'holding') oldStartAt = oc.now();
         neu.fnDown();
         break;
+      }
       case 'up':
-      case 'chord':
+      case 'chord': {
+        const late = deviation && s.k === 'up' && !oldFnTest && old.fnState() === 'tapped' && oc.now() - oldStartAt >= DEBOUNCE_MS;
+        const before = oo.trace.length;
         old.onFnUp({ chord: s.k === 'chord' });
+        if (late && old.fnState() === 'tapped' && oo.trace.length === before) {
+          old.uiToggle(undefined);
+          if (hits) hits.n++;
+        }
         neu.fnUp({ chord: s.k === 'chord' });
         break;
+      }
       case 'cancel':
         old.uiCancel();
         neu.uiCancel();
@@ -548,6 +608,7 @@ function runBoth(start: number, selftest: boolean, steps: Step[], mutate: (d: Fn
         break;
       case 'fnTest':
         old.setFnTestMode(s.on);
+        oldFnTest = s.on;
         neu.setFnTestMode(s.on);
         break;
       case 'advance':
@@ -584,17 +645,19 @@ describe('옮기기 전 코드(src/test/fn-legacy.mjs)와 같다', () => {
     const t0 = performance.now();
     let steps = 0;
     const seen = new Set<string>();
+    const hits = { n: 0 };
     fc.assert(
       fc.property(fc.constantFrom(0, 100, 499, 500, 501, 1_763_700_000_000), fc.boolean(), timeline, (start, selftest, list) => {
         steps += list.length;
-        const diff = runBoth(start, selftest, list, undefined, seen);
+        const diff = runBoth(start, selftest, list, undefined, seen, { hits });
         if (diff) throw new Error(`seed ${SEED}: ${diff.step}번째 걸음에서 다름\n옛: ${diff.old}\n새: ${diff.new}`);
       }),
       { seed: SEED, numRuns: RUNS },
     );
     const ms = performance.now() - t0;
-    console.log(`fn 비교: ${RUNS}벌, 걸음 ${steps}개, seed ${SEED}, ${Math.round(ms)}ms`);
+    console.log(`fn 비교: ${RUNS}벌, 걸음 ${steps}개, seed ${SEED}, 늦은 누름의 뗌(결정 76) ${hits.n}번, ${Math.round(ms)}ms`);
     expect(ms).toBeLessThan(5000);
+    expect(hits.n).toBeGreaterThan(0); // 덧씌운 길을 무작위 입력이 실제로 밟는다
     // 무작위 입력이 상태 넷과 보내는 것 전부를 밟았는지
     expect([...seen].sort()).toEqual(
       [
@@ -613,6 +676,15 @@ describe('옮기기 전 코드(src/test/fn-legacy.mjs)와 같다', () => {
   ])('일부러 바꾼 것(%s)은 걸린다', (_name, mutate) => {
     const r = fc.check(
       fc.property(fc.constantFrom(0, 1_763_700_000_000), fc.boolean(), timeline, (start, selftest, list) => runBoth(start, selftest, list, mutate) === null),
+      { seed: SEED, numRuns: RUNS },
+    );
+    expect(r.failed).toBe(true);
+  });
+
+  // 새 규칙(결정 76)을 빼면 — 옛 코드에 덧씌우지 않은 비교, 곧 규칙 없는 머신과 같은 것 — 걸려야 한다
+  it('늦은 누름의 뗌 규칙을 뺀 것은 걸린다', () => {
+    const r = fc.check(
+      fc.property(fc.constantFrom(0, 1_763_700_000_000), fc.boolean(), timeline, (start, selftest, list) => runBoth(start, selftest, list, undefined, undefined, { deviation: false }) === null),
       { seed: SEED, numRuns: RUNS },
     );
     expect(r.failed).toBe(true);
