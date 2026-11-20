@@ -15,7 +15,7 @@ export interface Segment {
 // ── 같은 문장 반복 구간 ─────────────────────────────────────────────────
 // Whisper는 앞 문장을 이어 받아 쓰는데, 작은 목소리·잡음 구간에서 한 문장에 갇히면 조각이 끝날 때까지
 // 1초마다 같은 문장을 적는다 (30분 회의에서 3.5분, 2시간 회의에서 8.5분이 이렇게 빠짐).
-// 매번 생기는 게 아니라 같은 녹음도 다시 돌리면 대개 제대로 나오므로, 그 구간만 앞 문장 없이 다시 받아쓴다 (src/minutes.js redoLoops).
+// 매번 생기는 게 아니라 같은 녹음도 다시 돌리면 대개 제대로 나오므로, 그 구간만 앞 문장 없이 다시 받아쓴다 (transcribe.mts redoLoops).
 export const LOOP_MIN_REPEATS = 3; // 같은 줄(또는 같은 두세 줄 묶음)이 3번 이상
 export const LOOP_MAX_PERIOD = 3;
 export const LOOP_MIN_SEC = 15;

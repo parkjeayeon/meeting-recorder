@@ -8,6 +8,8 @@
 ## 2026-11-20
 
 ### 기능
+- **회의 녹취·화자 구분·구간 다시 받아쓰기·회의록 쓰기를 TypeScript로** (동작 바뀜 없음, [결정 70](docs/decisions.md)): `src/minutes.js`에 남은 것을 `src/meeting/`의 `diarize.mts`·`transcribe.mts`·`retranscribe.mts`·`minutes.mts`·`pipeline.mts`·`queue.mts`로 옮겼다(Electron 없이 돎). 앱 데이터 폴더·설치본 여부·인터넷 연결·설정·Whisper·LLM·용어 설명·샌드박스는 `deps.mts`의 `configure()`로 넘겨받는다. `minutes.js`는 이것들을 잇고 같은 이름 25개를 다시 내보내는 연결 파일만 남아(615줄 → 40줄), 본체와 `scripts/dev` 시험은 그대로 쓴다. 회의록·정리본 프롬프트는 글자까지 같다. 가짜 Whisper·LLM·파이썬 환경으로 녹취 실행·회의록 만들기 상태 흐름·정리본·구간 다시 받아쓰기와 되돌리기를 단위 시험한다(43건 추가).
+  - 확인: `npm run typecheck`, `npm test`(단위 496건 → 539건), `node scripts/dev/check-handlers.js`, `node --check src/minutes.js`, 옛 `module.exports` 이름 목록과 새 연결 파일의 것 비교(25개, 순서까지 같음), 프롬프트 두 개를 옛 파일과 글자 비교. Electron으로 도는 확인(셀프테스트·`test:crash`·E2E·화면 캡처·`rerun-meeting`)과 실제 녹음으로 녹취해 이전 결과와 같은지 비교하는 일은 이 작업에서 돌리지 않았다.
 - **회의 소리 변환·스크립트 조립을 TypeScript로** (동작 바뀜 없음, [결정 70](docs/decisions.md)): `src/minutes.js`에서 녹음을 16kHz로 줄이기·압축 풀기·조용한 지점에서 조각 내기·구간 잘라 내기(`src/meeting/audio.mts`)와, 같은 문장 반복 구간 찾기·화자 붙이기·연달은 같은 말 합치기·스크립트 조립(`src/meeting/transcript.mts`)을 옮겼다(Electron 없이 돎). `minutes.js`는 같은 이름으로 다시 내보내, 본체와 `scripts/dev` 시험은 그대로 쓴다. 시각 쓰기(`clock`)는 코어의 같은 함수를 쓴다. `minutes.js` 892줄 → 615줄.
   - 확인: 타입 검사, 단위 496건(조각 내기·WAV 머리·구간 잘라 내기·16kHz로 줄이기·afconvert로 압축했다 풀기, 반복 구간·화자 붙이기·같은 말 합치기·스크립트 조립·시각 34건 추가), 키보드 처리기 검사, `node --check`. 옛 `minutes.js`의 함수와 새 모듈에 무작위 입력 2만 벌(스크립트 쪽)과 무작위 WAV(22분 조각 내기, 48·44.1·32·16kHz 줄이기·구간 잘라 내기, 압축 풀기)를 넣어 결과·파일 바이트·오류 문구가 같은지 비교. Electron으로 도는 확인(끊김·이름 통일·되돌리기 성질·질문 엔진·압축 시험 `test:crash`, E2E, 실제 회의 녹취)은 이 작업에서 돌리지 않았다.
 
