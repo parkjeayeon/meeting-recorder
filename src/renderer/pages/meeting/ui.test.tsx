@@ -73,6 +73,35 @@ describe('회의 페이지', () => {
     expect(commands.back).toHaveBeenCalled();
   });
 
+  it('탭: 고른 탭만 Tab으로 닿고(나머지 -1), ←/→는 앞뒤 탭(끝에서 반대쪽 끝), Home/End는 처음·마지막 — 여는 것은 주인의 setTab', () => {
+    mount(base({ tabs: [['minutes', '회의록', null], ['review', '확인 필요', '2'], ['raw', '원본', null]], tab: 'review', body: { kind: 'none' } }));
+    const tabs = [...document.querySelectorAll<HTMLElement>('[role="tab"]')];
+    expect(tabs.map((t) => [t.id, t.tabIndex, t.getAttribute('aria-controls')])).toEqual([['tab-minutes', -1, 'meeting-tabpanel'], ['tab-review', 0, 'meeting-tabpanel'], ['tab-raw', -1, 'meeting-tabpanel']]);
+    const panel = document.querySelector('[role="tabpanel"]')!;
+    expect([panel.id, panel.getAttribute('aria-labelledby')]).toEqual(['meeting-tabpanel', 'tab-review']);
+    const key = (k: string) => {
+      const e = new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true });
+      act(() => void tabs[1]!.dispatchEvent(e));
+      return e.defaultPrevented;
+    };
+    expect([key('ArrowRight'), key('ArrowLeft'), key('Home'), key('End'), key('a')]).toEqual([true, true, true, true, false]);
+    expect((commands.setTab as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0])).toEqual(['raw', 'minutes', 'minutes', 'raw']);
+  });
+
+  it('탭이 없으면(상태 카드) 본문은 탭 패널이 아니다, 채팅이 열리면 페이지가 with-chat', () => {
+    mount(base({ state: { kind: 'short' }, tabs: [], tab: null }));
+    expect(document.querySelector('[role="tabpanel"]')).toBeNull();
+    expect(document.querySelector('.page')!.className).toBe('page');
+    const chat = { items: [], messages: [], busy: false, redoing: null, applying: new Set<string>(), draft: '', setDraft: vi.fn(), send: vi.fn(), close: vi.fn(), apply: vi.fn(), applyUnmatched: vi.fn(async () => {}), redo: vi.fn(), applyRedo: vi.fn() };
+    act(() => {
+      view = base({ version: 2, chat });
+      source.changed();
+    });
+    expect(document.querySelector('.page')!.className).toBe('page with-chat');
+    expect(document.querySelector('.page.with-chat .meet-head > .meet-title h1')?.textContent).toBe('배포 회의'); // 채팅이 열리면 이 칸이 한 줄을 다 쓴다 (style.css)
+    expect(document.querySelector('aside.chat')?.getAttribute('aria-label')).toBe('확인 필요 채팅');
+  });
+
   it('다시 그리면 안을 새로: 열어 둔 메뉴가 닫힌다 (옛 화면처럼)', () => {
     mount(base({}));
     act(() => (document.querySelector('[aria-label="더 보기"]') as HTMLElement).click());

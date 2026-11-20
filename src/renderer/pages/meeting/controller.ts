@@ -76,6 +76,9 @@ interface FlowChat {
 
 const errText = (err: unknown) => (err as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
 const speakerLabel = (v: string) => (v ? `${v}명` : '자동');
+// 채팅(style.css .chat: 창 오른쪽에서 16px 띄운 400px)이 본문 칸과 겹치는 폭과, 본문을 비켜 세우는 가장 작은 창 폭 (style.css .page.with-chat과 같게)
+const CHAT_SIDE = 408;
+const CHAT_DOCK_MIN = 1160;
 let audioFor: string | null = null; // 재생기에 지금 올린 회의 (같은 회의로 돌아오면 이어서)
 
 export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
@@ -157,6 +160,8 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
   let reviewFocus: string | null = null; // 방금 처리한 항목 다음에 볼 항목 (다음 그리기에서 그 카드로 포커스를 옮기고 지운다)
   let chat: ReviewChat | null = null;
   let flowChat: FlowChat | null = null;
+  let chatOpener: (() => HTMLElement | null) | null = null; // 채팅을 연 버튼을 다시 그린 뒤에 찾는 법 (닫으면 그리로 포커스)
+  let afterDraw: (() => void) | null = null; // 다음 그리기가 끝난 뒤 한 번 할 일
   if (deps.takeOpenReview(id)) tab = 'review';
   let lastKey: string | null = null;
   // 회의록 진행 상태와 확인 필요 숫자(제목 아래 배지)가 바뀌면 다시 그린다. 녹음 압축·그대로 두기도
@@ -225,6 +230,8 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
       body = { kind: 'script', clean: tab === 'clean', props: text ? scriptView(r, parseScript(text), color, matcher) : null, making: false };
     } else if (tab === 'speakers') body = { kind: 'speakers', props: speakersView(r, raw, color) };
 
+    // 탭에 포커스가 있었으면(←/→로 탭을 바꾼 경우 등) 새로 그린 뒤 고른 탭으로 되돌린다 — 다시 그리면 요소가 바뀌어 포커스가 풀린다
+    const onTab = document.activeElement?.getAttribute('role') === 'tab' && page.contains(document.activeElement);
     show({
       head: {
         title,
@@ -249,6 +256,10 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
       chat: chat ? chatDrawer(r, doc) : null,
       flowChat: flowChat ? flowChatDrawer(r, doc) : null,
     });
+    if (onTab) page.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
+    const after = afterDraw; // 다음 그리기에서 한 번만 (채팅을 닫은 뒤 연 버튼으로 포커스 되돌리기)
+    afterDraw = null;
+    after?.();
     if (findBar) runFind({ keep: true }); // 탭을 바꾸거나 다시 그려도 찾던 말을 그대로 표시
   }
 
@@ -278,7 +289,9 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
     if (cardEl && !cardEl.contains(t) && !t.closest?.('.term, .gl-item')) closeTermCard();
   };
   const escCard = (e: KeyboardEvent) => {
-    if (e.key === 'Escape') closeTermCard();
+    if (e.key !== 'Escape') return;
+    e.preventDefault(); // Escape 한 번에 하나만 닫는다 (찾기 막대·채팅은 이 키를 건너뛴다)
+    closeTermCard();
   };
   function closeTermCard() {
     islands.unmount(cardEl);
@@ -373,7 +386,8 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
   // 그림 놓을 폭 (회의 페이지 본문 폭 − 카드 여백)
   function flowAvail() {
     const v = document.getElementById('view')!.clientWidth;
-    return v ? Math.min(v, 1040) - 88 - 36 : null;
+    const side = (chat || flowChat) && innerWidth >= CHAT_DOCK_MIN ? CHAT_SIDE : 0; // 채팅이 열려 본문이 비켜 선 폭
+    return v ? Math.min(v - side, 1040) - 88 - 36 : null;
   }
 
   function flowsProps(r: MeetingRecord, data: FlowData) {
@@ -435,6 +449,7 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
 
   // 그림마다 채팅: 고친 그림을 제안받아 '이대로 바꾸기'로 반영 (바꾼 그림도 녹취 인용을 다시 확인)
   function openFlowChat(flowId: string) {
+    rememberOpener();
     chat = null;
     flowChat = { flowId, messages: [], busy: false, draft: '' };
     void draw();
@@ -453,10 +468,7 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
       setDraft: (text: string) => {
         fc.draft = text;
       },
-      close: () => setTimeout(() => {
-        flowChat = null;
-        void draw();
-      }),
+      close: () => setTimeout(closeChat),
       send: (text: string) => setTimeout(async () => {
         if (fc.busy) return;
         fc.messages.push({ role: 'user', text });
@@ -675,10 +687,41 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
 
   function openChat(ids: readonly string[]) {
     if (!ids.length) return;
+    rememberOpener();
     flowChat = null;
     chat = { ids: [...ids], messages: [], busy: false, applying: new Set() };
     void draw();
     setTimeout(() => document.querySelector<HTMLTextAreaElement>('.chat textarea')?.focus(), 50);
+  }
+
+  // 채팅을 연 버튼을 다시 그린 뒤에도 찾을 수 있게: 같은 항목(data-id) 안에서 같은 이름의 버튼 중 몇 번째인지
+  function openerOf(node: Element | null): (() => HTMLElement | null) | null {
+    const btn = node?.closest<HTMLElement>('button');
+    if (!btn || !page.contains(btn) || btn.closest('.chat')) return null;
+    const scope = btn.closest<HTMLElement>('[data-id]')?.dataset.id ?? null;
+    const name = (b: Element) => b.getAttribute('aria-label') ?? b.textContent;
+    const same = () => [...page.querySelectorAll<HTMLElement>('button')].filter((b) => name(b) === name(btn) && (b.closest<HTMLElement>('[data-id]')?.dataset.id ?? null) === scope && !b.closest('.chat'));
+    const at = same().indexOf(btn);
+    return () => same()[at] ?? null;
+  }
+  // 채팅 밖의 버튼으로 열었으면 그 버튼을 기억한다. 채팅 안에서 다시 열면(구간 다시 받아쓰기) 처음 연 버튼을 그대로
+  function rememberOpener() {
+    const found = openerOf(document.activeElement);
+    if (found || (!chat && !flowChat)) chatOpener = found;
+  }
+  // 채팅 닫기 (닫기 버튼·Escape): 연 버튼이 남아 있으면 그리로, 없으면 탭 본문의 첫 컨트롤로 포커스를 돌린다
+  function closeChat() {
+    if (!chat && !flowChat) return;
+    chat = null;
+    flowChat = null;
+    const find = chatOpener;
+    chatOpener = null;
+    afterDraw = () => {
+      const panel = page.querySelector('[role="tabpanel"]');
+      const target = find?.() ?? panel?.querySelector<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), textarea, select, [tabindex]:not([tabindex="-1"])') ?? page.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+      target?.focus();
+    };
+    void draw();
   }
 
   // 확인 필요: 그리기는 features/meeting-review. 다시 그리는 명령은 한 박자 뒤에(later) — 누른 부품을 그 처리 중에 다시 만들지 않게
@@ -825,10 +868,7 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
       setDraft: (text: string) => {
         c.draft = text; // 화면을 다시 그려도 쓰던 글이 남게
       },
-      close: later(() => {
-        chat = null;
-        void draw();
-      }),
+      close: later(closeChat),
       apply: later(apply),
       applyUnmatched: async (fix: Fix) => {
         await applyFixes(r, [fix]);
@@ -1015,8 +1055,8 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
   }
   function openFind() {
     if (!findBar) {
-      // 옛 화면도 spellcheck: false를 주려 했지만 h()가 false 값을 건너뛰어 켜져 있었다 — 그대로 (docs/known-issues.md)
       const input = el('input', { type: 'search', placeholder: '이 탭에서 찾기', 'aria-label': '이 탭 본문에서 찾기' }) as HTMLInputElement;
+      input.spellcheck = false; // el()은 false 값을 건너뛰므로 직접
       input.oninput = () => runFind();
       input.onkeydown = (e) => {
         if (e.key === 'Enter' && !e.isComposing) {
@@ -1053,9 +1093,26 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
     } else if (e.metaKey && k === 'g' && findBar) {
       e.preventDefault();
       stepFind(e.shiftKey ? -1 : 1);
-    } else if (e.key === 'Escape' && findBar && !cardEl && !(e.target as Element).closest?.('input, textarea, dialog')) closeFind();
+    } else if (e.key === 'Escape' && findBar && !cardEl && !e.defaultPrevented && !(e.target as Element).closest?.('input, textarea, dialog')) {
+      e.preventDefault();
+      closeFind();
+    }
   };
   document.addEventListener('keydown', onFindKey);
+
+  // Escape: 열린 채팅을 닫는다 — 포커스가 채팅 안이나 본문(입력칸 밖)에 있을 때만. 대화상자(확인·설정)·⌘F 막대·용어 카드가 열려 있으면
+  // 그쪽이 먼저라 건드리지 않는다 (용어 카드·찾기 막대는 닫으면서 preventDefault로 이 키를 넘기지 않는다)
+  const onEscChat = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing || (!chat && !flowChat)) return;
+    if (findBar || cardEl || document.querySelector('dialog[open]')) return;
+    const t = e.target as Element;
+    const inChat = Boolean(t.closest?.('.chat'));
+    const onBody = t === document.body || Boolean(t.closest?.('#view') && !t.closest('input, textarea, select, [contenteditable]'));
+    if (!inChat && !onBody) return;
+    e.preventDefault();
+    closeChat();
+  };
+  document.addEventListener('keydown', onEscChat);
 
   // 스페이스: 재생·멈춤 (입력칸·대화상자·⌘ 조합은 빼고)
   const onKey = (e: KeyboardEvent) => {
@@ -1086,6 +1143,7 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
     islands.clear();
     closeFind();
     document.removeEventListener('keydown', onFindKey);
+    document.removeEventListener('keydown', onEscChat);
     api.watchMeeting(null);
   }
 

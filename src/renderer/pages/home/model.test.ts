@@ -30,6 +30,14 @@ describe('홈 계산', () => {
     expect(v.todo[2]).toMatchObject({ go: 'meeting', sub: '확인을 마친 회의 · 800MB → 약 100MB' });
   });
 
+  it('확인할 회의가 하나뿐이면 목록 대신 그 회의의 확인 필요로, 둘 이상이면 목록의 확인할 회의 갈래로 (마치기 전도 확인할 회의)', () => {
+    const one = meet({ review: { open: 2, total: 3 } });
+    expect(homeView(input({ meetings: [one, meet()] }), now).todo[0]).toMatchObject({ title: '확인할 회의', n: 1, go: 'review', id: one.id });
+    const draft = meet({ review: { open: 0, total: 2, finalized: false } });
+    expect(homeView(input({ meetings: [one, draft] }), now).todo[0]).toMatchObject({ n: 2, go: 'meetings', filter: 'hand' });
+    expect(homeView(input({ meetings: [draft] }), now).todo[0]).toMatchObject({ go: 'review', id: draft.id });
+  });
+
   it('최근 회의는 짧은 녹음·들린 말 없음·만드는 중을 빼고 5개, 만드는 중은 위 카드로', () => {
     const busy = meet({ minutes: { status: 'transcribe', progress: 0.5 } });
     const meets = [busy, meet({ minutes: { status: 'short' } }), meet({ minutes: { status: 'empty' } }), ...Array.from({ length: 7 }, () => meet())];

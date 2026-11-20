@@ -12,6 +12,8 @@ export interface HomeActions {
   readonly openMeetingStart: () => void;
   /** 회의 화면을 그 갈래로 연다 */
   readonly openMeetings: (filter: MeetFilter) => void;
+  /** 그 회의를 확인 필요 탭으로 연다 (회의 목록의 '확인하기'와 같은 길) */
+  readonly openReview: (id: string) => void;
   readonly dismissIssue: (key: string) => void;
   readonly copy: (text: string) => unknown;
   readonly repaste: (text: string) => unknown;
@@ -56,7 +58,7 @@ function Todo({ rows, actions }: { readonly rows: readonly TodoRow[]; readonly a
     // 'todo'는 회의록 할 일 줄(li.todo)이 쓰는 이름이라 겹치지 않게
     <div className="todo-list">
       {rows.map((t) => (
-        <button key={t.title} className={`todo-row ${t.mark}`} onClick={() => (t.go === 'meeting' ? (location.hash = meetingHref(t.id)) : actions.openMeetings(t.filter))}>
+        <button key={t.title} className={`todo-row ${t.mark}`} onClick={() => (t.go === 'meeting' ? (location.hash = meetingHref(t.id)) : t.go === 'review' ? actions.openReview(t.id) : actions.openMeetings(t.filter))}>
           <span className="todo-n"><Num>{t.n}</Num></span>
           <span className="todo-text"><b>{t.title}</b><span>{t.sub}</span></span>
           <Icon id="i-right" />
@@ -66,10 +68,15 @@ function Todo({ rows, actions }: { readonly rows: readonly TodoRow[]; readonly a
   );
 }
 
-function MeetRow({ r }: { readonly r: MeetingItem }) {
+// 줄을 누르면 그 회의(회의록 탭), 오른쪽 '확인 N개'를 누르면 확인 필요 탭으로
+function MeetRow({ r, openReview }: { readonly r: MeetingItem; readonly openReview: (id: string) => void }) {
   const d = new Date(r.startedAt);
   return (
-    <a className="hrow" href={meetingHref(r.id)}>
+    <a className="hrow" href={meetingHref(r.id)} onClick={(e) => {
+      if (!(e.target as Element).closest('.rs.open')) return;
+      e.preventDefault();
+      openReview(r.id);
+    }}>
       <span className="hrow-day"><b><Num>{`${d.getMonth() + 1}.${String(d.getDate()).padStart(2, '0')}`}</Num></b><span>{WEEKDAY[d.getDay()]}</span></span>
       <span className="hrow-text">
         <b>{meetTitle(r)}</b>
@@ -170,7 +177,7 @@ export function HomePage({ source, actions }: { readonly source: Source<HomeInpu
           <Section title="챙길 일"><Todo rows={v.todo} actions={actions} /></Section>
           {v.recentMeets.length > 0 ? (
             <Section title="최근 회의" more={['#meetings', '모두 보기']}>
-              <div className="hrows">{v.recentMeets.map((r) => <MeetRow key={r.id} r={r} />)}</div>
+              <div className="hrows">{v.recentMeets.map((r) => <MeetRow key={r.id} r={r} openReview={actions.openReview} />)}</div>
             </Section>
           ) : null}
           {/* 받아쓰기는 글이 길어 넓은 왼쪽에 (오른쪽 좁은 칸에선 줄마다 두세 번 꺾였다) */}

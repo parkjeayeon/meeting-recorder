@@ -12,7 +12,7 @@ afterEach(() => vi.useRealTimers());
 function mount(start: Partial<HomeInput>) {
   let state: HomeInput = { meetings: [], dictations: [], totals: null, issues: [], strayCount: 0, freshId: null, showMarks: true, openRaw: new Set(), ...start };
   const source = createSource(() => state, () => [state]);
-  const actions: HomeActions = { openSettings: vi.fn(), openMeetingStart: vi.fn(), openMeetings: vi.fn(), dismissIssue: vi.fn(), copy: vi.fn(), repaste: vi.fn() };
+  const actions: HomeActions = { openSettings: vi.fn(), openMeetingStart: vi.fn(), openMeetings: vi.fn(), openReview: vi.fn(), dismissIssue: vi.fn(), copy: vi.fn(), repaste: vi.fn() };
   const page = reactPage(HomePage, { source, actions });
   document.body.replaceChildren(page.el);
   const set = (over: Partial<HomeInput>) => act(() => {
@@ -45,6 +45,23 @@ describe('홈 화면', () => {
     expect(actions.openMeetingStart).toHaveBeenCalled();
     act(() => (page.el.querySelector('.todo-row') as HTMLButtonElement).click());
     expect(actions.openMeetings).toHaveBeenCalledWith('all');
+    page.leave?.();
+  });
+
+  it('확인할 회의가 하나면 챙길 일에서 바로 그 회의의 확인 필요로, 최근 회의의 "확인 N개"도 확인 필요로 (줄은 회의록 링크 그대로)', () => {
+    const r = { id: 'm1', startedAt: new Date(2026, 10, 10, 10).toISOString(), durationSec: 600, minutes: { status: 'done', title: '주간 회의' }, review: { finalized: false, open: 2, total: 3 } };
+    const { page, actions } = mount({ meetings: [r] });
+    act(() => (page.el.querySelector('.todo-row') as HTMLButtonElement).click());
+    expect(actions.openReview).toHaveBeenCalledWith('m1');
+    expect(actions.openMeetings).not.toHaveBeenCalled();
+    const row = page.el.querySelector('.hrow') as HTMLAnchorElement;
+    expect(row.getAttribute('href')).toBe('#meeting/m1');
+    const state = row.querySelector('.rs.open') as HTMLElement;
+    expect(state.textContent).toBe('확인 2개');
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+    act(() => void state.dispatchEvent(click));
+    expect(click.defaultPrevented).toBe(true);
+    expect(actions.openReview).toHaveBeenCalledTimes(2);
     page.leave?.();
   });
 

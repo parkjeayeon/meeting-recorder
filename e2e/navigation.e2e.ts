@@ -43,6 +43,22 @@ test.describe('홈 회의 12개', () => {
   });
 });
 
+test('홈 · 확인할 회의가 하나면 바로 확인 필요 탭으로', async ({ page, go, id }) => {
+  // 기본 예시는 회의 하나(확인 남음)뿐이다
+  await go('#home');
+  await test.step('챙길 일 "확인할 회의" → 목록을 거치지 않고 그 회의의 확인 필요 탭', async () => {
+    await page.locator('.todo-row').filter({ hasText: '확인할 회의' }).click();
+    await expect.poll(() => page.evaluate(() => location.hash)).toBe(`#meeting/${id}`);
+    await expect(page.getByRole('tab', { selected: true })).toHaveText(/^확인 필요/);
+  });
+  await test.step('최근 회의 줄의 "확인 N개" → 확인 필요 탭', async () => {
+    await go('#home');
+    await page.locator('.hrow .rs.open').first().click();
+    await expect.poll(() => page.evaluate(() => location.hash)).toBe(`#meeting/${id}`);
+    await expect(page.getByRole('tab', { selected: true })).toHaveText(/^확인 필요/);
+  });
+});
+
 test.describe('홈 회의 8개', () => {
   test.use({ stub: { STUB_MANY: '8' } });
   test('홈 · 녹음 공간', async ({ page, go }) => {

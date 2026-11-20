@@ -1,6 +1,6 @@
 // 회의 페이지. 무엇을 보일지는 주인(controller.ts의 draw)이 만든 view로 받고,
 // 주인이 다시 그릴 때마다(version) 안을 새로 만든다 — 옛 화면처럼 열어 둔 고치기 줄·누른 버튼 표시가 다시 그릴 때 풀린다.
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from 'react';
 import { ActionsBody, type ActionsProps } from '../../features/meeting-actions/index.ts';
 import { FlowChatBody, type FlowChatProps } from '../../features/meeting-flow/index.ts';
 import { PlayerBody, ScriptBody, SpeakerBarBody, SpeakersBody, type PlayerProps, type ScriptProps } from '../../features/meeting-player/index.ts';
@@ -150,7 +150,7 @@ function Actions({ m, c }: { readonly m: MeetingMenu; readonly c: MeetingCommand
 function Head({ h, menu, c }: { readonly h: MeetingHead; readonly menu: MeetingMenu; readonly c: MeetingCommands }) {
   return (
     <div className="meet-head">
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="meet-title">
         <h1>{h.title}</h1>
         <div className="meet-meta">
           <span className="tag">{h.when}</span>
@@ -289,6 +289,20 @@ function Gone({ canBack, c }: { readonly canBack: boolean; readonly c: MeetingCo
   );
 }
 
+const TABPANEL = 'meeting-tabpanel';
+
+/** 탭 줄의 키: ←/→로 앞뒤 탭(끝에서는 반대쪽 끝으로), Home/End로 처음·마지막 탭을 연다.
+ * 연 뒤 페이지를 새로 그려도 포커스는 주인이 새로 고른 탭으로 옮긴다 (controller.ts draw) */
+function tabKey(e: KeyboardEvent<HTMLDivElement>, v: MeetingView, c: MeetingCommands) {
+  const ids = v.tabs.map(([id]) => id);
+  const i = ids.indexOf(v.tab ?? '');
+  const n = ids.length;
+  const next = e.key === 'ArrowRight' ? ids[(i + 1) % n] : e.key === 'ArrowLeft' ? ids[(i - 1 + n) % n] : e.key === 'Home' ? ids[0] : e.key === 'End' ? ids[n - 1] : null;
+  if (!next) return;
+  e.preventDefault();
+  if (next !== v.tab) c.setTab(next);
+}
+
 function Page({ v, c }: { readonly v: MeetingView; readonly c: MeetingCommands }) {
   let parts: ReactNode;
   if (v.gone) parts = <Gone canBack={v.gone.canBack} c={c} />;
@@ -302,17 +316,20 @@ function Page({ v, c }: { readonly v: MeetingView; readonly c: MeetingCommands }
         {v.compress ? <Compress n={v.compress} c={c} /> : null}
         {v.state ? <StateCardView s={v.state} c={c} /> : null}
         {v.tabs.length > 0 ? (
-          <div className="tabs" role="tablist">
-            {v.tabs.map(([id, label, n]) => <button key={id} className="tab" role="tab" aria-selected={id === v.tab} onClick={() => c.setTab(id)}>{label}{n ? <Num>{n}</Num> : null}</button>)}
+          <div className="tabs" role="tablist" onKeyDown={(e) => tabKey(e, v, c)}>
+            {v.tabs.map(([id, label, n]) => (
+              <button key={id} id={`tab-${id}`} className="tab" role="tab" aria-selected={id === v.tab} aria-controls={TABPANEL} tabIndex={id === v.tab ? 0 : -1} onClick={() => c.setTab(id)}>{label}{n ? <Num>{n}</Num> : null}</button>
+            ))}
           </div>
         ) : null}
-        <div ref={c.setFindScope}><Body b={v.body} c={c} /></div>
+        <div ref={c.setFindScope} {...(v.tab ? { id: TABPANEL, role: 'tabpanel', 'aria-labelledby': `tab-${v.tab}` } : {})}><Body b={v.body} c={c} /></div>
         {v.chat ? <aside className="chat" aria-label="확인 필요 채팅"><ReviewChatBody {...v.chat} /></aside> : null}
         {v.flowChat ? <aside className="chat" aria-label="흐름도 채팅"><FlowChatBody {...v.flowChat} /></aside> : null}
       </>
     );
   }
-  return <div className="page">{parts}</div>;
+  // 채팅이 열려 있으면 넓은 창에서는 본문이 채팅 폭만큼 비켜 선다 (style.css .page.with-chat, 결정 72)
+  return <div className={v.chat || v.flowChat ? 'page with-chat' : 'page'}>{parts}</div>;
 }
 
 export function MeetingPage({ source, commands }: { readonly source: Source<MeetingView | null>; readonly commands: MeetingCommands }) {

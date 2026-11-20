@@ -78,11 +78,11 @@ node scripts/dev/verify/cleanup.js --runs   # 증거까지 (다 본 뒤에만)
 
 ```bash
 npm run verify:journeys   # 지도의 흐름 전부 (Playwright, 약 8초, 실패하면 .work/e2e/results/에 trace) — npm run dist가 돌린다
-npm run test:e2e          # E2E 시험 전부: 흐름 + 기능 시험 46건 + 화면 시험 48건 + 떠 있는 막대 3건 (e2e/, 약 25초)
+npm run test:e2e          # E2E 시험 전부: 흐름·기능·화면·떠 있는 막대 (시험 파일은 e2e/)
 npm run test:screens      # 화면 캡처 픽셀 비교 (기준은 바꾸기 전에 -- --update-snapshots)
 ```
 
-**안쪽만 바꾸는 일의 합격 기준** (React/TypeScript 전환 때 정함, 2026-11-14 끝): 동작을 그대로 두고 안쪽만 바꿀 때는 위 시험이 **시험을 고치지 않고** 통과해야 한다. 시험을 고쳐서 통과시켰다면 그건 동작이 바뀐 것이니 사용자에게 먼저 묻는다. 화면 캡처 픽셀(`npm run test:screens`)과 `#view` HTML(`scripts/dev/view-parity.js`)까지 main과 같아야 한다 — docs/testing.md. 시험이 클래스 이름이 아니라 글자·역할·aria로 찾는 이유다 — aria 이름이나 화면 글자를 바꾸지 않는다.
+**안쪽만 바꾸는 일의 합격 기준** (React/TypeScript 전환 때 정함, 2026-11-14 끝): 동작을 그대로 두고 안쪽만 바꿀 때는 위 시험이 **시험을 고치지 않고** 통과해야 한다. 시험을 고쳐서 통과시켰다면 그건 동작이 바뀐 것이니 사용자에게 먼저 묻는다. 화면 캡처 픽셀(`npm run test:screens`)과 `#view` HTML(`scripts/dev/view-parity.js`)까지 main과 같아야 한다 — docs/testing.md. 시험이 클래스 이름이 아니라 글자·역할·aria로 찾는 이유다 — aria 이름이나 화면 글자를 바꾸지 않는다. 일부러 하는 UX 고침([결정 71·72](../../../docs/decisions.md))은 이 기준 밖이다 — aria 이름·화면 글자·동작이 바뀌고, 바뀐 만큼 시험을 같은 PR에서 고친다.
 
 ## 다른 면
 
