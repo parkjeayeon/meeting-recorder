@@ -123,7 +123,7 @@ function Actions({ m, c }: { readonly m: MeetingMenu; readonly c: MeetingCommand
         const btn = e.currentTarget;
         void c.copyMinutes().then(() => btn.blur());
       }}><Icon id="i-copy" />회의록 복사</button> : null}
-      {m.remake ? <button className="btn" onClick={() => toggle('remake')}><Icon id="i-redo" />다시 만들기</button> : null}
+      {m.remake ? <button className="btn" onClick={() => toggle('remake')}><Icon id="i-redo" />회의록 다시 만들기</button> : null}
       <button className="icon-btn" aria-label="더 보기" onClick={() => toggle('more')}><Icon id="i-more" /></button>
       {menu === 'remake' ? (
         <div className="menu">
@@ -190,7 +190,8 @@ function StateCardView({ s, c }: { readonly s: StateCard; readonly c: MeetingCom
     return (
       <div className="state">
         <b>{s.offline ? '인터넷 연결이 없어 회의록을 쓰지 못했습니다' : '회의록을 쓰다가 멈췄습니다'}</b>
-        <p className="err">{s.offline ? '녹취와 화자 구분은 저장되어 있습니다. 연결되면 자동으로 이어서 씁니다.' : `${s.error} · 녹취와 화자 구분은 저장되어 있어 회의록만 다시 쓸 수 있습니다.`}</p>
+        {/* 인터넷이 끊긴 것은 고장이 아니라 기다리면 되는 일 — 오류색을 쓰지 않는다 */}
+        <p className={s.offline ? undefined : 'err'}>{s.offline ? '녹취와 화자 구분은 저장되어 있습니다. 연결되면 자동으로 이어서 씁니다.' : `${s.error} · 녹취와 화자 구분은 저장되어 있어 회의록만 다시 쓸 수 있습니다.`}</p>
         <div className="row">
           <button className="btn primary" onClick={c.resume}>회의록만 다시 쓰기</button>
           <label className="hint" style={{ margin: '0 0 0 12px' }}>참석 인원 </label>
@@ -295,7 +296,8 @@ function Page({ v, c }: { readonly v: MeetingView; readonly c: MeetingCommands }
     parts = (
       <>
         <Head h={v.head} menu={v.menu!} c={c} />
-        {v.speakerBar ? <div className="spk-bar"><SpeakerBarBody {...v.speakerBar} /></div> : null}
+        {/* 확인 필요 탭에서는 화자 줄을 접는다 — 항목 목록이 한 화면에 더 들어오게 (이름 바꾸기는 다른 탭·화자 탭에서) */}
+        {v.speakerBar && v.tab !== 'review' ? <div className="spk-bar"><SpeakerBarBody {...v.speakerBar} /></div> : null}
         {v.player ? <div className="player"><PlayerBody {...v.player} /></div> : null}
         {v.compress ? <Compress n={v.compress} c={c} /> : null}
         {v.state ? <StateCardView s={v.state} c={c} /> : null}

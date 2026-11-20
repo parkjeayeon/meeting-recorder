@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Locator } from '@playwright/test';
 import { test, expect, type Fixtures } from './app.ts';
+import { confirm } from './feature-helpers.ts';
 
 async function toReview({ go, id, page }: Pick<Fixtures, 'go' | 'id' | 'page'>) {
   await go(`#meeting/${id}`);
@@ -25,7 +26,7 @@ async function withValue(inputs: Locator, value: string) {
 test('확인 필요 · 항목 종류와 모양', async ({ page, go, id }) => {
   await toReview({ page, go, id });
   await test.step('남은 항목 4개, 종류 표시(오인식·이름·근거 확인)', async () => {
-    await expect.poll(() => page.getByRole('checkbox', { name: '고르기', exact: true }).evaluateAll((inputs) => {
+    await expect.poll(() => page.getByRole('checkbox', { name: /^고르기/ }).evaluateAll((inputs) => {
       const tags = inputs.map((c) => c.closest('div')!.parentElement!.innerText.split('\n')[0]);
       return { count: tags.length, word: tags.some((t) => t.includes('오인식')), name: tags.some((t) => t.includes('이름')), evidence: tags.some((t) => t.includes('근거 확인')) };
     })).toEqual({ count: 4, word: true, name: true, evidence: true });
@@ -64,7 +65,7 @@ test('확인 필요 · 확인됨·그대로 두기', async ({ page, go, id, dir,
     await page.getByRole('button', { name: '확인됨', exact: true }).first().click();
     await expect.poll(async () => ((await called('applyReview'))[0]?.[1] as unknown[])?.[0]).toMatchObject({ id: 'r3', resolve: '외부 개발자' });
     // 옛 고르기 input의 closest('div').parentElement와 같은 카드 범위.
-    const card = page.getByRole('checkbox', { name: '고르기', exact: true }).locator('../..').filter({ hasText: '근거 확인' }).first();
+    const card = page.getByRole('checkbox', { name: /^고르기/ }).locator('../..').filter({ hasText: '근거 확인' }).first();
     await card.getByRole('button', { name: '그대로 두기', exact: true }).click();
     await expect.poll(async () => (await called('setReviewStatus'))[0]?.slice(1, 3)).toEqual([['r4'], 'kept']);
     await expect.poll(() => statuses(dir)).toMatchObject({ r3: 'resolved', r4: 'kept' });
@@ -115,10 +116,54 @@ test('확인 필요 · 확인 마치기', async ({ page, go, id, called }) => {
     const finish = page.getByRole('button', { name: /확인 마치기/ }).first();
     await expect(finish).toHaveText('남은 4개는 그대로 두고 확인 마치기');
     await finish.click();
+    // 남은 항목이 있으면 한 번 묻는다 — 그만두면 마치지 않는다
+    await confirm(page, '취소');
+    expect(await called('finalizeReview')).toHaveLength(0);
+    await expect(finish).toHaveText('남은 4개는 그대로 두고 확인 마치기');
+    await finish.click();
+    await confirm(page, '확인 마치기');
     await expect.poll(() => called('finalizeReview')).toHaveLength(1);
     await expect(page.getByRole('status').filter({ hasText: '확정' }).first()).toBeVisible();
     await page.getByRole('button', { name: /^처리함/ }).first().click();
-    await expect.poll(() => page.getByRole('button').evaluateAll((buttons) => !buttons.some((b) =>
+    // 항목마다의 되돌리기·다시 열기는 잠긴다 (마치기 자체를 되돌리는 '다시 열기'만 남는다)
+    await expect.poll(() => page.locator('.ritem').getByRole('button').evaluateAll((buttons) => !buttons.some((b) =>
       (b as HTMLElement).offsetParent && /되돌리기|다시 열기/.test(b.textContent ?? '')))).toBe(true);
+  });
+  await test.step('마친 뒤 "다시 열기" → 마칠 때 자동으로 둔 항목이 다시 남은 것으로', async () => {
+    await page.locator('.finalize').getByRole('button', { name: '다시 열기', exact: true }).click();
+    await expect.poll(() => called('reopenReview')).toHaveLength(1);
+    await expect(page.getByRole('button', { name: /확인 마치기/ }).first()).toHaveText('남은 4개는 그대로 두고 확인 마치기');
+    await expect(page.getByRole('checkbox', { name: /^고르기/ })).toHaveCount(4);
+  });
+});
+
+test('확인 필요 · 키보드로 훑기', async ({ page, go, id, called }) => {
+  await toReview({ page, go, id });
+  const cards = page.locator('.review-list .ritem');
+  const focusedCard = () => page.evaluate(() => document.activeElement?.closest('.ritem')?.getAttribute('data-id') ?? null);
+  await test.step('입력칸에서 Enter로 적용하면 다음 항목으로 포커스가 간다', async () => {
+    const firstId = await cards.first().getAttribute('data-id');
+    await cards.first().locator('.ritem-fix input').first().press('Enter');
+    await expect.poll(() => called('applyReview')).toHaveLength(1);
+    await expect(cards).toHaveCount(3);
+    const nextId = await cards.first().getAttribute('data-id');
+    expect(nextId).not.toBe(firstId);
+    await expect.poll(focusedCard).toBe(nextId);
+  });
+  await test.step('⌥↓·⌥↑로 항목 사이를 옮긴다 (입력칸 안에서도)', async () => {
+    const ids = await cards.evaluateAll((els) => els.map((el) => el.getAttribute('data-id')));
+    await page.keyboard.press('Alt+ArrowDown');
+    await expect.poll(focusedCard).toBe(ids[1]);
+    await page.keyboard.press('Alt+ArrowDown');
+    await expect.poll(focusedCard).toBe(ids[2]);
+    await page.keyboard.press('Alt+ArrowUp');
+    await expect.poll(focusedCard).toBe(ids[1]);
+  });
+  await test.step('⌘.으로 그 항목을 그대로 두고, 포커스는 그다음 항목으로', async () => {
+    const ids = await cards.evaluateAll((els) => els.map((el) => el.getAttribute('data-id')));
+    await page.keyboard.press('Meta+.');
+    await expect.poll(async () => (await called('setReviewStatus'))[0]?.slice(1, 3)).toEqual([[ids[1]], 'kept']);
+    await expect(cards).toHaveCount(2);
+    await expect.poll(focusedCard).toBe(ids[2]);
   });
 });

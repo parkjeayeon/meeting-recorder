@@ -67,7 +67,7 @@ export function FlowsBody({ data, seek, avail, jobs, remakeKey, openChat, saveSv
             <div className="flow-acts">
               <button className="btn small ghost" onClick={() => openChat(f.id)}><Icon id="i-chat" />채팅</button>
               <button className="btn small ghost" title="흐름도를 SVG 그림 파일로 저장" onClick={() => saveSvg(f)}><Icon id="i-download" />SVG</button>
-              <JobButton jobs={jobs} jobKey={remakeKey(f.id)} className="btn small ghost" icon="i-redo" label="다시 만들기" onClick={() => remake(f)} />
+              <JobButton jobs={jobs} jobKey={remakeKey(f.id)} className="btn small ghost" icon="i-redo" label="다시 그리기" onClick={() => remake(f)} />
               <button className="btn small ghost" onClick={() => remove(f)}><Icon id="i-trash" />지우기</button>
             </div>
           </div>

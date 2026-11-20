@@ -133,9 +133,20 @@ const impl = {
   },
   finalizeReview: async () => {
     const review = JSON.parse(read('review.json'));
-    for (const it of review.items) if (it.status === 'open') it.status = 'kept';
+    for (const it of review.items) if (it.status === 'open') Object.assign(it, { status: 'kept', autoKept: true });
     review.finalizedAt = new Date().toISOString();
     review.finalize = { rewritten: false };
+    fs.writeFileSync(path.join(dir, 'review.json'), JSON.stringify(review));
+    return review;
+  },
+  reopenReview: async () => {
+    const review = JSON.parse(read('review.json'));
+    for (const it of review.items) {
+      if (it.autoKept && it.status === 'kept') it.status = 'open';
+      delete it.autoKept;
+    }
+    delete review.finalizedAt;
+    delete review.finalize;
     fs.writeFileSync(path.join(dir, 'review.json'), JSON.stringify(review));
     return review;
   },

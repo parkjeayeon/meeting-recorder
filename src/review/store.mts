@@ -36,6 +36,7 @@ export interface Item extends ReviewItem {
   chat?: { user: string; assistant: string }[];
   resolution?: string;
   request?: string;
+  autoKept?: boolean; // 확인을 마칠 때 남아 있어 자동으로 그대로 둔 항목
 }
 
 export type Review = {

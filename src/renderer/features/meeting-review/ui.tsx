@@ -4,7 +4,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { noteVariants } from '../../../core/review.mts';
 import { clock, parseStamp } from '../../../core/script.mts';
-import { itemRange, REVIEW_KIND } from '../../entities/review/index.ts';
+import { contextLines, itemRange, REVIEW_KIND } from '../../entities/review/index.ts';
 import type { Jobs } from '../../shared/lib/index.ts';
 import { Field, Icon, JobButton, Num, useNativeEvent } from '../../shared/ui/index.tsx';
 import { needsRewrite, type Fix, type Review, type ReviewItem } from './model.ts';
@@ -26,6 +26,8 @@ export interface ReviewProps {
   readonly now: () => number;
   readonly jobs: Jobs;
   readonly addKey: string;
+  /** 방금 처리한 항목 다음에 볼 항목 — 그 카드의 입력칸으로 포커스를 옮긴다 (없으면 그대로) */
+  readonly focusId?: string | null;
   readonly actions: ReviewActions;
 }
 export interface ReviewActions {
@@ -48,7 +50,10 @@ export interface ReviewActions {
   readonly makeReview: () => Promise<boolean>;
   readonly setAddDraft: (text: string) => void;
   readonly add: (text: string) => void;
-  readonly finalize: () => Promise<boolean>;
+  /** 마쳤으면 true, 실패하면 false, 확인 창에서 그만두면 null */
+  readonly finalize: () => Promise<boolean | null>;
+  /** 확인 마치기를 되돌려 다시 손볼 수 있게 */
+  readonly reopenAll: () => Promise<boolean>;
   /** 알림 (구간 고르기의 잘못된 값) */
   readonly warn: (title: string) => void;
 }
@@ -122,7 +127,9 @@ function ReviewAdd({ draft, jobs, jobKey, setDraft, add }: { readonly draft: str
 }
 
 // 확인 마치기: 남은 항목은 그대로 둔 것으로 하고, 채팅·이름 등 문장에 영향이 있는 결과만 회의록에 반영한다
-function Finalize({ review, openCount, finalize }: { readonly review: Review; readonly openCount: number; readonly finalize: () => Promise<boolean> }) {
+// 남은 항목이 있는 동안은 목록 아래에 붙어 있는 조용한 띠(남은 수 + 보조 버튼), 다 처리하면 주요 버튼이 된다.
+// 마친 뒤에도 '다시 열기'로 되돌릴 수 있다 (고쳐 쓴 회의록은 마치기 전 것으로 돌아간다)
+function Finalize({ review, openCount, doneCount, finalize, reopenAll }: { readonly review: Review; readonly openCount: number; readonly doneCount: number; readonly finalize: () => Promise<boolean | null>; readonly reopenAll: () => Promise<boolean> }) {
   const [state, setState] = useState<'idle' | 'busy' | 'failed'>('idle');
   if (review.finalizedAt) {
     const f = review.finalize ?? {};
@@ -131,22 +138,27 @@ function Finalize({ review, openCount, finalize }: { readonly review: Review; re
         <Icon id="i-check" />
         <div className="finalize-text">
           <b>확인을 마쳤습니다</b>
-          <span>{`고침 ${f.applied ?? 0} · 그대로 둠 ${f.kept ?? 0}${f.rewritten ? ' · 회의록의 해당 부분을 고쳐 썼습니다 (이전 회의록은 minutes.before-finalize.md로 보관)' : ' · 회의록 문장은 그대로입니다'}`}</span>
+          <span>{`고침 ${f.applied ?? 0} · 그대로 둠 ${f.kept ?? 0}${f.rewritten ? ' · 회의록의 해당 부분을 고쳐 썼습니다' : ' · 회의록 문장은 그대로입니다'}`}</span>
         </div>
+        <button className={state === 'busy' ? 'btn small busy' : 'btn small'} title={f.rewritten ? '회의록을 마치기 전 것으로 돌리고 항목을 다시 손볼 수 있게 합니다' : '항목을 다시 손볼 수 있게 합니다'} onClick={async () => {
+          setState('busy');
+          if (!(await reopenAll())) setState('idle');
+        }}>다시 열기</button>
       </div>
     );
   }
   const rewrite = needsRewrite(review.items);
   const label = state === 'busy' ? (rewrite ? '회의록에 반영하는 중…' : '마치는 중…') : state === 'failed' ? '다시 시도' : openCount ? `남은 ${openCount}개는 그대로 두고 확인 마치기` : '확인 마치기';
   return (
-    <div className="finalize">
+    <div className={openCount ? 'finalize dock' : 'finalize dock ready'}>
       <div className="finalize-text">
-        <b>{openCount ? `확인 필요 ${openCount}개 남음` : '모두 처리했습니다'}</b>
+        <b>{openCount ? `확인 필요 ${openCount}개 남음${doneCount ? ` · 처리 ${doneCount}` : ''}` : '모두 처리했습니다'}</b>
         <span>{rewrite ? '채팅으로 밝혀진 내용이나 고친 이름은 회의록의 해당 문장에 반영합니다. 나머지 문장은 그대로 둡니다.' : '고친 단어는 이미 녹취·정리본·회의록에 반영되어 있습니다. 마치면 회의록이 확정됩니다.'}</span>
       </div>
-      <button className={state === 'busy' ? 'btn primary busy' : 'btn primary'} onClick={async () => {
+      <button className={`btn${openCount ? '' : ' primary'}${state === 'busy' ? ' busy' : ''}`} onClick={async () => {
         setState('busy'); // 흐리게 하지 않고 진행 중 표시
-        if (!(await finalize())) setState('failed');
+        const ok = await finalize();
+        if (!ok) setState(ok === null ? 'idle' : 'failed'); // 확인 창에서 그만둔 것은 실패가 아니다
       }}><Icon id="i-check" />{label}</button>
     </div>
   );
@@ -188,6 +200,23 @@ function RedoPicker({ it, now, redo, warn }: { readonly it: ReviewItem; readonly
         {here(end)}
         <button className="btn small primary" onClick={go}>다시 받아쓰기</button>
       </div>
+    </div>
+  );
+}
+
+/** 그 시각의 녹취 줄(과 앞 줄): 카드만 보고도 무슨 말이었는지 알게. 들린 말은 표시하고, 시각을 누르면 그 자리부터 듣는다 */
+function Context({ it, transcript, seek }: { readonly it: ReviewItem; readonly transcript: string; readonly seek: ((sec: number) => void) | null }) {
+  const lines = contextLines(it, transcript);
+  if (!lines.length) return null;
+  return (
+    <div className="ritem-ctx" aria-label="녹취">
+      {lines.map((l, i) => (
+        <p key={`${l.at}-${i}`} className={i === lines.length - 1 ? 'now' : undefined}>
+          {seek ? <button className="seek" title="여기부터 듣기" onClick={() => seek(parseStamp(l.at))}>{l.at}</button> : <span className="num">{l.at}</span>}
+          {l.speaker ? <span className="ctx-who">{l.speaker}</span> : null}
+          <span className="ctx-text">{l.hit ? <>{l.text.slice(0, l.hit[0])}<mark>{l.text.slice(l.hit[0], l.hit[1])}</mark>{l.text.slice(l.hit[1])}</> : l.text}</span>
+        </p>
+      ))}
     </div>
   );
 }
@@ -337,9 +366,43 @@ export function ReviewBody(p: ReviewProps) {
   const sel = open.filter((it) => p.selected.has(it.id));
   const applicable = sel.filter((it) => it.heard && guessOf(it).trim());
   const locked = Boolean(review.finalizedAt);
+  const list = useRef<HTMLDivElement>(null);
+  // 카드의 첫 입력칸(없으면 첫 버튼)으로 포커스를 옮기고 화면 안으로
+  const focusCard = (card: Element | null | undefined) => {
+    const target = card?.querySelector<HTMLElement>('.ritem-fix input, .ritem-acts button, .ritem-done button');
+    if (!target) return;
+    target.focus({ preventScroll: true });
+    card!.scrollIntoView?.({ block: 'nearest' });
+  };
+  // 항목을 처리하면 페이지가 새로 그려진다 → 다음 항목에서 이어서 하게 (주인이 focusId로 알려 준다)
+  useLayoutEffect(() => {
+    if (p.focusId) focusCard(list.current?.querySelector(`.ritem[data-id="${CSS.escape(p.focusId)}"]`));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- 그릴 때 한 번
+  // 키보드로 훑기: ⌥↓·⌥↑(입력칸 밖에서는 J·K)로 항목 사이를 옮기고, ⌘.으로 그대로 둔다. 적용은 입력칸에서 Enter
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.nativeEvent.isComposing) return;
+    const card = (e.target as Element).closest<HTMLElement>('.ritem');
+    if (!card) return;
+    const typing = Boolean((e.target as Element).closest('input, textarea'));
+    const step = (e.altKey && e.key === 'ArrowDown') || (!typing && !e.metaKey && !e.altKey && e.code === 'KeyJ') ? 1 : (e.altKey && e.key === 'ArrowUp') || (!typing && !e.metaKey && !e.altKey && e.code === 'KeyK') ? -1 : 0;
+    if (step) {
+      const cards = [...list.current!.querySelectorAll('.ritem')];
+      const next = cards[cards.indexOf(card) + step];
+      if (next) {
+        e.preventDefault();
+        focusCard(next);
+      }
+    } else if (e.metaKey && e.key === '.' && card.classList.contains('open')) {
+      e.preventDefault();
+      actions.keep([card.dataset.id!]);
+    }
+  };
   return (
     <>
-      <div className="tab-bar"><span>들린 말을 고칠 말로 바꾸면 녹취·정리본·회의록에 모두 반영됩니다. 처음 고칠 때 원본을 따로 보관합니다.</span></div>
+      <div className="tab-bar">
+        <span>들린 말을 고칠 말로 바꾸면 녹취·정리본·회의록에 모두 반영됩니다. 처음 고칠 때 원본을 따로 보관합니다.</span>
+        {p.filter === 'open' && open.length > 1 ? <span className="keys" aria-label="단축키"><kbd>Enter</kbd>적용<kbd>⌘.</kbd>그대로 두기<kbd>⌥↑↓</kbd>항목 이동</span> : null}
+      </div>
       <div className="review-bar">
         {p.filter === 'open' && open.length > 0 ? (
           <label className="review-all">
@@ -362,22 +425,26 @@ export function ReviewBody(p: ReviewProps) {
           <button className="chip" aria-pressed={p.filter === 'done'} onClick={() => actions.setFilter('done')}>처리함<Num>{done.length}</Num></button>
         </div>
       </div>
-      <ReviewAdd draft={p.addDraft} jobs={p.jobs} jobKey={p.addKey} setDraft={actions.setAddDraft} add={actions.add} />
-      {items.length ? <Finalize review={review} openCount={open.length} finalize={actions.finalize} /> : null}
-      {!shown.length ? (
-        <div className="empty"><b>{p.filter === 'open' ? '확인할 항목이 없습니다' : '아직 처리한 항목이 없습니다'}</b>{p.filter === 'open' && items.length ? '모두 처리했습니다.' : ''}</div>
-      ) : shown.map((it) => (
-        <div key={it.id} className={`ritem${p.selected.has(it.id) ? ' on' : ''} ${it.status}`}>
-          <div className="ritem-head">
-            {it.status === 'open' ? <Check checked={p.selected.has(it.id)} label="고르기" onChange={(on) => actions.select(it.id, on)} /> : null}
+      {/* 항목이 먼저, 그 아래에 놓친 것 더하기와 마치기 — 탭을 열면 첫 항목이 바로 보이게 */}
+      <div ref={list} className="review-list" onKeyDown={onKey}>
+        {!shown.length ? (
+          <div className="empty"><b>{p.filter === 'open' ? '확인할 항목이 없습니다' : '아직 처리한 항목이 없습니다'}</b>{p.filter === 'open' && items.length ? '모두 처리했습니다.' : ''}</div>
+        ) : shown.map((it) => (
+          <div key={it.id} data-id={it.id} className={`ritem${p.selected.has(it.id) ? ' on' : ''} ${it.status}`}>
+            <div className="ritem-head">
+              {it.status === 'open' ? <Check checked={p.selected.has(it.id)} label={`고르기: ${it.heard ?? it.heardNote ?? it.note}`.slice(0, 60)} onChange={(on) => actions.select(it.id, on)} /> : null}
             {/* 형식 검사가 올린 항목은 '근거 확인' (core/check.mts) */}
-            <span className={`tag kind-${it.kind}`}>{it.source === 'check' ? '근거 확인' : REVIEW_KIND[it.kind] ?? '확인'}</span>
-            {it.at ? <Stamp at={it.at} seek={p.seek} /> : null}
-            <span className="ritem-note">{it.note}</span>
+              <span className={`tag kind-${it.kind}`}>{it.source === 'check' ? '근거 확인' : REVIEW_KIND[it.kind] ?? '확인'}</span>
+              {it.at ? <Stamp at={it.at} seek={p.seek} /> : null}
+              <span className="ritem-note">{it.note}</span>
+            </div>
+            {it.status === 'open' ? <Context it={it} transcript={p.transcript} seek={p.seek} /> : null}
+            {it.status === 'open' ? <OpenItem it={it} p={p} /> : <DoneItem it={it} locked={locked} actions={actions} />}
           </div>
-          {it.status === 'open' ? <OpenItem it={it} p={p} /> : <DoneItem it={it} locked={locked} actions={actions} />}
-        </div>
-      ))}
+        ))}
+      </div>
+      {locked ? null : <ReviewAdd draft={p.addDraft} jobs={p.jobs} jobKey={p.addKey} setDraft={actions.setAddDraft} add={actions.add} />}
+      {items.length ? <Finalize review={review} openCount={open.length} doneCount={done.length} finalize={actions.finalize} reopenAll={actions.reopenAll} /> : null}
     </>
   );
 }

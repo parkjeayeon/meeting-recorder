@@ -98,6 +98,7 @@ const recorderApi = {
   redoRange: (dir, id, start, end) => ipcRenderer.invoke('review:redo', dir, id, start, end),
   applyRedo: (dir, id) => ipcRenderer.invoke('review:redoApply', dir, id),
   finalizeReview: (dir) => ipcRenderer.invoke('review:finalize', dir),
+  reopenReview: (dir) => ipcRenderer.invoke('review:reopen', dir),
   trashMeeting: (dir) => ipcRenderer.invoke('meeting:trash', dir),
   deleteDictation: (id) => ipcRenderer.invoke('dict:delete', id),
   onSwipe: (cb) => ipcRenderer.on('nav:swipe', (_e, dir) => cb(dir)),

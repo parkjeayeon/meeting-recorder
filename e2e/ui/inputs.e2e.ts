@@ -41,6 +41,8 @@ test('입력칸 · 실제 영어와 Backspace', async ({ page, go, id }) => {
   await test.step('확인 필요 직접 추가', async () => {
     // 채팅이 열린 채 '남은 것'이 가려져 있다 — 옛 시험처럼 요소를 바로 누른다
     await page.getByRole('button', { name: /^남은 것/ }).evaluate((b: HTMLElement) => b.click());
+    // 갈래를 누르면 한 박자 뒤에 탭을 새로 그린다 — 그리기 전에 잡은 입력칸은 포커스를 잃는다 (부하가 걸리면 이 틈에 걸렸다)
+    await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
     await checkKeys(page.locator('.review-add textarea'));
   });
   await test.step('처리함 고치기', async () => {

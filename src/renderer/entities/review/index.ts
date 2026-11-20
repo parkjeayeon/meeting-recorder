@@ -1,1 +1,1 @@
-export { itemRange, REVIEW_KIND } from './model.ts';
+export { itemRange, contextLines, REVIEW_KIND, type ContextLine } from './model.ts';

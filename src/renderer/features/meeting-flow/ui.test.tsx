@@ -28,14 +28,14 @@ describe('흐름도', () => {
     expect(host.querySelector('.fl-stamp.play')).toBeNull();
   });
 
-  it('카드: 채팅·SVG·다시 만들기(찾는 중이면 막힘)·지우기는 주인에게, 인수인계는 넘겨줄 것·할 일·정해진 것 중 있는 칸만', () => {
+  it('카드: 채팅·SVG·다시 그리기(찾는 중이면 막힘)·지우기는 주인에게, 인수인계는 넘겨줄 것·할 일·정해진 것 중 있는 칸만', () => {
     const jobs = createJobs();
     const p = { wrap, data: { flows: [f], handoff: { from: '민준', to: '서연', give: [{ text: '스크립트', owner: '민준' }], todo: [], decided: [{ text: '화요일' }] } }, seek: null, avail: 2000, jobs, remakeKey: (id: string) => `d|${id}`, openChat: vi.fn(), saveSvg: vi.fn(), remake: vi.fn(), remove: vi.fn() };
     act(() => createIslands().mount(host, FlowsBody, p));
     const click = (t: string) => act(() => [...host.querySelectorAll('button')].find((b) => b.textContent!.includes(t))!.click());
     click('채팅');
     click('SVG');
-    click('다시 만들기');
+    click('다시 그리기');
     click('지우기');
     expect([p.openChat.mock.calls[0], p.saveSvg.mock.calls[0]![0].id, p.remake.mock.calls.length, p.remove.mock.calls.length]).toEqual([['f1'], 'f1', 1, 1]);
     expect([...host.querySelectorAll('.handoff-col b')].map((b) => b.textContent)).toEqual(['민준이 넘겨줄 것', '정해진 것']);

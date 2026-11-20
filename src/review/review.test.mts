@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { applyReview, revertReview } from './apply.mjs';
+import { reopenReview } from './assist.mjs';
 import { changedLines, parseClock, spliceLines, stampOf } from './lines.mjs';
 import { markReviewItems, readReview, setReviewStatus, writeReview, type Item } from './store.mjs';
 
@@ -124,6 +125,32 @@ describe('applyReview · revertReview', () => {
     for (const it of review.items) if (it.status === 'open') it.status = 'kept';
     writeReview(dir, { ...review, finalizedAt: new Date() });
     expect(() => revertReview(dir, 'r1')).toThrow('확인을 마친 뒤에는');
+  });
+
+  it('확인 다시 열기: 고쳐 쓴 회의록은 마치기 전 것으로, 마칠 때 자동으로 둔 항목만 다시 남은 것으로', () => {
+    applyReview(dir, [{ id: 'r1', guess: '안정성' }, { id: 'r2', keep: true }]);
+    const before = fs.readFileSync(path.join(dir, 'minutes.md'), 'utf8');
+    // 확인 마치기가 한 일을 그대로 만든다 (LLM 없이): 남은 것 자동으로 두기, 회의록 고쳐 쓰기, 보관본
+    const review = readReview(dir)!;
+    for (const it of review.items) if (it.status === 'open') Object.assign(it, { status: 'kept', autoKept: true });
+    fs.writeFileSync(path.join(dir, 'minutes.before-finalize.md'), before);
+    fs.writeFileSync(path.join(dir, 'minutes.md'), '# 고쳐 쓴 제목\n\n## 요약\n다시 쓴 회의록\n');
+    fs.writeFileSync(path.join(dir, 'minutes.json'), JSON.stringify({ status: 'done', title: '고쳐 쓴 제목' }));
+    writeReview(dir, { ...review, finalizedAt: new Date(), finalize: { rewritten: true, provider: 'x', applied: 1, resolved: 0, kept: 3 } });
+
+    const out = reopenReview(dir);
+    expect(out.finalizedAt).toBeUndefined();
+    expect(out.finalize).toBeUndefined();
+    expect(Object.fromEntries(out.items.map((it) => [it.id, it.status]))).toEqual({ r1: 'applied', r2: 'kept', r3: 'open', r4: 'open' });
+    expect(out.items.some((it) => 'autoKept' in it)).toBe(false);
+    expect(fs.readFileSync(path.join(dir, 'minutes.md'), 'utf8')).toBe(before);
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'minutes.json'), 'utf8')).title).toBe('회의');
+    expect(fs.existsSync(path.join(dir, 'minutes.before-finalize.md'))).toBe(false);
+    // 다시 연 뒤에는 되돌리기도 된다
+    revertReview(dir, 'r1');
+    expect(read()).toEqual(files);
+    // 마치지 않은 것을 다시 열면 아무 일도 없다
+    expect(reopenReview(dir).items.length).toBe(4);
   });
 
   it('상태 바꾸기: 적용한 항목은 건드리지 않고, 다시 열면 확인한 내용을 지운다', () => {

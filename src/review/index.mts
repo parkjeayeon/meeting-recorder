@@ -3,4 +3,4 @@
 export { parseClock, spliceLines, changedLines, stampOf } from './lines.mjs';
 export { readText, readJsonFile, readReview, writeReview, setReviewStatus, markReviewItems, type Item, type Review, type Redo, type Undo } from './store.mjs';
 export { applyReview, revertReview, restoreRedoRange, type Fix, type Skipped } from './apply.mjs';
-export { configure, makeReview, addCheckItems, addReview, chatReview, finalizeReview, REDO_MAX_SEC, type Proposal } from './assist.mjs';
+export { configure, makeReview, addCheckItems, addReview, chatReview, finalizeReview, reopenReview, REDO_MAX_SEC, type Proposal } from './assist.mjs';
