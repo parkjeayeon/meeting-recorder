@@ -21,3 +21,6 @@ verify-runs/
 
 # 작업 중 기록(시험 기록·화면 비교 결과·설계 문서) — /tmp는 재시작하면 비워진다
 .work/
+
+# 에이전트가 쓰는 임시 작업 폴더(git worktree) — 안에 저장소 사본이 통째로 있어 vitest가 그 시험까지 주워 돌린다
+.claude/worktrees/

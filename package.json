@@ -13,7 +13,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.renderer.json && tsc -p tsconfig.preload.json && tsc -p tsconfig.e2e.json && node scripts/dev/check-boundaries.js",
     "start": "npm run build:fn && npm run build:ts && npm run build:renderer && electron .",
     "selftest": "npm run build:fn && npm run build:ts && npm run build:renderer && electron . --selftest",
-    "test": "npm run build:ts && vitest run",
+    "test": "npm run build:ts && vitest run --exclude '.claude/**'",
     "verify:journeys": "npm run build:renderer && playwright test --project=e2e journeys",
     "test:e2e": "npm run build:renderer && playwright test --project=e2e",
     "test:screens": "npm run build:renderer && playwright test --project=screens",
