@@ -232,7 +232,8 @@ mr schema actions           # 출력 JSON Schema
 - 키보드 설정 "🌐 키를 누르면" → "아무것도 안 함"
 
 ## 구조
-- `src/main.js`: fn 상태 머신(받아쓰기 전용, 처음 설정 중 막기), 회의 일시정지·취소·참석 인원, WAV 저장, 녹음 폴더·설정 사본, 회의 녹음 재생용 `rec://` 프로토콜(Range 지원), 메뉴바·플로팅 독
+- `src/main.js`: fn 상태 머신(받아쓰기 전용, 처음 설정 중 막기), 회의 일시정지·취소·참석 인원, WAV 저장, 녹음 폴더·설정 사본, 녹음·회의록·받아쓰기 설정·앱 정보의 IPC 처리기, 회의 녹음 재생용 `rec://` 프로토콜(Range 지원), 메뉴바·플로팅 독, 창·앱 수명. 기록·질문으로 찾기·토큰·권한·처음 설정·녹음 폴더 바꾸기의 처리기는 `src/app/`의 것을 녹음 폴더·창 등을 넘겨 등록한다
+- `src/app/`: 본체 IPC 처리기를 구역별로 (TypeScript, Electron 없이 돎, `npm run build:ts` → `lib/app/`, [결정 70](docs/decisions.md)) — 기록·받아쓰기 통계(`history.mts`), 질문으로 찾기 연결(`ask.mts`), 토큰·키(`tokens.mts`), 권한(`permissions.mts`), 처음 설정 진행(`onboarding.mts`), 녹음 폴더 바꾸기·옮기기(`recordings.mts`). 각각 `register(ipc, ctx)`로 ipcMain과 그 구역이 쓰는 것만 받는다
 - `src/setup.js`: 엔진 설치·크기·삭제 (설정 › 엔진, 처음 설정)
 - `src/sandbox.js`: 외부 프로그램을 감싸는 macOS 샌드박스 프로필
 - `src/dictation.js`: whisper-server 관리(고아 정리 포함), 모델 다운로드, 무음·지어낸 문장 거르기, 붙여 넣기

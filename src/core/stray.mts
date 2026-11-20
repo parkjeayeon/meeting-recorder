@@ -16,7 +16,7 @@ export interface StrayFolder {
   modifiedAt: string; // 폴더 안에서 가장 최근에 바뀐 파일의 시각
 }
 
-const LISTED = /^\d{4}-\d{2}-\d{2}_/; // src/main.js listFolders와 같은 규칙
+const LISTED = /^\d{4}-\d{2}-\d{2}_/; // src/app/history.mts listFolders와 같은 규칙
 const OURS = /_(meeting|memo)(-\d+)?$/;
 const AUDIO = /\.(wav|m4a|mp3|aac|caf|aif|aiff|flac)$/i;
 

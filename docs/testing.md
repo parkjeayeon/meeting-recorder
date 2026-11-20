@@ -4,7 +4,7 @@
 
 ## 빌드 전 자동 검사 — `npm run dist`
 `npm run dist`(`npm run install-app`도)는 빌드 전에 아래를 차례로 돌리고, 실패하면 빌드하지 않는다.
-1. 타입 검사 `npm run typecheck` (코어·명령줄 도구, 화면 `tsconfig.renderer.json`, preload, E2E 시험의 TypeScript + 화면 경계 검사. 본체 `src/*.js`는 preload 말고는 검사하지 않는다)
+1. 타입 검사 `npm run typecheck` (코어·명령줄 도구, 화면 `tsconfig.renderer.json`, preload, E2E 시험의 TypeScript + 화면 경계·스타일 나눔·IPC 채널 검사. 본체 `src/*.js`는 preload 말고는 검사하지 않는다)
 2. 단위 테스트 `npm test` (컴파일 후 Vitest, 1초 안팎)
 3. 키보드 처리기 검사 `node scripts/dev/check-handlers.js` (1초 미만)
 4. E2E 시험 `playwright test --project=e2e` (`npm run test:e2e`와 같음, 약 25초): 기능 시험·화면 시험·떠 있는 막대·검증 스킬 흐름 60건, 아래
@@ -63,10 +63,11 @@
 - 화면은 `lib/renderer/main.js`로 묶어 띄운다 — 시험 스크립트를 `electron …`으로 바로 돌릴 땐 먼저 `npm run build:renderer` (`npm run test:*`·`dist`는 알아서). 묶음이 없으면 가짜 API가 콘솔에 크게 알리고, `verify/doctor.js`가 원본보다 오래됐는지 본다.
 - `node scripts/dev/check-boundaries.js` (`npm run typecheck`가 돌림): 화면 가져오기 경계 — FSD 층 순서(같은 층의 다른 조각도 금지), 다른 조각은 `index`로만, Node·Electron 금지(화면 밖은 `src/core` 순수 모듈과 preload 타입만), 문자열이 아닌 동적 import 금지.
 - `node scripts/dev/check-css-scope.js` (`npm run typecheck`가 돌림, 시험 `scripts/dev/check-css-scope.test.mjs`): 화면 스타일의 `@scope` 나눔 — 어느 `@scope`에서 만든 클래스가 밖(전역, 밖의 `@media` 안 포함)이나 다른 뿌리의 `@scope`에 또 나오면, `@scope` 안 선택자에 뿌리 자신을 쓰면 막는다. 일부러 같이 쓰는 이름은 `style.css` 머리의 '공유 클래스' 주석에. 정규식으로 읽어 덩어리의 첫 클래스만 보고(상태 클래스 `.on` 등은 안 봄) 마크업은 모른다 — 모양이 그대로인지는 화면 캡처 비교가 본다.
+- `node scripts/dev/check-ipc.js` (`npm run typecheck`가 돌림, 시험 `scripts/dev/check-ipc.test.mjs`): 화면과 본체 사이 IPC 채널 이름 — preload(`src/preload.js`·`src/overlay/preload.js`)가 부르는 채널마다 본체에 받는 곳(`ipcMain`/`ipc`의 `handle`·`on`·`once`)이 짝(invoke↔handle, send↔on)에 맞게 꼭 하나 있는지, 아무도 부르지 않는 받는 곳이 없는지, 본체가 창으로 보내는 알림과 그 창 preload가 받는 알림이 서로 맞는지. 채널 이름이 문자열 그대로가 아니면 막는다. E2E는 가짜 preload로 돌아 본체를 불러오지 않으므로 이름이 한쪽만 바뀐 것을 이 검사만 잡는다. 받는 곳 목록은 `scripts/dev/ipc-channels.txt`와 같아야 한다(시험이 봄, 일부러 바꾸면 `--write-list`). 인자·돌려주는 값의 모양은 보지 않는다.
 - `src/renderer/shared/page-host/index.test.tsx` (`npm test`, jsdom): 이음새 `reactPage`.
 
 ## 단위 테스트 — `npm test`
-`src/core`(회의 데이터 읽기), `src/llm`(LLM 층의 글 다루기), `src/review`(확인 필요 적용·되돌리기 — 임시 폴더에서), `src/meeting`(소리 변환·조각 내기 — 지어낸 WAV로, 스크립트 조립·화자 붙이기·반복 구간, 녹취 실행·회의록 만들기·구간 다시 받아쓰기 — 가짜 Whisper·LLM·파이썬 환경을 `configure()`로 넘겨서), `src/cli`(명령줄 도구 `mr`)를 Vitest로 시험한다. 가짜 녹음 폴더(`src/test/fixture.mts`, 지어낸 예시)와 회의 시험용 지어낸 소리·가짜 바깥 함수(`src/test/meeting.mts`)를 임시 폴더에 만들어 쓴다.
+`src/core`(회의 데이터 읽기), `src/llm`(LLM 층의 글 다루기), `src/review`(확인 필요 적용·되돌리기 — 임시 폴더에서), `src/meeting`(소리 변환·조각 내기 — 지어낸 WAV로, 스크립트 조립·화자 붙이기·반복 구간, 녹취 실행·회의록 만들기·구간 다시 받아쓰기 — 가짜 Whisper·LLM·파이썬 환경을 `configure()`로 넘겨서), `src/cli`(명령줄 도구 `mr`), `src/app`(본체 IPC 처리기 — 가짜 ipc(`src/test/ipc.mts`)·대화상자·토큰 저장소·네트워크와 임시 폴더로)를 Vitest로 시험한다. 가짜 녹음 폴더(`src/test/fixture.mts`, 지어낸 예시)와 회의 시험용 지어낸 소리·가짜 바깥 함수(`src/test/meeting.mts`)를 임시 폴더에 만들어 쓴다.
 - 화자 이름 바꿔 끼우기(조사 맞추기, '화자 1'과 '화자 10', '나'가 낱말 속에서 안 바뀜, 맞바꾸기), 스크립트 해석·말한 시간
 - 녹음 폴더 찾기 순서, 목록(받아쓰기·녹음 중 폴더 제외, 최근부터, `--limit`·`--since`), id 고르기(`latest`·앞부분·여럿이면 오류·폴더 밖 경로 거부)
 - 명령마다 출력이 `src/core/schema.mts`의 스키마에 맞는지, 오류 형식·종료 코드, 설치
