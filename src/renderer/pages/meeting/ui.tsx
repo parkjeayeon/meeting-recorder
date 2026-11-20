@@ -1,4 +1,4 @@
-// 회의 페이지. 무엇을 보일지는 주인(controller.ts의 draw)이 만든 view로 받고,
+// 회의 페이지. 무엇을 보일지는 주인(view.ts의 draw)이 만든 view로 받고,
 // 주인이 다시 그릴 때마다(version) 안을 새로 만든다 — 옛 화면처럼 열어 둔 고치기 줄·누른 버튼 표시가 다시 그릴 때 풀린다.
 // 포커스·커서는 주인이 열쇠(data-focus)로 되돌린다 — 포커스를 받을 새 칸을 만들면 열쇠를 단다 (shared/ui focus-keys.ts)
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from 'react';
@@ -293,7 +293,7 @@ function Gone({ canBack, c }: { readonly canBack: boolean; readonly c: MeetingCo
 const TABPANEL = 'meeting-tabpanel';
 
 /** 탭 줄의 키: ←/→로 앞뒤 탭(끝에서는 반대쪽 끝으로), Home/End로 처음·마지막 탭을 연다.
- * 연 뒤 페이지를 새로 그려도 포커스는 주인이 새로 고른 탭으로 옮긴다 (controller.ts setTab · 탭마다 data-focus 열쇠) */
+ * 연 뒤 페이지를 새로 그려도 포커스는 주인이 새로 고른 탭으로 옮긴다 (view.ts setTab · 탭마다 data-focus 열쇠) */
 function tabKey(e: KeyboardEvent<HTMLDivElement>, v: MeetingView, c: MeetingCommands) {
   const ids = v.tabs.map(([id]) => id);
   const i = ids.indexOf(v.tab ?? '');
