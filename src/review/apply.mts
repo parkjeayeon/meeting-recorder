@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { copyFileAtomic, writeFileAtomic, writeJsonAtomic } from '../core/write.mjs';
 import { noteVariants, stampFor } from '../core/review.mjs';
+import { clock } from '../core/script.mjs';
 import { changedLines, parseClock, spliceLines, stampOf } from './lines.mjs';
 import { CONTENT_FILES, backupName, readJsonFile, readReview, readText, writeReview, type ContentFile, type Item, type Redo, type Review, type Undo } from './store.mjs';
 
@@ -45,17 +46,37 @@ function legacyUndo(dir: string, item: { heard?: string | null; applied?: string
 }
 
 // 다시 받아쓴 구간을 원래 줄·녹취 구간으로 돌린다 (반영이 끝났든 도중에 끊겼든, 같은 구간을 다시 바꿔도 결과가 같다)
+// 2026-11-20 전에 반영한 항목은 앞 여유분에서 시작한 새 줄(10~15초 구간에 9.7초)이 구간 밖에 들어가 있을 수 있다 — 지금은 반영할 때 구간 시작으로 당긴다
+// (src/meeting/retranscribe.mts clampToRange). 그런 줄은 구간으로 지워지지 않으므로, 기록해 둔 새 줄(redo.lines)과 똑같은 줄·녹취 구간을 하나씩 뺀다.
+// 하나씩만: 원래 녹취에 같은 시각·같은 말 줄이 따로 있었으면 그 줄은 남아야 한다
+const lineText = (l: { start: number; label?: string | null; text: string }) => `[${clock(l.start)}]${l.label ? ` [${l.label}]` : ''} ${l.text}`; // src/meeting formatLine과 같게
+function dropOnce<T>(list: T[], same: (x: T) => boolean): T[] {
+  const i = list.findIndex(same);
+  return i === -1 ? list : [...list.slice(0, i), ...list.slice(i + 1)];
+}
+
+// 다시 받아쓴 구간을 원래 줄·녹취 구간으로 돌린다 (반영이 끝났든 도중에 끊겼든, 같은 구간을 다시 바꿔도 결과가 같다)
 export function restoreRedoRange(dir: string, r: Redo): void {
   const replaced = r.replaced ?? {};
+  const early = (r.lines ?? []).filter((l) => l.start < r.start);
   for (const f of ['transcript.txt', 'script-clean.txt'] as const) {
     const p = path.join(dir, f);
     const lines = replaced[f];
-    if (fs.existsSync(p) && lines) writeFileAtomic(p, spliceLines(readText(dir, f), r.start, r.end, lines));
+    if (!fs.existsSync(p) || !lines) continue;
+    let text = readText(dir, f);
+    for (const l of early.filter((x) => Math.floor(x.start) < Math.floor(r.start))) {
+      const kept = dropOnce(text.split('\n'), (x) => x === lineText(l));
+      text = kept.join('\n');
+    }
+    writeFileAtomic(p, spliceLines(text, r.start, r.end, lines));
   }
   const segFile = path.join(dir, 'segments.json');
   const seg = readJsonFile(segFile);
   if (seg?.segments && replaced.segments) {
-    seg.segments = [...seg.segments.filter((x: { track?: string; start: number }) => x.track !== r.track || x.start < r.start || x.start >= r.end), ...replaced.segments].sort((a, b) => a.start - b.start);
+    type S = { track?: string; start: number; text?: string };
+    let rest: S[] = seg.segments.filter((x: S) => x.track !== r.track || x.start < r.start || x.start >= r.end);
+    for (const l of early) rest = dropOnce(rest, (x) => x.track === r.track && x.start === l.start && x.text === l.text);
+    seg.segments = [...rest, ...replaced.segments].sort((a, b) => a.start - b.start);
     writeJsonAtomic(segFile, seg, 0);
   }
 }
