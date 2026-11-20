@@ -246,8 +246,8 @@ mr schema actions           # 출력 JSON Schema
 - `src/renderer/`: 메인 창 화면 (홈 · 받아쓰기 · 회의 · 사전 · 통계 · 설정 · 처음 설정 · ⌘K). Pretendard 글꼴(OFL) 포함, 디자인 규칙은 `DESIGN.md`. `index.html`이 Vite로 묶은 `lib/renderer/main.js·main.css`를 불러온다(`npm run build:renderer`, 개발은 `npm run dev`). TypeScript·React와 FSD 층(`app/`·`pages/`·`features/`·`shared/` 등)을 쓰며 `app/boot.ts`에서 시작한다([docs/react-migration.md](docs/react-migration.md))
 - `src/core/`: Electron 없는 회의 데이터 읽기 (TypeScript·ESM, `npm run build:ts` → `lib/`). 화자 이름 바꿔 끼우기, 요약·확인 필요 요약, 액션, 스크립트 해석·마크다운 복사, 확인 필요 항목 다듬기(`review.mts`), 목록에 안 나오는 폴더(`stray.mts`), 남은 사용량 읽기(`usage.mts`), 계정 순서·CLI 오류 나누기(`route.mts`), 회의록 형식 검사(`check.mts`), 원자적 쓰기, TypeBox 스키마. 메인 프로세스·화면·명령줄 도구가 같이 쓴다
 - `src/cli/`: 명령줄 도구 `mr` (`mr.mts` 명령 처리, `mr.sh` 앱 안 실행 스크립트 → `Contents/Resources/mr`)
-- `src/minutes.js`: 회의 녹취(같은 문장 반복 구간 다시 받아쓰기) + 화자 구분 → 정리본·회의록, 구간 다시 받아쓰기, 화자 이름 표시. 소리 변환·스크립트 조립은 `src/meeting/`에서 가져다 쓴다
-- `src/meeting/`: 회의 녹음 → 스크립트의 Electron 없는 부분 (TypeScript) — 16kHz로 줄이기·압축 풀기·조용한 지점에서 조각 내기·구간 잘라 내기(`audio.mts`), 반복 구간 찾기·화자 붙이기·스크립트 조립(`transcript.mts`)
+- `src/minutes.js`: 회의 녹취·회의록·확인 필요를 본체에 잇는 얇은 파일 — Electron이 아는 값(앱 데이터 폴더·설치본 여부·인터넷 연결)과 설정·Whisper·LLM·용어 설명·샌드박스를 `src/meeting`·`src/review`에 넘기고 예전 이름 그대로 내보낸다 ([결정 70](docs/decisions.md))
+- `src/meeting/`: 회의 녹음 → 녹취 → 회의록 (TypeScript, Electron 없이 돎) — 16kHz로 줄이기·압축 풀기·조용한 지점에서 조각 내기·구간 잘라 내기(`audio.mts`), 반복 구간 찾기·화자 붙이기·스크립트 조립(`transcript.mts`), 화자 구분(pyannote, `diarize.mts`), 조각별 Whisper 녹취·반복 구간 다시 받아쓰기(`transcribe.mts`), 구간 다시 받아쓰기(`retranscribe.mts`), 회의록 프롬프트·정리본·상태(`minutes.mts`), 전체 흐름·단계 기록(`pipeline.mts`), 한 번에 하나씩 줄 세우기(`queue.mts`), 바깥에서 받는 것(`deps.mts`의 `configure()`)
 - `src/review/`: 확인 필요 (TypeScript, Electron 없이 돎) — 목록 만들기·직접 추가·채팅·확인 마치기(`assist.mts`), 적용·되돌리기(`apply.mts`), review.json(`store.mts`)
 - `native/fn-listener.swift`: CGEventTap(listen-only)으로 fn down/up을 stdout으로 출력
 - `native/permissions.swift`: 권한 확인·요청, ⌘V 입력, 앞에 있는 앱 이름
