@@ -52,7 +52,7 @@ describe('회의 페이지', () => {
       document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     });
     expect(document.querySelector('.menu')).toBeNull();
-    act(() => btn('다시 만들기').click());
+    act(() => btn('회의록 다시 만들기').click());
     const sel = document.querySelector('.menu select') as HTMLSelectElement;
     expect(sel.value).toBe('3');
     sel.value = '5';

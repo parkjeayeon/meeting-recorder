@@ -154,6 +154,7 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
   const guessDraft = new Map<string, string>(); // 항목별로 고쳐 쓴 '고칠 말'
   const redoPick = new Set<string>(); // 구간을 몰라 직접 고르는 중인 항목 (유실·의미 불명)
   let reviewFilter: 'open' | 'done' = 'open';
+  let reviewFocus: string | null = null; // 방금 처리한 항목 다음에 볼 항목 (다음 그리기에서 그 카드로 포커스를 옮기고 지운다)
   let chat: ReviewChat | null = null;
   let flowChat: FlowChat | null = null;
   if (deps.takeOpenReview(id)) tab = 'review';
@@ -404,6 +405,7 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
         void refreshDoc(r);
       },
       remove: async (f: FlowDoc) => {
+        if (!(await deps.confirm('이 흐름도를 지울까요?', `"${f.title}" · 다시 만들려면 1분쯤 걸립니다.`, '지우기'))) return;
         await api.removeFlow(r.dir, f.id);
         toast('흐름도를 지웠습니다', f.title);
         void refreshDoc(r);
@@ -568,8 +570,17 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
     void loadHistory(); // 제목 아래 '확인 N개 남음'·목록 카드 숫자도 같이
   }
 
-  async function applyFixes(r: MeetingRecord, fixes: readonly Fix[]): Promise<void> {
+  // 처리할 항목들 다음에 남는 항목: 목록에서 그 뒤의 첫 남은 항목, 없으면 그 앞의 마지막 남은 항목
+  function nextOpen(ids: readonly string[]): string | null {
+    const open = (docCache.get(id)?.review?.items ?? []).filter((it) => it.status === 'open');
+    const last = Math.max(...ids.map((i) => open.findIndex((it) => it.id === i)));
+    const rest = open.filter((it) => !ids.includes(it.id));
+    return (open.slice(last + 1).find((it) => !ids.includes(it.id)) ?? rest.at(-1))?.id ?? null;
+  }
+
+  async function applyFixes(r: MeetingRecord, fixes: readonly Fix[], { focusNext = false } = {}): Promise<void> {
     if (!fixes.length) return;
+    if (focusNext) reviewFocus = nextOpen(fixes.map((f) => f.id));
     try {
       const review = await api.applyReview(r.dir, fixes);
       const applied = (review.items as ReviewItem[]).filter((it) => fixes.some((f) => f.id === it.id) && it.status === 'applied');
@@ -623,6 +634,7 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
   }
 
   async function keepItems(r: MeetingRecord, ids: readonly string[]) {
+    reviewFocus = nextOpen(ids);
     await api.setReviewStatus(r.dir, ids, 'kept');
     ids.forEach((i) => reviewSel.delete(i));
     toast(`${ids.length}개를 그대로 두었습니다`, '나중에 다시 열 수 있습니다');
@@ -671,6 +683,13 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
 
   // 확인 필요: 그리기는 features/meeting-review. 다시 그리는 명령은 한 박자 뒤에(later) — 누른 부품을 그 처리 중에 다시 만들지 않게
   const later = <A extends unknown[]>(fn: (...a: A) => unknown) => (...a: A) => queueMicrotask(() => void fn(...a));
+  // 다음 그리기에서 포커스를 둘 항목. 방금 처리한 항목의 다음 항목(한 번 쓰고 지운다)이 먼저이고, 없으면 지금 포커스가 있는 카드 —
+  // 탭을 새로 그릴 때마다 요소가 바뀌어 포커스가 풀리므로(기록 목록이 바뀌어 한 번 더 그릴 때 등) 같은 카드로 되돌려 놓는다
+  const takeFocus = () => {
+    const f = reviewFocus ?? document.activeElement?.closest<HTMLElement>('.review-list .ritem')?.dataset.id ?? null;
+    reviewFocus = null;
+    return f;
+  };
   function reviewView(r: MeetingRecord, doc: MeetingDoc) {
     const items = doc.review?.items ?? [];
     for (const rid of [...reviewSel]) if (!items.some((it) => it.id === rid && it.status === 'open')) reviewSel.delete(rid);
@@ -688,6 +707,7 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
       now: () => audio.currentTime,
       jobs,
       addKey,
+      focusId: takeFocus(),
       actions: {
         setFilter: later((f: 'open' | 'done') => {
           reviewFilter = f;
@@ -704,7 +724,7 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
           void draw();
         }),
         setGuess: (rid: string, v: string) => void guessDraft.set(rid, v),
-        apply: (fixes: readonly Fix[]) => void applyFixes(r, fixes),
+        apply: (fixes: readonly Fix[]) => void applyFixes(r, fixes, { focusNext: true }),
         keep: (ids: readonly string[]) => void keepItems(r, ids),
         openChat: later((ids: readonly string[]) => openChat(ids)),
         redo: later((rid: string, range: { start: number; end: number }) => {
@@ -753,6 +773,9 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
           void loadHistory();
         },
         finalize: async () => {
+          // 남은 항목이 있는데 마치면 그 항목들은 그대로 둔 것이 된다 → 한 번 묻는다 (다 처리했으면 묻지 않는다)
+          const left = items.filter((it) => it.status === 'open').length;
+          if (left && !(await deps.confirm(`남은 ${left}개는 그대로 두고 확인을 마칠까요?`, '마치면 회의록이 확정됩니다. 나중에 다시 열어 손볼 수 있습니다.', '확인 마치기'))) return null;
           try {
             const res = await api.finalizeReview(r.dir);
             toast('회의록을 확정했습니다', res.finalize?.rewritten ? '확인 결과에 맞춰 회의록의 해당 부분을 고쳤습니다' : '고친 단어는 이미 반영되어 있어 회의록 문장은 그대로입니다');
@@ -761,6 +784,19 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
             return true;
           } catch (err) {
             toast('확인을 마치지 못했습니다', (err as Error).message, { bad: true });
+            return false;
+          }
+        },
+        reopenAll: async () => {
+          try {
+            const before = doc.review?.finalize?.rewritten;
+            await api.reopenReview(r.dir);
+            toast('확인을 다시 열었습니다', before ? '회의록을 마치기 전 것으로 돌렸습니다. 다시 마치면 확인한 내용을 다시 반영합니다' : '항목을 다시 손볼 수 있습니다');
+            reviewFilter = 'open';
+            await refreshDoc(r);
+            return true;
+          } catch (err) {
+            toast('다시 열지 못했습니다', errText(err), { bad: true });
             return false;
           }
         },
@@ -825,7 +861,17 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
     return r?.speakersHint ? String(r.speakersHint) : r?.minutes?.speakers ? String(r.minutes.speakers) : '';
   }
 
-  function remake(r: MeetingRecord, speakers: string) {
+  // 녹취부터 다시 만들면 사라지는 것: 처리한 확인 항목(고친 말은 새 녹취에 없다), 바꿔 둔 화자 이름, 확정 상태
+  function remakeLoss(): string[] {
+    const doc = docCache.get(id);
+    const done = (doc?.review?.items ?? []).filter((it) => it.status !== 'open').length;
+    const named = speakerOrder(parseScript(doc?.transcript)).filter((w) => !/^(화자 \d+|나|상대방)$/.test(w)).length;
+    return [done ? `처리한 확인 항목 ${done}개` : '', named ? `바꿔 둔 화자 이름 ${named}개` : '', doc?.review?.finalizedAt ? '회의록 확정' : ''].filter(Boolean);
+  }
+
+  async function remake(r: MeetingRecord, speakers: string) {
+    const loss = remakeLoss();
+    if (loss.length && !(await deps.confirm('녹취부터 다시 만들까요?', `다시 만들면 사라집니다: ${loss.join(', ')}. 녹음은 그대로 둡니다.`, '다시 만들기'))) return;
     docCache.delete(r.id);
     api.makeMinutes(r.dir, speakers || null);
     toast('회의록을 다시 만듭니다', '녹취·화자 구분·회의록을 처음부터 만듭니다');

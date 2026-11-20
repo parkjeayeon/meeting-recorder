@@ -49,7 +49,8 @@ export const test = base.extend<Fixtures>({
     const env: Record<string, string> = { ...(process.env as Record<string, string>), ...BASE, ...stub, E2E_USER_DATA: userData };
     if (dir) env.STUB_MEETING_DIR = dir; else delete env.STUB_MEETING_DIR;
     for (const [k, v] of Object.entries(env)) if (v === '') delete env[k];
-    const app = await _electron.launch({ args: [entry], env });
+    // Playwright는 색 모드를 기본 'light'로 흉내 내 nativeTheme 설정을 덮는다 — 어두운 모양 시험은 여기서도 알려야 실제로 어둡게 그려진다
+    const app = await _electron.launch({ args: [entry], env, colorScheme: stub.E2E_DARK ? 'dark' : 'light' });
     await use(app);
     await app.close();
     fs.rmSync(userData, { recursive: true, force: true });

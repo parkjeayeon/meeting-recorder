@@ -23,7 +23,7 @@ beforeEach(() => {
 });
 function mount(over: Partial<ReviewProps> = {}) {
   const actions = Object.fromEntries(['setFilter', 'select', 'selectAll', 'setGuess', 'apply', 'keep', 'openChat', 'redo', 'toggleRedoPick', 'reopen', 'revert', 'cancelEdit', 'setAddDraft', 'add', 'warn'].map((k) => [k, vi.fn()])) as unknown as ReviewActions;
-  Object.assign(actions, { reapply: vi.fn(async () => {}), makeReview: vi.fn(async () => true), finalize: vi.fn(async () => false) });
+  Object.assign(actions, { reapply: vi.fn(async () => {}), makeReview: vi.fn(async () => true), finalize: vi.fn(async () => false), reopenAll: vi.fn(async () => true) });
   const p: ReviewProps = { review: { items }, minutes: '', transcript: '', filter: 'open', selected: new Set(), guessDraft: new Map(), redoPick: new Set(), addDraft: '', seek: vi.fn(), now: () => 75, jobs: createJobs(), addKey: 'd|확인추가', actions, ...over };
   act(() => createIslands().mount(host, ReviewBody, p));
   return actions;
@@ -49,7 +49,7 @@ describe('확인 필요 탭', () => {
     expect((host.querySelector('input[aria-label="모두 고르기"]') as HTMLInputElement).indeterminate).toBe(true);
     act(() => btn(host, '그대로 두기').click());
     expect(a.keep).toHaveBeenCalledWith(['r1', 'r3']);
-    const cb = card('누구인지').querySelector('input[aria-label="고르기"]') as HTMLInputElement;
+    const cb = card('누구인지').querySelector('input[aria-label^="고르기"]') as HTMLInputElement;
     act(() => {
       cb.checked = false;
       cb.dispatchEvent(new Event('change'));

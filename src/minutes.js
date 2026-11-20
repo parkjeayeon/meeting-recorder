@@ -670,7 +670,7 @@ const meetingAsr = (settings) => ({ ...settings, language: settings.meetingLangu
 // ── 확인 필요(적용·되돌리기·채팅·확인 마치기)는 src/review (TypeScript)로 옮겼다. 여기서는 LLM 호출과 지금 설정만 넘긴다 (결정 70) ──
 const review = require('../lib/review/index.mjs');
 review.configure({ complete, credentials: () => ({ choice: dictation.getSettings().provider, apiKey: dictation.apiKey() }) });
-const { readText, readJsonFile, readReview, writeReview, restoreRedoRange, parseClock, spliceLines, REDO_MAX_SEC, makeReview, addCheckItems, addReview, applyReview, revertReview, setReviewStatus, chatReview, finalizeReview, markReviewItems } = review;
+const { readText, readJsonFile, readReview, writeReview, restoreRedoRange, parseClock, spliceLines, REDO_MAX_SEC, makeReview, addCheckItems, addReview, applyReview, revertReview, setReviewStatus, chatReview, finalizeReview, reopenReview, markReviewItems } = review;
 
 // ── 확인 필요 › 구간 다시 받아쓰기 ──────────────────────────────────────
 // 유실·잘못 들린 구간만 녹음에서 잘라 Whisper로 다시 받아쓴다. 앞 문장을 이어 받지 않고(반복에 갇히지 않게),
@@ -884,4 +884,4 @@ function makeCleanScript(dir) {
 module.exports = {
   minutesSystem,
   decodeTo16k,
-  findLoops, nameSpeakers, buildTranscript, makeMinutes, canResume, addCheckItems, makeCleanScript, renameSpeaker, diarizeAvailable, readReview, makeReview, addReview, applyReview, setReviewStatus, chatReview, finalizeReview, retranscribeRange, applyRetranscribe, speakerTurns, revertReview, markReviewItems };
+  findLoops, nameSpeakers, buildTranscript, makeMinutes, canResume, addCheckItems, makeCleanScript, renameSpeaker, diarizeAvailable, readReview, makeReview, addReview, applyReview, setReviewStatus, chatReview, finalizeReview, retranscribeRange, applyRetranscribe, speakerTurns, revertReview, markReviewItems, reopenReview };

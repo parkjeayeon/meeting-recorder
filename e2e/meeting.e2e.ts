@@ -136,7 +136,7 @@ test('회의 페이지 · … 메뉴와 휴지통', async ({ page, go, id, dir, 
 test('회의 페이지 · 다시 만들기', async ({ page, go, id, dir, called }) => {
   await go(`#meeting/${id}`);
   await test.step('다시 만들기 → "녹취부터 다시 만들기"가 회의록 만들기를 부름', async () => {
-    await page.getByRole('button', { name: '다시 만들기', exact: true }).first().click();
+    await page.getByRole('button', { name: '회의록 다시 만들기', exact: true }).first().click();
     await expect.poll(() => page.getByRole('button').evaluateAll((buttons) => buttons
       .filter((b) => (b as HTMLElement).offsetParent && /다시 (만들기|쓰기)/.test(b.textContent ?? ''))
       .map((b) => b.textContent?.trim()))).toEqual(expect.arrayContaining([expect.stringContaining('녹취부터')]));

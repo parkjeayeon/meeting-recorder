@@ -220,7 +220,12 @@ export async function chatReview(dir: string, ids: readonly string[], messages: 
 export async function finalizeReview(dir: string): Promise<Review> {
   const review = readReview(dir);
   if (!review) throw new Error('확인 항목이 없습니다');
-  for (const it of review.items) if (it.status === 'open') it.status = 'kept';
+  // 남은 항목은 그대로 둔 것으로 — 사용자가 직접 그대로 둔 것과 가려 두어, 확인을 다시 열면 이 항목들은 다시 남은 것으로 돌아간다
+  for (const it of review.items) {
+    if (it.status !== 'open') continue;
+    it.status = 'kept';
+    it.autoKept = true;
+  }
   // 단어만 고친 경우(녹취·정리본·회의록 글자는 이미 바뀜)는 회의록을 다시 쓰지 않는다
   // 사용자가 직접 짚은 항목·본문 괄호 추정에서 나온 항목은 고친 뒤 문장(괄호 추정, 사용자가 말한 내용)도 손봐야 해서 다시 쓴다
   const meaningful = review.items.filter((it) => it.chat?.length || it.status === 'resolved' || (it.status === 'applied' && (it.kind !== 'word' || it.source === 'user' || it.source === 'inline')));
@@ -254,4 +259,31 @@ export async function finalizeReview(dir: string): Promise<Review> {
   review.finalizedAt = new Date();
   review.finalize = { rewritten, provider, applied: review.items.filter((it) => it.status === 'applied').length, resolved: review.items.filter((it) => it.status === 'resolved').length, kept: review.items.filter((it) => it.status === 'kept').length };
   return writeReview(dir, review);
+}
+
+// 확인 마치기를 되돌린다: 회의록을 고쳐 썼으면 마치기 전 회의록(minutes.before-finalize.md)으로 돌리고, 마칠 때 자동으로
+// 그대로 둔 항목은 다시 남은 것으로 연다. 고친 단어·확인한 내용·채팅 기록은 그대로라 다시 마치면 같은 결과가 회의록에 반영된다.
+// 순서: 회의록 → 기록(review.json) → 보관본 지우기. 도중에 끊겨도 다시 누르면 끝난다(보관본이 남아 있는 동안은 같은 일을 되풀이할 뿐)
+export function reopenReview(dir: string): Review {
+  const review = readReview(dir);
+  if (!review) throw new Error('확인 항목이 없습니다');
+  if (!review.finalizedAt) return review;
+  const backup = path.join(dir, 'minutes.before-finalize.md');
+  if (fs.existsSync(backup)) {
+    const md = fs.readFileSync(backup, 'utf8');
+    writeFileAtomic(path.join(dir, 'minutes.md'), md);
+    const title = md.match(/^#\s+(.+)$/m)?.[1]?.trim();
+    const statusFile = path.join(dir, 'minutes.json');
+    const st = readJsonFile(statusFile);
+    if (st && title) writeJsonAtomic(statusFile, { ...st, title });
+  }
+  for (const it of review.items) {
+    if (it.autoKept && it.status === 'kept') it.status = 'open';
+    delete it.autoKept;
+  }
+  delete review.finalizedAt;
+  delete review.finalize;
+  const saved = writeReview(dir, review);
+  fs.rmSync(backup, { force: true });
+  return saved;
 }

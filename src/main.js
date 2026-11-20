@@ -748,6 +748,7 @@ ipcMain.handle('review:revert', (_e, dir, id) => {
 });
 ipcMain.handle('review:status', (_e, dir, ids, status) => minutes.setReviewStatus(recordingDir(dir), ids, status === 'open' ? 'open' : 'kept'));
 ipcMain.handle('review:finalize', (_e, dir) => minutes.finalizeReview(recordingDir(dir)));
+ipcMain.handle('review:reopen', (_e, dir) => minutes.reopenReview(recordingDir(dir)));
 ipcMain.handle('review:redo', (_e, dir, id, start, end) => minutes.retranscribeRange(recordingDir(dir), id, start, end));
 ipcMain.handle('review:redoApply', (_e, dir, id) => minutes.applyRetranscribe(recordingDir(dir), id));
 ipcMain.handle('review:chat', (_e, dir, ids, messages) => minutes.chatReview(recordingDir(dir), ids, messages));
