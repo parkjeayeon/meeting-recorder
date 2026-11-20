@@ -101,6 +101,954 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
   document.addEventListener('keydown', keys.onKey);
 
   // 파일이 바뀌면 다시 읽기, 진행률·상태·확인 필요 숫자가 바뀐 경우에만 다시 그리기(view.changed), 떠날 때 치우기
+  async function draw() {
+    const r = rec();
+    if (!r) return;
+    const m = r.minutes;
+    const s = m?.status;
+    lastKey = stateKey(r);
+    let doc = docCache.get(id);
+    if (!doc && ['done', 'error', 'empty'].includes(s ?? '')) {
+      doc = (await api.readMinutes(r.dir)) as MeetingDoc;
+      docCache.set(id, doc);
+    }
+    doc ??= {};
+    const raw = parseScript(doc.transcript);
+    const order = speakerOrder(raw);
+    const color = (who: string) => {
+      const i = order.indexOf(who);
+      return i >= 0 ? `var(--s${(i % 6) + 1})` : 'var(--line-2)';
+    };
+    const title = s === 'done' ? m!.title ?? '제목 없는 회의' : `${dayLabel(r.startedAt)} ${TIME.format(new Date(r.startedAt))} 회의`;
+    deps.setCrumbs(title);
+
+    const tabs: [string, string, string | null][] = [];
+    if (doc.minutes) tabs.push(['minutes', '회의록', null]);
+    const reviewOpen = doc.review?.items?.filter((it) => it.status === 'open').length ?? 0;
+    // 확인 필요: 회의록이 있으면 늘 (목록이 놓친 것을 직접 추가할 수 있게)
+    if (doc.minutes && doc.transcript) tabs.push(['review', '확인 필요', doc.review ? `${reviewOpen}` : null]);
+    // 액션: 확인된 할 일·조언이 있을 때만 (대화에 따라 생기고 무조건 생기지 않는다)
+    const acts = doc.actions;
+    if (acts && (acts.actions?.length || acts.advice?.length)) tabs.push(['actions', '액션', acts.actions.length ? `${acts.actions.filter((a) => !a.done).length}` : null]);
+    if (doc.transcript) tabs.push(['clean', '정리본', null], ['raw', '원본', null], ['speakers', '화자', order.length ? `${order.length}명` : null]);
+    if (!tabs.some((t) => t[0] === tab)) tab = tabs[0]?.[0] ?? null;
+
+    closeTermCard();
+    removeAddBtn();
+    const matcher = termMatcher(doc.glossary?.terms);
+    let body: TabBody = { kind: 'none' };
+    if (tab === 'minutes') body = { kind: 'minutes', props: minutesDoc(r, doc.minutes ?? '', reviewOpen, () => { tab = 'review'; void draw(); }, matcher) };
+    else if (tab === 'review') body = { kind: 'review', props: reviewView(r, doc) };
+    else if (tab === 'actions') body = { kind: 'actions', props: actionsView(r, doc.actions!) };
+    else if (tab === 'clean' || tab === 'raw') {
+      const text = tab === 'clean' ? doc.scriptClean : doc.transcript;
+      body = { kind: 'script', clean: tab === 'clean', props: text ? scriptView(r, parseScript(text), color, matcher) : null, making: false };
+    } else if (tab === 'speakers') body = { kind: 'speakers', props: speakersView(r, raw, color) };
+
+    show({
+      head: {
+        title,
+        when: deps.fullDate(new Date(r.startedAt)),
+        length: clock(r.durationSec),
+        speakers: m?.speakers || null,
+        speakersHint: r.speakersHint ? speakerLabel(String(r.speakersHint)) : null,
+        review: s === 'done' && r.review ? { finalized: Boolean(r.review.finalized), open: r.review.open ?? 0 } : null,
+        provider: s === 'done' && m!.provider ? PROVIDER_NAME[m!.provider] ?? m!.provider : null,
+        model: m?.timing?.model || null,
+        audio: (r.audio?.bytes ?? 0) > 0 ? `녹음 ${sizeLabel(r.audio!.bytes)}${r.audio!.compressed ? ' · 압축함' : ''}` : null,
+        diarizeError: m?.diarizeError || null,
+      },
+      menu: meetingMenu(r, doc),
+      speakerBar: order.length > 0 ? speakerBar(r, order, color) : null,
+      player: r.firstFile ? { playback, raw, color, durationSec: r.durationSec, missing: doc.speech?.missing ?? [] } : null,
+      compress: compressNote(r),
+      state: s !== 'done' ? stateCard(r) : null,
+      tabs,
+      tab,
+      body,
+      chat: chat ? chatDrawer(r, doc) : null,
+      flowChat: flowChat ? flowChatDrawer(r, doc) : null,
+    });
+  }
+
+  // 스크립트·화자: 이름 바꾸기는 여기서 파일에 (끝나면 다시 그린다)
+  const renameTo = (r: MeetingRecord) => (from: string, to: string | null) => queueMicrotask(async () => {
+    if (to) {
+      await api.renameSpeaker(r.dir, from, to);
+      docCache.delete(r.id);
+      toast(`'${from}'을 '${to}'(으)로 바꿨습니다`, '회의록과 스크립트에 모두 반영했습니다');
+    }
+    void draw();
+  });
+
+  function scriptView(r: MeetingRecord, lines: ScriptLine[], color: (w: string) => string, matcher: TermMatcher | null) {
+    return { lines, color, playback, matcher, openTerm: (anchor: HTMLElement, t: Term) => termCard(anchor, t), rename: renameTo(r) };
+  }
+
+  function speakersView(r: MeetingRecord, raw: ScriptLine[], color: (w: string) => string) {
+    if (!speakerStats(raw, r.durationSec).length) return null; // '화자 구분 결과가 없습니다'
+    return { raw, total: r.durationSec, color, seek: (sec: number) => seek(sec), rename: renameTo(r) };
+  }
+
+  // ── 용어 설명 카드: 뿌리(div.term-card)를 body에 붙이고 안은 React(TermCardBody) — 놓을 자리·고치기도 거기서 ──
+  let cardEl: HTMLElement | null = null;
+  const outsideCard = (e: Event) => {
+    const t = e.target as Element;
+    if (cardEl && !cardEl.contains(t) && !t.closest?.('.term, .gl-item')) closeTermCard();
+  };
+  const escCard = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault(); // Escape 한 번에 하나만 닫는다 (찾기 막대·채팅은 이 키를 건너뛴다)
+    closeTermCard();
+  };
+  function closeTermCard() {
+    islands.unmount(cardEl);
+    cardEl?.remove();
+    cardEl = null;
+    document.removeEventListener('mousedown', outsideCard, true);
+    document.removeEventListener('keydown', escCard, true);
+  }
+
+  async function changeTerm(r: MeetingRecord, termId: string, patch: Record<string, unknown>, done?: string) {
+    try {
+      await api.updateTerm(r.dir, termId, patch);
+      if (done) toast(done);
+    } catch (err) {
+      toast('바꾸지 못했습니다', (err as Error).message, { bad: true });
+    }
+    closeTermCard();
+    void refreshDoc(r);
+  }
+
+  function termCard(anchor: Element, t: Term, editing = false) {
+    closeTermCard();
+    const r = rec();
+    if (!r) return;
+    const card = el('div', { class: 'term-card', role: 'dialog', 'aria-label': `${t.term} 설명` });
+    cardEl = card;
+    document.body.append(card);
+    islands.mount(card, TermCardBody, { t, host: card, anchor, editing, reopen: (next: boolean) => setTimeout(() => termCard(anchor, t, next)), seek: seekOf(r), change: (termId, patch, done) => void changeTerm(r, termId, patch, done) });
+    setTimeout(() => {
+      document.addEventListener('mousedown', outsideCard, true);
+      document.addEventListener('keydown', escCard, true);
+    });
+  }
+
+  // 회의록 아래 용어 칸 (그리기는 features/meeting-terms, 회의록 본문이 같이 그린다)
+  function glossaryProps(r: MeetingRecord, g: MeetingDoc['glossary']) {
+    return {
+      terms: g?.terms ?? [],
+      exists: Boolean(g),
+      openCard: (anchor: HTMLElement, t: Term) => termCard(anchor, t),
+      change: (termId: string, patch: Record<string, unknown>, done?: string) => void changeTerm(r, termId, patch, done),
+      make: async () => {
+        try {
+          await api.makeGlossary(r.dir);
+        } catch (err) {
+          toast('용어 설명을 만들지 못했습니다', (err as Error).message, { bad: true });
+        }
+        void refreshDoc(r);
+      },
+    };
+  }
+
+  // ── 액션 (src/meeting/actions.mts): 할 일(약속·맡은 일·다짐)과 받은 조언·알아 둘 것. 회의록과 따로 actions.json에 ──
+  function actionsView(r: MeetingRecord, data: ActionsData) {
+    return {
+      data,
+      seek: seekOf(r),
+      jobs,
+      jobKey: `${r.dir}|액션`,
+      find: () => void findActions(r),
+      toggle: async (actionId: string, done: boolean) => {
+        const a = data.actions.find((x) => x.id === actionId) as { done: boolean } | undefined;
+        if (a) a.done = done; // 저장이 끝나기 전에 다시 그려도 체크가 남게
+        await api.toggleAction(r.dir, actionId, done);
+        docCache.delete(r.id);
+        void loadHistory();
+      },
+    };
+  }
+
+  async function findActions(r: MeetingRecord) {
+    const key = `${r.dir}|액션`;
+    if (jobs.has(key)) return;
+    const run = jobs.run(key, '찾는 중… (1분 안팎)', () => api.makeActions(r.dir) as Promise<ActionsData>);
+    try {
+      const res = await run;
+      toast(res.actions.length || res.advice.length ? '액션을 정리했습니다' : '챙길 할 일이나 조언을 찾지 못했습니다',
+        res.actions.length || res.advice.length ? `할 일 ${res.actions.length}개 · ${res.adviceTitle ?? '조언'} ${res.advice.length}개` : '이 대화에는 약속한 일이나 남길 조언이 없었습니다', { ms: 7000 });
+      if (res.actions.length || res.advice.length) tab = 'actions';
+    } catch (err) {
+      toast('액션을 정리하지 못했습니다', errText(err), { bad: true });
+    }
+    void refreshDoc(r);
+  }
+
+  // 회의록 아래 '액션 찾기' (요청할 때만 만든다). 찾아봤는데 없었으면 그렇다고 보여 주고 다시 찾을 수 있게
+  function actionsRowProps(r: MeetingRecord, data: ActionsData | null | undefined) {
+    return { found: Boolean(data), jobs, jobKey: `${r.dir}|액션`, find: () => void findActions(r) };
+  }
+
+  // ── 흐름도 (src/meeting/flow.mts): 그리기와 자리 계산은 features/meeting-flow · entities/flow. 여기는 파일을 바꾸는 명령과 채팅 상태 ──
+  // 그림 놓을 폭 (회의 페이지 본문 폭 − 카드 여백)
+  function flowAvail() {
+    const v = document.getElementById('view')!.clientWidth;
+    const side = (chat || flowChat) && innerWidth >= CHAT_DOCK_MIN ? CHAT_SIDE : 0; // 채팅이 열려 본문이 비켜 선 폭
+    return v ? Math.min(v - side, 1040) - 88 - 36 : null;
+  }
+
+  function flowsProps(r: MeetingRecord, data: FlowData) {
+    const seekOr = seekOf(r);
+    return {
+      data,
+      seek: seekOr,
+      avail: flowAvail(),
+      jobs,
+      remakeKey: (flowId: string) => `${r.dir}|흐름도 다시|${flowId}`,
+      openChat: (flowId: string) => setTimeout(() => openFlowChat(flowId)),
+      saveSvg: async (f: FlowDoc) => {
+        try {
+          const saved = (await api.saveFlowSvg(f.title, flowSvgFile(f, seekOr))) as string | null;
+          if (saved) toast('SVG로 저장했습니다', saved.split('/').pop(), { action: 'Finder에서 보기', onAction: () => api.reveal(saved) });
+        } catch (err) {
+          toast('저장하지 못했습니다', errText(err), { bad: true });
+        }
+      },
+      remake: async (f: FlowDoc) => {
+        const key = `${r.dir}|흐름도 다시|${f.id}`;
+        if (jobs.has(key)) return;
+        try {
+          await jobs.run(key, '다시 그리는 중… (1분 안팎)', () => api.remakeFlow(r.dir, f.id) as Promise<unknown>);
+          toast('흐름도를 다시 만들었습니다', f.title);
+        } catch (err) {
+          toast('다시 만들지 못했습니다', errText(err), { bad: true });
+        }
+        void refreshDoc(r);
+      },
+      remove: async (f: FlowDoc) => {
+        if (!(await deps.confirm('이 흐름도를 지울까요?', `"${f.title}" · 다시 만들려면 1분쯤 걸립니다.`, '지우기'))) return;
+        await api.removeFlow(r.dir, f.id);
+        toast('흐름도를 지웠습니다', f.title);
+        void refreshDoc(r);
+      },
+    };
+  }
+
+  // 흐름도가 없을 때 회의록 아래 줄: 무엇을 그릴지(선택) 적고 만들기. 만들어 봤는데 없었으면 그 이유
+  function flowRowProps(r: MeetingRecord, data: FlowData | null | undefined) {
+    const key = `${r.dir}|흐름도`;
+    return {
+      data: data ?? null,
+      jobs,
+      jobKey: key,
+      draft: fieldDraft.get('flow-focus') ?? '',
+      setDraft: (text: string) => void fieldDraft.set('flow-focus', text),
+      make: async (focus: string) => {
+        if (jobs.has(key)) return;
+        try {
+          const res = await jobs.run(key, '흐름 정리하는 중… (1분 안팎)', () => api.makeFlow(r.dir, focus) as Promise<FlowData>);
+          toast(res.flows.length ? `흐름도 ${res.flows.length}장을 만들었습니다` : '그릴 흐름을 찾지 못했습니다', res.flows.length ? res.flows.map((f) => f.title).join(' · ') : res.reason ?? '', { ms: 7000 });
+        } catch (err) {
+          toast('흐름도를 만들지 못했습니다', errText(err), { bad: true });
+        }
+        void refreshDoc(r);
+      },
+    };
+  }
+
+  // 그림마다 채팅: 고친 그림을 제안받아 '이대로 바꾸기'로 반영 (바꾼 그림도 녹취 인용을 다시 확인)
+  function openFlowChat(flowId: string) {
+    rememberOpener();
+    chat = null;
+    flowChat = { flowId, messages: [], busy: false, draft: '' };
+    focusWant = { key: 'flow-chat' };
+    void draw();
+  }
+
+  function flowChatDrawer(r: MeetingRecord, doc: MeetingDoc) {
+    const fc = flowChat!;
+    const f = doc.flow?.flows?.find((x) => x.id === fc.flowId);
+    if (!f) return null;
+    return {
+      f,
+      messages: [...fc.messages],
+      busy: fc.busy,
+      draft: fc.draft ?? '',
+      setDraft: (text: string) => {
+        fc.draft = text;
+      },
+      close: () => setTimeout(closeChat),
+      send: (text: string) => setTimeout(async () => {
+        if (fc.busy) return;
+        fc.messages.push({ role: 'user', text });
+        fc.draft = '';
+        fc.busy = true;
+        void draw();
+        try {
+          const res = await api.chatFlow(r.dir, f.id, fc.messages.map(({ role, text: t }) => ({ role, text: t })));
+          fc.messages.push({ role: 'assistant', text: res.text + (res.dropped?.length ? `\n(녹취에서 확인되지 않은 항목 ${res.dropped.length}개는 뺐습니다)` : ''), revision: res.revision });
+        } catch (err) {
+          fc.messages.push({ role: 'assistant', text: `답을 받지 못했습니다: ${(err as Error).message}` });
+        }
+        fc.busy = false;
+        if (flowChat !== fc) return;
+        if (chatIdle()) focusWant = { key: 'flow-chat' };
+        void draw();
+      }),
+      apply: async (index: number) => {
+        const m = fc.messages[index]!;
+        fc.applying = (fc.applying ?? 0) + 1;
+        try {
+          await api.applyFlow(r.dir, f.id, m.revision);
+          m.applied = true;
+          toast('흐름도를 고쳤습니다', m.revision!.title);
+        } catch (err) {
+          toast('반영하지 못했습니다', errText(err), { bad: true });
+        }
+        fc.applying -= 1;
+        void refreshDoc(r);
+      },
+    };
+  }
+
+  // 본문·스크립트에서 단어를 드래그하면 '설명 추가' 버튼을 띄운다
+  let addBtn: HTMLElement | null = null;
+  const removeAddBtn = () => {
+    islands.unmount(addBtn);
+    addBtn?.remove();
+    addBtn = null;
+  };
+  function offerExplain() {
+    removeAddBtn();
+    const sel = window.getSelection();
+    const text = sel?.toString().trim().replace(/\s+/g, ' ');
+    if (!sel || !text || text.length > 40 || !sel.rangeCount || !page.querySelector('.doc, .script')?.contains(sel.anchorNode)) return;
+    const r = recNow();
+    const rect = sel.getRangeAt(0).getBoundingClientRect();
+    const explain = async () => {
+      try {
+        const t = await api.explainTerm(r.dir, text);
+        toast(`'${t.term}' 설명을 더했습니다`, t.note);
+      } catch (err) {
+        toast('설명을 더하지 못했습니다', errText(err), { bad: true });
+      }
+      removeAddBtn();
+      window.getSelection()?.removeAllRanges();
+      void refreshDoc(r);
+    };
+    // 잘못 들린 말이면 확인 필요로: 입력칸에 고른 말을 넣어 두고 고칠 말·설명을 이어 쓰게 한다
+    const cached = docCache.get(id);
+    const toReview = cached?.minutes && cached?.transcript ? () => {
+      addDraft = `"${text}" `;
+      tab = 'review';
+      reviewFilter = 'open';
+      removeAddBtn();
+      window.getSelection()?.removeAllRanges();
+      focusWant = { key: 'review-add', caret: 'end' };
+      void draw();
+    } : null;
+    const host = el('div', { class: 'term-add', style: `top:${Math.max(8, rect.top - 38)}px;left:${Math.min(rect.left, innerWidth - 300)}px` });
+    addBtn = host;
+    document.body.append(host);
+    islands.mount(host, ExplainAddBody, { text, explain, toReview });
+  }
+  page.addEventListener('mouseup', () => setTimeout(offerExplain));
+  page.addEventListener('mousedown', (e) => {
+    if (!addBtn?.contains(e.target as Node)) removeAddBtn();
+  });
+
+  // 회의록 본문: 그리기는 widgets/meeting-minutes (흐름도·액션·용어 부품을 같이). 여기는 파일을 바꾸는 명령과 부품마다의 값
+  function minutesDoc(r: MeetingRecord, md: string, reviewOpen: number, openReview: () => void, matcher: TermMatcher | null) {
+    const cached = docCache.get(r.id);
+    const flowData = cached?.flow;
+    const actData = cached?.actions;
+    return {
+      md,
+      seek: seekOf(r),
+      matcher,
+      openTerm: (anchor: HTMLElement, t: Term) => termCard(anchor, t),
+      flows: flowData?.flows?.length ? flowsProps(r, flowData) : null,
+      flowRow: flowRowProps(r, flowData),
+      actionsRow: !actData?.actions?.length && !actData?.advice?.length ? actionsRowProps(r, actData) : null,
+      glossary: glossaryProps(r, cached?.glossary),
+      review: /^## 확인 필요/m.test(md) ? { finalized: Boolean(cached?.review?.finalizedAt), open: reviewOpen, go: () => queueMicrotask(openReview) } : null,
+      toggleTodo: async (index: number, done: boolean) => {
+        const updated = await api.toggleTodo(r.dir, index, done);
+        docCache.set(r.id, { ...docCache.get(r.id), minutes: updated });
+      },
+    };
+  }
+
+  // 화자 이름 정하기: 회의록·스크립트의 '화자 N'을 실제 이름으로 바꾼다
+  function speakerBar(r: MeetingRecord, order: string[], color: (w: string) => string) {
+    return { order, color, rename: renameTo(r) };
+  }
+
+  async function refreshDoc(r: MeetingRecord) {
+    docCache.set(r.id, (await api.readMinutes(r.dir)) as MeetingDoc);
+    void draw();
+    void loadHistory(); // 제목 아래 '확인 N개 남음'·목록 카드 숫자도 같이
+  }
+
+  // 처리할 항목들 다음에 남는 항목: 목록에서 그 뒤의 첫 남은 항목, 없으면 그 앞의 마지막 남은 항목
+  function nextOpen(ids: readonly string[]): string | null {
+    const open = (docCache.get(id)?.review?.items ?? []).filter((it) => it.status === 'open');
+    const last = Math.max(...ids.map((i) => open.findIndex((it) => it.id === i)));
+    const rest = open.filter((it) => !ids.includes(it.id));
+    return (open.slice(last + 1).find((it) => !ids.includes(it.id)) ?? rest.at(-1))?.id ?? null;
+  }
+
+  async function applyFixes(r: MeetingRecord, fixes: readonly Fix[], { focusNext = false } = {}): Promise<void> {
+    if (!fixes.length) return;
+    const next = focusNext ? nextOpen(fixes.map((f) => f.id)) : null;
+    try {
+      const review = await api.applyReview(r.dir, fixes);
+      if (next) focusWant = { key: `card:${next}`, reveal: true }; // 다음 항목에서 이어서 하게 (다시 읽어 그릴 때)
+      const applied = (review.items as ReviewItem[]).filter((it) => fixes.some((f) => f.id === it.id) && it.status === 'applied');
+      const kept = fixes.filter((f) => f.keep).length;
+      const resolved = (review.items as ReviewItem[]).filter((it) => fixes.some((f) => f.id === it.id && f.resolve) && it.status === 'resolved');
+      for (const f of fixes) reviewSel.delete(f.id);
+      if (resolved.length && !applied.length) {
+        toast(`${resolved.length}개를 확인됨으로 처리했습니다`, '녹취는 그대로 두고, 확인을 마칠 때 회의록 문장에 반영합니다');
+        return await refreshDoc(r);
+      }
+      const words: string[] = review.addedWords ?? [];
+      const skip: { reason: string; heard: string }[] = review.skipped ?? [];
+      if (!applied.length && !kept) {
+        // 아무것도 바꾸지 못함: 왜 그런지 알린다 (예전엔 "0개를 그대로 두었습니다"로 나와 헷갈렸다)
+        const s = skip[0];
+        toast('바꿀 곳이 없습니다', s?.reason === 'same' ? `고칠 말이 들린 말('${s.heard}')과 같습니다. 이 표기가 맞다면 '그대로 두기'를 누르세요` : s?.reason === 'notfound' ? `녹취에서 '${s.heard}'를 찾지 못했습니다` : '고칠 말을 넣어 주세요', { bad: true, ms: 7000 });
+      } else toast(applied.length ? `${applied.length}개를 고쳤습니다` : `${kept}개를 그대로 두었습니다`,
+        applied.length ? `녹취·정리본·회의록에서 ${applied.reduce((n, it) => n + (it.count ?? 0), 0)}곳을 바꿨습니다${words.length ? ` · 사전에 추가: ${words.join(', ')}` : ''}` : '',
+        words.length ? { action: '사전 보기', onAction: () => (location.hash = '#dictionary'), ms: 7000 } : {});
+      if (words.length) await deps.refreshSettings(); // 사전 개수·목록도 바로
+      await refreshDoc(r);
+    } catch (err) {
+      toast('적용하지 못했습니다', (err as Error).message, { bad: true });
+    }
+  }
+
+  // 고친 항목 되돌리기: 그 항목이 바꾼 줄만 원래대로, 사전에 자동으로 넣은 단어면 사전에서도 뺀다
+  async function revertItem(r: MeetingRecord, it: ReviewItem) {
+    try {
+      const res = await api.revertReview(r.dir, it.id);
+      // 같은 줄을 나중에 고친 항목은 먼저 되돌렸다가 다시 적용한다 (그 항목의 고칠 말이 이제 녹취에 없으면 확인 전으로 연다)
+      const again = res.reapplied?.length ? `같은 줄을 나중에 고친 ${res.reapplied.length}개는 다시 적용했습니다` : '';
+      const reopened = res.reopened?.length ? `${res.reopened.length}개는 고칠 곳이 없어져 다시 확인 전으로 열었습니다` : '';
+      toast('되돌렸습니다', [res.removedWord && `사전에서 '${res.removedWord}'를 뺐습니다`, again, reopened].filter(Boolean).join(' · ') || '항목을 다시 확인 전으로 열었습니다');
+      if (res.removedWord) await deps.refreshSettings();
+    } catch (err) {
+      toast('되돌리지 못했습니다', errText(err), { bad: true });
+    }
+    void refreshDoc(r);
+  }
+
+  // 고친 말을 다른 말로: 되돌린 뒤 새 말로 다시 적용
+  async function reapply(r: MeetingRecord, it: ReviewItem, guess: string) {
+    try {
+      await api.revertReview(r.dir, it.id);
+      await applyFixes(r, [{ id: it.id, heard: it.heard, guess }]);
+    } catch (err) {
+      toast('고치지 못했습니다', errText(err), { bad: true });
+      void refreshDoc(r);
+    }
+  }
+
+  async function keepItems(r: MeetingRecord, ids: readonly string[]) {
+    const next = nextOpen(ids);
+    await api.setReviewStatus(r.dir, ids, 'kept');
+    if (next) focusWant = { key: `card:${next}`, reveal: true };
+    ids.forEach((i) => reviewSel.delete(i));
+    toast(`${ids.length}개를 그대로 두었습니다`, '나중에 다시 열 수 있습니다');
+    void refreshDoc(r);
+  }
+
+  async function runRedo(r: MeetingRecord, itemId: string, range: { start: number; end: number }) {
+    if (!chat || chat.redoing) return;
+    chat.redoing = itemId;
+    void draw();
+    try {
+      const res = await api.redoRange(r.dir, itemId, range.start, range.end);
+      const span = `${clock(res.start)}~${clock(res.end)}`;
+      chat?.messages.push({
+        role: 'assistant',
+        text: res.empty
+          ? `${span} 구간을 다시 받아써도 알아들을 수 있는 말이 없었습니다. 녹음을 직접 들어 보세요.`
+          : `${span} 구간을 다시 받아썼습니다${res.gain > 1.05 ? ` (작은 소리를 ${res.gain}배 키움)` : ''}. 녹취에 반영하면 이 구간 줄만 바뀌고 다른 줄은 그대로입니다.`,
+        redo: { id: itemId, ...res },
+      });
+    } catch (err) {
+      chat?.messages.push({ role: 'assistant', text: `다시 받아쓰지 못했습니다: ${errText(err)}` });
+    }
+    if (chat) chat.redoing = null;
+    void draw();
+  }
+
+  async function applyRedo(r: MeetingRecord, itemId: string) {
+    try {
+      const review = await api.applyRedo(r.dir, itemId);
+      const it = (review.items as ReviewItem[]).find((x) => x.id === itemId);
+      toast('녹취에 반영했습니다', `이 구간 ${it?.count ?? ''}줄만 바꿨습니다 · 확인을 마치면 회의록에도 반영합니다`);
+      await refreshDoc(r);
+    } catch (err) {
+      toast('반영하지 못했습니다', errText(err), { bad: true });
+    }
+  }
+
+  function openChat(ids: readonly string[]) {
+    if (!ids.length) return;
+    rememberOpener();
+    flowChat = null;
+    chat = { ids: [...ids], messages: [], busy: false, applying: new Set() };
+    for (const k of [...fieldDraft.keys()]) if (k.startsWith('unmatched:')) fieldDraft.delete(k); // 앞 채팅의 제안 칸
+    focusWant = { key: 'chat' };
+    void draw();
+  }
+  // 답이 왔을 때 채팅 입력칸으로 돌아가도 되나: 포커스가 채팅 안이거나 아무 데도 없을 때만 (그사이 다른 입력칸으로 옮겼으면 그대로)
+  const chatIdle = () => {
+    const a = document.activeElement;
+    return !a || a === document.body || !a.isConnected || Boolean(a.closest('.chat'));
+  };
+
+  // 채팅을 연 버튼을 다시 그린 뒤에도 찾을 수 있게: 같은 항목(data-id) 안에서 같은 이름의 버튼 중 몇 번째인지
+  function openerOf(node: Element | null): (() => HTMLElement | null) | null {
+    const btn = node?.closest<HTMLElement>('button');
+    if (!btn || !page.contains(btn) || btn.closest('.chat')) return null;
+    const scope = btn.closest<HTMLElement>('[data-id]')?.dataset.id ?? null;
+    const name = (b: Element) => b.getAttribute('aria-label') ?? b.textContent;
+    const same = () => [...page.querySelectorAll<HTMLElement>('button')].filter((b) => name(b) === name(btn) && (b.closest<HTMLElement>('[data-id]')?.dataset.id ?? null) === scope && !b.closest('.chat'));
+    const at = same().indexOf(btn);
+    return () => same()[at] ?? null;
+  }
+  // 채팅 밖의 버튼으로 열었으면 그 버튼을 기억한다. 채팅 안에서 다시 열면(구간 다시 받아쓰기) 처음 연 버튼을 그대로
+  function rememberOpener() {
+    const found = openerOf(document.activeElement);
+    if (found || (!chat && !flowChat)) chatOpener = found;
+  }
+  // 채팅 닫기 (닫기 버튼·Escape): 연 버튼이 남아 있으면 그리로, 없으면 탭 본문의 첫 컨트롤로 포커스를 돌린다
+  function closeChat() {
+    if (!chat && !flowChat) return;
+    chat = null;
+    flowChat = null;
+    const find = chatOpener;
+    chatOpener = null;
+    focusWant = () => {
+      const panel = page.querySelector('[role="tabpanel"]');
+      return find?.() ?? panel?.querySelector<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), textarea, select, [tabindex]:not([tabindex="-1"])') ?? page.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+    };
+    void draw();
+  }
+
+  // 확인 필요: 그리기는 features/meeting-review. 다시 그리는 명령은 한 박자 뒤에(later) — 누른 부품을 그 처리 중에 다시 만들지 않게
+  const later = <A extends unknown[]>(fn: (...a: A) => unknown) => (...a: A) => queueMicrotask(() => void fn(...a));
+  function reviewView(r: MeetingRecord, doc: MeetingDoc) {
+    const items = doc.review?.items ?? [];
+    for (const rid of [...reviewSel]) if (!items.some((it) => it.id === rid && it.status === 'open')) reviewSel.delete(rid);
+    const addKey = `${r.dir}|확인추가`;
+    return {
+      review: doc.review ?? null,
+      minutes: doc.minutes ?? '',
+      transcript: doc.transcript ?? '',
+      filter: reviewFilter,
+      selected: new Set(reviewSel),
+      guessDraft: new Map(guessDraft),
+      redoPick: new Set(redoPick),
+      addDraft,
+      drafts: new Map(fieldDraft),
+      seek: seekOf(r),
+      now: () => audio.currentTime,
+      jobs,
+      addKey,
+      actions: {
+        setFilter: later((f: 'open' | 'done') => {
+          reviewFilter = f;
+          void draw();
+        }),
+        select: later((rid: string, on: boolean) => {
+          if (on) reviewSel.add(rid);
+          else reviewSel.delete(rid);
+          void draw();
+        }),
+        selectAll: later((on: boolean) => {
+          if (on) items.filter((it) => it.status === 'open').forEach((it) => reviewSel.add(it.id));
+          else reviewSel.clear();
+          void draw();
+        }),
+        setGuess: (rid: string, v: string) => void guessDraft.set(rid, v),
+        setDraft: (key: string, v: string) => void fieldDraft.set(key, v),
+        apply: (fixes: readonly Fix[]) => void applyFixes(r, fixes, { focusNext: true }),
+        keep: (ids: readonly string[]) => void keepItems(r, ids),
+        openChat: later((ids: readonly string[]) => openChat(ids)),
+        redo: later((rid: string, range: { start: number; end: number }) => {
+          redoPick.delete(rid);
+          openChat([rid]);
+          void runRedo(r, rid, range);
+        }),
+        toggleRedoPick: later((rid: string) => {
+          if (redoPick.has(rid)) redoPick.delete(rid);
+          else {
+            redoPick.add(rid);
+            focusWant = { key: `redo-start:${rid}` }; // 연 줄의 시작 칸에서 바로 쓰게
+          }
+          void draw();
+        }),
+        reopen: async (rid: string) => {
+          await api.setReviewStatus(r.dir, [rid], 'open');
+          void refreshDoc(r);
+        },
+        revert: (it: ReviewItem) => void revertItem(r, it),
+        reapply: (it: ReviewItem, guess: string) => reapply(r, it, guess),
+        cancelEdit: later(() => refreshDoc(r)),
+        makeReview: async () => {
+          try {
+            await api.makeReview(r.dir);
+            void refreshDoc(r);
+            return true;
+          } catch (err) {
+            toast('정리하지 못했습니다', (err as Error).message, { bad: true });
+            return false;
+          }
+        },
+        setAddDraft: (text: string) => {
+          addDraft = text;
+        },
+        add: async (text: string) => {
+          if (jobs.has(addKey)) return;
+          try {
+            const res = await jobs.run(addKey, '녹취에서 찾는 중…', () => api.addReview(r.dir, text) as Promise<{ added: unknown[]; reply?: string }>);
+            if (res.added.length) {
+              addDraft = '';
+              reviewFilter = 'open';
+              toast(`확인 필요에 ${res.added.length}개를 더했습니다`, res.reply);
+            } else toast('더할 항목을 찾지 못했습니다', res.reply || '녹취에서 그 말을 찾지 못했습니다. 들린 그대로 적어 보세요', { ms: 9000 });
+          } catch (err) {
+            toast('더하지 못했습니다', errText(err), { bad: true });
+          }
+          await refreshDoc(r);
+          void loadHistory();
+        },
+        finalize: async () => {
+          // 남은 항목이 있는데 마치면 그 항목들은 그대로 둔 것이 된다 → 한 번 묻는다 (다 처리했으면 묻지 않는다)
+          const left = items.filter((it) => it.status === 'open').length;
+          if (left && !(await deps.confirm(`남은 ${left}개는 그대로 두고 확인을 마칠까요?`, '마치면 회의록이 확정됩니다. 나중에 다시 열어 손볼 수 있습니다.', '확인 마치기'))) return null;
+          try {
+            const res = await api.finalizeReview(r.dir);
+            toast('회의록을 확정했습니다', res.finalize?.rewritten ? '확인 결과에 맞춰 회의록의 해당 부분을 고쳤습니다' : '고친 단어는 이미 반영되어 있어 회의록 문장은 그대로입니다');
+            await refreshDoc(r);
+            void loadHistory();
+            return true;
+          } catch (err) {
+            toast('확인을 마치지 못했습니다', (err as Error).message, { bad: true });
+            return false;
+          }
+        },
+        reopenAll: async () => {
+          try {
+            const before = doc.review?.finalize?.rewritten;
+            await api.reopenReview(r.dir);
+            toast('확인을 다시 열었습니다', before ? '회의록을 마치기 전 것으로 돌렸습니다. 다시 마치면 확인한 내용을 다시 반영합니다' : '항목을 다시 손볼 수 있습니다');
+            reviewFilter = 'open';
+            await refreshDoc(r);
+            return true;
+          } catch (err) {
+            toast('다시 열지 못했습니다', errText(err), { bad: true });
+            return false;
+          }
+        },
+        warn: (title: string) => toast(title, '', { bad: true }),
+      },
+    };
+  }
+
+  function chatDrawer(r: MeetingRecord, doc: MeetingDoc) {
+    const c = chat!;
+    const items = (doc.review?.items ?? []).filter((it) => c.ids.includes(it.id));
+    const apply = async (list: readonly Fix[]) => {
+      list.forEach((f) => c.applying.add(f.id));
+      void draw();
+      await applyFixes(r, list);
+      list.forEach((f) => c.applying.delete(f.id));
+      void draw();
+    };
+    return {
+      items,
+      messages: [...c.messages],
+      busy: c.busy,
+      redoing: c.redoing ?? null,
+      applying: new Set(c.applying),
+      draft: c.draft ?? '',
+      setDraft: (text: string) => {
+        c.draft = text; // 화면을 다시 그려도 쓰던 글이 남게
+      },
+      fieldDrafts: new Map(fieldDraft),
+      setFieldDraft: (key: string, text: string) => void fieldDraft.set(key, text),
+      close: later(closeChat),
+      apply: later(apply),
+      applyUnmatched: async (fix: Fix) => {
+        await applyFixes(r, [fix]);
+        void draw();
+      },
+      redo: later((rid: string, range: { start: number; end: number }) => runRedo(r, rid, range)),
+      applyRedo: (rid: string) => void applyRedo(r, rid),
+      send: later(async (text: string) => {
+        if (c.busy) return;
+        c.messages.push({ role: 'user', text });
+        c.draft = '';
+        c.busy = true;
+        void draw();
+        try {
+          const res = await api.chatReview(r.dir, c.ids, c.messages.map(({ role, text: t, redo }) => ({ role, text: redo?.text ? `${t}\n${redo.text}` : t })));
+          c.messages.push({ role: 'assistant', text: res.text, proposals: res.proposals, unmatched: res.unmatched });
+        } catch (err) {
+          c.messages.push({ role: 'assistant', text: `답을 받지 못했습니다: ${(err as Error).message}` });
+        }
+        c.busy = false;
+        if (chat !== c) return;
+        if (chatIdle()) focusWant = { key: 'chat' };
+        void draw();
+      }),
+    };
+  }
+
+  // 참석 인원 고르기의 처음 값: 지정한 인원, 없으면 회의록이 센 화자 수
+  function speakersValue() {
+    const r = rec();
+    return r?.speakersHint ? String(r.speakersHint) : r?.minutes?.speakers ? String(r.minutes.speakers) : '';
+  }
+
+  // 녹취부터 다시 만들면 사라지는 것: 처리한 확인 항목(고친 말은 새 녹취에 없다), 바꿔 둔 화자 이름, 확정 상태
+  function remakeLoss(): string[] {
+    const doc = docCache.get(id);
+    const done = (doc?.review?.items ?? []).filter((it) => it.status !== 'open').length;
+    const named = speakerOrder(parseScript(doc?.transcript)).filter((w) => !/^(화자 \d+|나|상대방)$/.test(w)).length;
+    return [done ? `처리한 확인 항목 ${done}개` : '', named ? `바꿔 둔 화자 이름 ${named}개` : '', doc?.review?.finalizedAt ? '회의록 확정' : ''].filter(Boolean);
+  }
+
+  async function remake(r: MeetingRecord, speakers: string) {
+    const loss = remakeLoss();
+    if (loss.length && !(await deps.confirm('녹취부터 다시 만들까요?', `다시 만들면 사라집니다: ${loss.join(', ')}. 녹음은 그대로 둡니다.`, '다시 만들기'))) return;
+    docCache.delete(r.id);
+    api.makeMinutes(r.dir, speakers || null);
+    toast('회의록을 다시 만듭니다', '녹취·화자 구분·회의록을 처음부터 만듭니다');
+    setTimeout(loadHistory, 400);
+  }
+
+  // 회의록이 없을 때의 카드: 만드는 중 · 짧은 녹음 · 쓰다가 멈춤(회의록만 다시 쓰기) · 없음/실패/들린 말 없음
+  function stateCard(r: MeetingRecord): StateCard {
+    const m = r.minutes;
+    const s = m?.status;
+    if (s !== undefined && BUSY.includes(s)) return { kind: 'busy', text: statusText(m), progress: progressOf(m) };
+    if (s === 'short' || r.durationSec < 10) return { kind: 'short' };
+    // 회의록 쓰기에서 멈췄으면(인터넷 끊김·앱 종료) 저장된 녹취로 회의록만 다시 쓴다
+    if (s === 'error' && m?.stage === 'write') return { kind: 'stalled', offline: Boolean(m.offline), error: m.error ?? '', speakersValue: speakersValue() };
+    return { kind: s === 'error' ? 'error' : s === 'empty' ? 'empty' : 'none', error: m?.error ?? '', speakersValue: speakersValue() };
+  }
+
+  // 녹음 압축 (AAC 96kbps): 확인을 마친 회의에만 안내한다. 고를 때까지 늘 보이고(모달 아님), '그대로 두기'면 숨기고 … 메뉴에 남긴다.
+  // 처음 녹취·회의록·확인은 원본 WAV로 하고, 다 끝난 뒤에만 줄인다 (측정: 96kbps는 받아쓰기 결과가 원본의 흔들림 폭 안)
+  function canCompress(r: MeetingRecord) {
+    return Boolean(r.minutes?.status === 'done' && r.review?.finalized && r.audio?.wav && r.audio.supported); // 32kHz 미만(가져온 전화 녹음 등)은 압축하지 않는다
+  }
+  let compressBusy = false;
+  async function runCompress(r: MeetingRecord) {
+    if (compressBusy) return;
+    compressBusy = true;
+    void draw();
+    const at = audio.currentTime;
+    const playing = !audio.paused;
+    audio.pause(); // 압축하는 동안 원본을 읽고 있으면 지울 수 없다
+    try {
+      const res = await api.compressMeeting(r.dir);
+      toast('녹음을 압축했습니다', `${sizeLabel(res.before)} → ${sizeLabel(res.after)} · 재생·구간 다시 받아쓰기는 그대로 됩니다`);
+      await loadHistory();
+      const next = deps.records().find((x) => x.id === r.id);
+      if (next?.firstFile) {
+        audio.src = `rec://m/${encodeURIComponent(next.id)}/${encodeURIComponent(next.firstFile)}`;
+        audio.currentTime = at;
+        if (playing) void audio.play();
+      }
+    } catch (err) {
+      toast('압축하지 못했습니다', errText(err), { bad: true, ms: 8000 });
+    }
+    compressBusy = false;
+    void draw();
+  }
+  function compressNote(r: MeetingRecord) {
+    if (!canCompress(r) || r.audio!.declined) return null;
+    return { bytes: r.audio!.bytes, estimate: r.audio!.estimate ?? 0, busy: compressBusy };
+  }
+
+  // 오른쪽 위 버튼과 메뉴에 무엇을 보일지 (그리기·메뉴 열고 닫기는 pages/meeting)
+  function meetingMenu(r: MeetingRecord, doc: MeetingDoc): MeetingMenu {
+    const s = r.minutes?.status;
+    const busy = s !== undefined && BUSY.includes(s);
+    return {
+      minutes: Boolean(doc.minutes),
+      remake: !busy && Boolean(s) && s !== 'short',
+      busy,
+      transcript: Boolean(doc.transcript),
+      compress: canCompress(r) ? { bytes: r.audio!.bytes, estimate: r.audio!.estimate ?? 0 } : null,
+      compressBusy,
+      speakersValue: speakersValue(),
+    };
+  }
+
+  // 창 크기가 바뀌면 흐름도는 가로·세로 배치가 바뀔 수 있어 다시 그린다 (재생 막대는 스스로 다시 칠한다)
+  let resizeTimer: ReturnType<typeof setTimeout> | undefined;
+  const onResize = () => {
+    if (!docCache.get(id)?.flow?.flows?.length) return;
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => void draw(), 250);
+  };
+
+  // ── 본문 안 찾기 (⌘F): 지금 보고 있는 탭의 본문만. CSS Highlight로 표시만 하고 글은 고치지 않는다 ──
+  let findScope: HTMLElement | null = null; // 그린 탭 본문
+  let findBar: HTMLElement | null = null;
+  let findHits: Range[] = [];
+  let findIdx = -1;
+  const canHighlight = typeof Highlight !== 'undefined' && Boolean(CSS.highlights);
+  const clearFindMarks = () => {
+    if (!canHighlight) return;
+    CSS.highlights.delete('find');
+    CSS.highlights.delete('find-now');
+  };
+  function runFind({ keep = false } = {}) {
+    if (!findBar) return;
+    const q = findBar.querySelector('input')!.value.toLowerCase();
+    findHits = [];
+    if (q && findScope?.isConnected) {
+      // 본문 글자를 이어 붙여 찾는다 (용어 밑줄·시각 칩 경계를 넘는 말도 찾게)
+      const nodes: { n: Text; at: number }[] = [];
+      let text = '';
+      const walker = document.createTreeWalker(findScope, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        nodes.push({ n: n as Text, at: text.length });
+        text += n.nodeValue;
+      }
+      const hay = text.toLowerCase();
+      const nodeAt = (i: number) => {
+        let lo = 0;
+        let hi = nodes.length - 1;
+        while (lo < hi) {
+          const mid = (lo + hi + 1) >> 1;
+          if (nodes[mid]!.at <= i) lo = mid;
+          else hi = mid - 1;
+        }
+        return nodes[lo]!;
+      };
+      for (let i = hay.indexOf(q); i !== -1 && findHits.length < 5000; i = hay.indexOf(q, i + q.length)) {
+        const a = nodeAt(i);
+        const b = nodeAt(i + q.length - 1);
+        const range = document.createRange();
+        range.setStart(a.n, i - a.at);
+        range.setEnd(b.n, i + q.length - b.at);
+        findHits.push(range);
+      }
+    }
+    findIdx = !findHits.length ? -1 : keep ? Math.min(Math.max(findIdx, 0), findHits.length - 1) : 0;
+    showFind(!keep);
+  }
+  function stepFind(d: number) {
+    if (!findHits.length) return;
+    findIdx = (findIdx + d + findHits.length) % findHits.length;
+    showFind(true);
+  }
+  function showFind(scroll: boolean) {
+    clearFindMarks();
+    const bar = findBar!;
+    const q = bar.querySelector('input')!.value;
+    bar.querySelector('.find-count')!.textContent = !q ? '' : findHits.length ? `${findIdx + 1}/${findHits.length}` : '없음';
+    bar.classList.toggle('none', Boolean(q) && !findHits.length);
+    if (!findHits.length || !canHighlight) return;
+    CSS.highlights.set('find', new Highlight(...findHits));
+    CSS.highlights.set('find-now', new Highlight(findHits[findIdx]!));
+    if (!scroll) return;
+    const v = document.getElementById('view')!;
+    const vr = v.getBoundingClientRect();
+    const rr = findHits[findIdx]!.getBoundingClientRect();
+    if (rr.top < vr.top + 64 || rr.bottom > vr.bottom - 40) v.scrollTop += rr.top - vr.top - vr.height / 3;
+  }
+  function openFind() {
+    if (!findBar) {
+      const input = el('input', { type: 'search', placeholder: '이 탭에서 찾기', 'aria-label': '이 탭 본문에서 찾기' }) as HTMLInputElement;
+      input.spellcheck = false; // el()은 false 값을 건너뛰므로 직접
+      input.oninput = () => runFind();
+      input.onkeydown = (e) => {
+        if (e.key === 'Enter' && !e.isComposing) {
+          e.preventDefault();
+          stepFind(e.shiftKey ? -1 : 1);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          closeFind();
+        }
+      };
+      findBar = el('div', { class: 'find-bar', role: 'search' }, icon('i-search') as unknown as Node, input, el('span', { class: 'find-count' }),
+        el('button', { class: 'icon-btn find-up', title: '이전 (⇧↩)', 'aria-label': '이전', onclick: () => stepFind(-1) }, icon('i-left') as unknown as Node),
+        el('button', { class: 'icon-btn find-down', title: '다음 (↩)', 'aria-label': '다음', onclick: () => stepFind(1) }, icon('i-left') as unknown as Node),
+        el('button', { class: 'icon-btn', title: '닫기 (esc)', 'aria-label': '찾기 닫기', onclick: closeFind }, icon('i-x') as unknown as Node));
+      document.querySelector('.panel')!.append(findBar);
+    }
+    const input = findBar.querySelector('input')!;
+    input.focus();
+    input.select();
+    if (input.value) runFind({ keep: true });
+  }
+  function closeFind() {
+    clearFindMarks();
+    findBar?.remove();
+    findBar = null;
+    findHits = [];
+    findIdx = -1;
+  }
+  const onFindKey = (e: KeyboardEvent) => {
+    const k = e.key.toLowerCase();
+    if (e.metaKey && k === 'f') {
+      e.preventDefault();
+      openFind();
+    } else if (e.metaKey && k === 'g' && findBar) {
+      e.preventDefault();
+      stepFind(e.shiftKey ? -1 : 1);
+    } else if (e.key === 'Escape' && findBar && !cardEl && !e.defaultPrevented && !(e.target as Element).closest?.('input, textarea, dialog')) {
+      e.preventDefault();
+      closeFind();
+    }
+  };
+  document.addEventListener('keydown', onFindKey);
+
+  // Escape: 열린 채팅을 닫는다 — 포커스가 채팅 안이나 본문(입력칸 밖)에 있을 때만. 대화상자(확인·설정)·⌘F 막대·용어 카드가 열려 있으면
+  // 그쪽이 먼저라 건드리지 않는다 (용어 카드·찾기 막대는 닫으면서 preventDefault로 이 키를 넘기지 않는다)
+  const onEscChat = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing || (!chat && !flowChat)) return;
+    if (findBar || cardEl || document.querySelector('dialog[open]')) return;
+    const t = e.target as Element;
+    const inChat = Boolean(t.closest?.('.chat'));
+    const onBody = t === document.body || Boolean(t.closest?.('#view') && !t.closest('input, textarea, select, [contenteditable]'));
+    if (!inChat && !onBody) return;
+    e.preventDefault();
+    // Escape는 버릇처럼 누르는 키라 채팅에 남은 일을 버리지 않는다 (× 버튼은 그대로 닫는다):
+    // 답·다시 받아쓰기·적용을 기다리는 중이면 닫지 않는다 — 닫으면 그 결과가 들어갈 곳이 없어 버려진다.
+    // 입력칸에 쓴 글이 있어도 닫지 않는다 (draft는 input 이벤트 때만 바뀌므로 입력칸의 지금 값을 읽는다)
+    if (chatWaiting()) return;
+    const box = page.querySelector<HTMLTextAreaElement>('.chat textarea');
+    if ((box?.value ?? chat?.draft ?? flowChat?.draft ?? '').trim()) return;
+    closeChat();
+  };
+  const chatWaiting = () => (chat ? chat.busy || Boolean(chat.redoing) || chat.applying.size > 0 : Boolean(flowChat?.busy || flowChat?.applying));
+  document.addEventListener('keydown', onEscChat);
+
+  // 스페이스: 재생·멈춤 (입력칸·대화상자·⌘ 조합은 빼고)
+  const onKey = (e: KeyboardEvent) => {
+    if ((e.target as Element).closest('input, textarea, select, dialog') || e.metaKey) return;
+    if (e.key === ' ') {
+      e.preventDefault();
+      playback.toggle();
+    }
+  };
+  window.addEventListener('resize', onResize);
+  document.addEventListener('keydown', onKey);
+
+  // 파일이 바뀌면 다시 읽기, 진행률·상태·확인 필요 숫자가 바뀐 경우에만 다시 그리기, 떠날 때 치우기
   function reloadPage() {
     docCache.delete(id);
     void ctx.draw();

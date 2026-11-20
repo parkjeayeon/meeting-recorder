@@ -1,4 +1,4 @@
-// 흐름도 배치의 계산 (src/flow.js가 만든 flow.json을 그릴 때). 그리기(SVG)는 화면 쪽, 여기는 순서·칸·줄 나누기만.
+// 흐름도 배치의 계산 (src/meeting/flow.mts가 만든 flow.json을 그릴 때). 그리기(SVG)는 화면 쪽, 여기는 순서·칸·줄 나누기만.
 
 export interface FlowStep {
   readonly id: string;
