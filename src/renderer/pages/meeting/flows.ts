@@ -1,4 +1,4 @@
-// ── 흐름도 (src/flow.js): 그리기와 자리 계산은 features/meeting-flow · entities/flow. 여기는 파일을 바꾸는 명령과 채팅 상태 ──
+// ── 흐름도 (src/meeting/flow.mts): 그리기와 자리 계산은 features/meeting-flow · entities/flow. 여기는 파일을 바꾸는 명령과 채팅 상태 ──
 import type { FlowDoc } from '../../entities/flow/index.ts';
 import { flowSvgFile, type FlowChatProps, type FlowData, type FlowRowProps, type FlowsProps } from '../../features/meeting-flow/index.ts';
 import type { ChatsRole } from './chats.ts';

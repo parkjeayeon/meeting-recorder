@@ -1,4 +1,4 @@
-// ── 액션 (src/actions.js): 할 일(약속·맡은 일·다짐)과 받은 조언·알아 둘 것. 회의록과 따로 actions.json에 ──
+// ── 액션 (src/meeting/actions.mts): 할 일(약속·맡은 일·다짐)과 받은 조언·알아 둘 것. 회의록과 따로 actions.json에 ──
 import type { ActionsData, ActionsProps, ActionsRowProps } from '../../features/meeting-actions/index.ts';
 import { errText, type MeetingRecord, type PageCtx } from './state.ts';
 
