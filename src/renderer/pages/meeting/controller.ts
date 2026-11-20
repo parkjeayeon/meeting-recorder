@@ -375,7 +375,7 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
     };
   }
 
-  // ── 액션 (src/actions.js): 할 일(약속·맡은 일·다짐)과 받은 조언·알아 둘 것. 회의록과 따로 actions.json에 ──
+  // ── 액션 (src/meeting/actions.mts): 할 일(약속·맡은 일·다짐)과 받은 조언·알아 둘 것. 회의록과 따로 actions.json에 ──
   function actionsView(r: MeetingRecord, data: ActionsData) {
     return {
       data,
@@ -413,7 +413,7 @@ export function meetingPage(id: string, deps: MeetingDeps): PageHandle {
     return { found: Boolean(data), jobs, jobKey: `${r.dir}|액션`, find: () => void findActions(r) };
   }
 
-  // ── 흐름도 (src/flow.js): 그리기와 자리 계산은 features/meeting-flow · entities/flow. 여기는 파일을 바꾸는 명령과 채팅 상태 ──
+  // ── 흐름도 (src/meeting/flow.mts): 그리기와 자리 계산은 features/meeting-flow · entities/flow. 여기는 파일을 바꾸는 명령과 채팅 상태 ──
   // 그림 놓을 폭 (회의 페이지 본문 폭 − 카드 여백)
   function flowAvail() {
     const v = document.getElementById('view')!.clientWidth;

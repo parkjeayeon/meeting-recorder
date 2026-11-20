@@ -235,20 +235,18 @@ mr schema actions           # 출력 JSON Schema
 - `src/main.js`: fn 감지기(fn-listener) 실행과 셀프테스트 시간표, 회의 일시정지·취소·참석 인원, WAV 저장, 녹음 폴더·설정 사본, 녹음·회의록·받아쓰기 설정·앱 정보의 IPC 처리기, 회의 녹음 재생용 `rec://` 프로토콜(Range 지원), 메뉴바·플로팅 독, 창·앱 수명. 기록·질문으로 찾기·토큰·권한·처음 설정·녹음 폴더 바꾸기의 처리기는 `src/app/`의 것을 녹음 폴더·창 등을 넘겨 등록한다
 - `src/app/`: 본체 IPC 처리기를 구역별로 (TypeScript, Electron 없이 돎, `npm run build:ts` → `lib/app/`, [결정 70](docs/decisions.md)) — 기록·받아쓰기 통계(`history.mts`), 질문으로 찾기 연결(`ask.mts`), 토큰·키(`tokens.mts`), 권한(`permissions.mts`), 처음 설정 진행(`onboarding.mts`), 녹음 폴더 바꾸기·옮기기(`recordings.mts`). 각각 `register(ipc, ctx)`로 ipcMain과 그 구역이 쓰는 것만 받는다. fn 키 상태 머신(`fn.mts`: 받아쓰기 전용 규칙, 처음 설정 중 막기)은 본체가 `createFnMachine(deps)`로 한 번 만들어 fn 누름·버튼·녹음 저장 쪽 일을 알린다
 - `src/setup.js`: 엔진 설치·크기·삭제 (설정 › 엔진, 처음 설정)
-- `src/sandbox.js`: 외부 프로그램을 감싸는 macOS 샌드박스 프로필
+- `src/sandbox.js`: 외부 프로그램을 감싸는 macOS 샌드박스 프로필을 본체·`scripts/dev/sandbox-check.js`에 잇는 얇은 파일 (구현은 `src/core/sandbox.mts`)
 - `src/dictation.js`: whisper-server 관리(고아 정리 포함), 모델 다운로드, 무음·지어낸 문장 거르기, 붙여 넣기
 - `src/llm/`: LLM 층 (TypeScript, Electron 없이 돎, `npm run build:ts` → `lib/llm/`) — 계정 고르기와 호출(Claude Code / Codex / API, CLI 실패 이유를 로그인·한도·시간 초과로 나눔), 받아쓴 글 다듬기(긴 글 나누기), 남은 사용량(Claude Code `/usage` 글 → 규칙, 못 읽으면 LLM·숫자 검증 / Codex app-server JSON, 5분 저장)
 - `src/cleanup.js`, `src/usage.js`: LLM 층을 본체에 잇는 얇은 파일 (앱 데이터 폴더·지금 설정을 넘김, [결정 70](docs/decisions.md))
-- `src/import-audio.js`: 녹음 파일 가져오기 (afconvert로 16비트 모노 WAV, 여러 개면 이름 순서대로 이어 붙임)
-- `src/actions.js`: 액션 (할 일·조언을 LLM이 뽑고 녹취 인용으로 확인)
-- `src/flow.js`: 흐름도 (요청할 때 원본·정리본·회의록으로 흐름을 뽑고 녹취 인용으로 검증, 그림마다 채팅·다시 그리기·지우기(확인 창))
-- `src/compress.js`: 확인을 마친 회의의 녹음 압축 (AAC 96kbps, 길이 확인 뒤 WAV 지움, 그대로 두기)
-- `src/glossary.js`: 용어 설명 (LLM이 고르기·한 단어 설명·확인·고치기)
+- `src/compress.js`: 녹음 압축을 본체·`scripts/dev/compress-check.js`에 잇는 얇은 파일 (구현은 `src/meeting/compress.mts`)
+- `src/ask.js`: 질문으로 찾기 엔진을 본체에 잇는 얇은 파일 — 앱 데이터 폴더·LLM 호출·API 키를 `src/ask`에 넘겨 엔진을 한 번 만든다 ([결정 70](docs/decisions.md))
+- `src/ask/`: 질문으로 찾기 (TypeScript, Electron 없이 돎, [결정 51](docs/decisions.md)) — 녹취·회의록 전문 색인(SQLite FTS5 trigram, 두 글자 말은 LIKE, `fts.mts`), 질문 하나(조건 풀기 → 범위·기간·상태로 거르기 → 후보 찾기 → 추리기, `query.mts`), LLM 프롬프트(`prompts.mts`), 질문 상태·멈추기·asks.json 저장(`index.mts`의 `createAsk`)
 - `src/renderer/`: 메인 창 화면 (홈 · 받아쓰기 · 회의 · 사전 · 통계 · 설정 · 처음 설정 · ⌘K). Pretendard 글꼴(OFL) 포함, 디자인 규칙은 `DESIGN.md`. `index.html`이 Vite로 묶은 `lib/renderer/main.js·main.css`를 불러온다(`npm run build:renderer`, 개발은 `npm run dev`). TypeScript·React와 FSD 층(`app/`·`pages/`·`features/`·`shared/` 등)을 쓰며 `app/boot.ts`에서 시작한다([docs/react-migration.md](docs/react-migration.md))
-- `src/core/`: Electron 없는 회의 데이터 읽기 (TypeScript·ESM, `npm run build:ts` → `lib/`). 화자 이름 바꿔 끼우기, 요약·확인 필요 요약, 액션, 스크립트 해석·마크다운 복사, 확인 필요 항목 다듬기(`review.mts`), 목록에 안 나오는 폴더(`stray.mts`), 남은 사용량 읽기(`usage.mts`), 계정 순서·CLI 오류 나누기(`route.mts`), 회의록 형식 검사(`check.mts`), 원자적 쓰기, TypeBox 스키마. 메인 프로세스·화면·명령줄 도구가 같이 쓴다
+- `src/core/`: Electron 없는 회의 데이터 읽기 (TypeScript·ESM, `npm run build:ts` → `lib/`). 화자 이름 바꿔 끼우기, 요약·확인 필요 요약, 액션, 스크립트 해석·마크다운 복사, 확인 필요 항목 다듬기(`review.mts`), 목록에 안 나오는 폴더(`stray.mts`), 남은 사용량 읽기(`usage.mts`), 계정 순서·CLI 오류 나누기(`route.mts`), 회의록 형식 검사(`check.mts`), 원자적 쓰기, TypeBox 스키마, 외부 프로그램 샌드박스 프로필(`sandbox.mts`). 메인 프로세스·화면·명령줄 도구가 같이 쓴다
 - `src/cli/`: 명령줄 도구 `mr` (`mr.mts` 명령 처리, `mr.sh` 앱 안 실행 스크립트 → `Contents/Resources/mr`)
-- `src/minutes.js`: 회의 녹취·회의록·확인 필요를 본체에 잇는 얇은 파일 — Electron이 아는 값(앱 데이터 폴더·설치본 여부·인터넷 연결)과 설정·Whisper·LLM·용어 설명·샌드박스를 `src/meeting`·`src/review`에 넘기고 예전 이름 그대로 내보낸다 ([결정 70](docs/decisions.md))
-- `src/meeting/`: 회의 녹음 → 녹취 → 회의록 (TypeScript, Electron 없이 돎) — 16kHz로 줄이기·압축 풀기·조용한 지점에서 조각 내기·구간 잘라 내기(`audio.mts`), 반복 구간 찾기·화자 붙이기·스크립트 조립(`transcript.mts`), 화자 구분(pyannote, `diarize.mts`), 조각별 Whisper 녹취·반복 구간 다시 받아쓰기(`transcribe.mts`), 구간 다시 받아쓰기(`retranscribe.mts`), 회의록 프롬프트·정리본·상태(`minutes.mts`), 전체 흐름·단계 기록(`pipeline.mts`), 한 번에 하나씩 줄 세우기(`queue.mts`), 바깥에서 받는 것(`deps.mts`의 `configure()`)
+- `src/minutes.js`: 회의 녹취·회의록·확인 필요를 본체에 잇는 얇은 파일 — Electron이 아는 값(앱 데이터 폴더·설치본 여부·인터넷 연결)과 설정·Whisper·LLM·용어 설명·샌드박스를 `src/meeting`·`src/review`에 넘기고 예전 이름 그대로 내보낸다. 흐름도·용어 설명·액션도 여기서 넘긴 LLM 호출·설정을 쓴다 ([결정 70](docs/decisions.md))
+- `src/meeting/`: 회의 녹음 → 녹취 → 회의록 (TypeScript, Electron 없이 돎) — 16kHz로 줄이기·압축 풀기·조용한 지점에서 조각 내기·구간 잘라 내기(`audio.mts`), 반복 구간 찾기·화자 붙이기·스크립트 조립(`transcript.mts`), 화자 구분(pyannote, `diarize.mts`), 조각별 Whisper 녹취·반복 구간 다시 받아쓰기(`transcribe.mts`), 구간 다시 받아쓰기(`retranscribe.mts`), 회의록 프롬프트·정리본·상태(`minutes.mts`), 전체 흐름·단계 기록(`pipeline.mts`), 한 번에 하나씩 줄 세우기(`queue.mts`), 바깥에서 받는 것(`deps.mts`의 `configure()`). 본체가 파일마다 바로 불러 쓰는 것: 흐름도(`flow.mts`, 요청할 때 원본·정리본·회의록으로 흐름을 뽑고 녹취 인용으로 검증, 그림마다 채팅·다시 그리기·지우기), 용어 설명(`glossary.mts`, LLM이 고르기·한 단어 설명·확인·고치기), 액션(`actions.mts`, 할 일·조언을 LLM이 뽑고 녹취 인용으로 확인), 녹음 파일 가져오기(`import-audio.mts`, afconvert로 16비트 모노 WAV, 여러 개면 이름 순서대로 이어 붙임), 녹음 압축(`compress.mts`, AAC 96kbps, 길이 확인 뒤 WAV 지움, 그대로 두기), 녹음할 때 WAV 쓰기(`wav-writer.mts`, 5초마다 머리 갱신 — 크래시 대비)
 - `src/review/`: 확인 필요 (TypeScript, Electron 없이 돎) — 목록 만들기·직접 추가·채팅·확인 마치기(`assist.mts`), 적용·되돌리기(`apply.mts`), review.json(`store.mts`)
 - `native/fn-listener.swift`: CGEventTap(listen-only)으로 fn down/up을 stdout으로 출력
 - `native/permissions.swift`: 권한 확인·요청, ⌘V 입력, 앞에 있는 앱 이름
@@ -256,7 +254,6 @@ mr schema actions           # 출력 JSON Schema
 - `src/renderer/features/configuration/`: 설정 창(`settings/`)과 처음 설정 화면(`onboarding/`)
 - `src/renderer/features/recording/capture.ts`, `src/renderer/recorder-worklet.js`: getUserMedia + getDisplayMedia → AudioContext(48kHz) → 트랙별 100ms 청크
 - `src/overlay/`: 화면 왼쪽 플로팅 독 (받아쓰기 진행 띠, 회의 녹음 시간)
-- `src/wav-writer.js`: 스트리밍 기록, 5초마다 헤더 갱신(크래시 대비)
 - `scripts/sign-app.sh`: 빌드한 앱 서명 (자체 서명 인증서가 있으면 그걸로, 없으면 ad-hoc)
 - `scripts/dev/`: 개발용 — 서명 인증서 만들기, 키보드 처리기 검사(`check-handlers.js`), 화면 HTML 비교(`view-parity.js`), 샌드박스 확인, 고아 프로세스 점검, 회의 사본에 회의록 다시 돌리기, 실험 페이지(`lab/`), 검색 평가(`eval/`) ([docs/testing.md](docs/testing.md))
 - `eval-runs/`: 검색 평가 원본 결과·LLM 호출 기록·실제 회의 정답·금지어 목록 (git 제외, 실제 회의 내용이 들어감) → 걸러서 `docs/eval/`

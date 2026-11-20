@@ -3,35 +3,36 @@
 // (회의록이 정수 배로 묶어 16kHz로 줄이므로 44.1kHz 같은 값은 쓰지 않는다).
 // Apple이 쓴 WAV는 'FLLR' 같은 덩어리가 붙어 소리 데이터가 44바이트 뒤에서 시작하지 않는다. 회의록 파이프라인은 44바이트 헤더를
 // 가정하므로 data 덩어리만 꺼내 표준 헤더로 다시 쓴다. 원본 파일은 읽기만 한다.
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
-const { execFile } = require('child_process');
-const sandbox = require('./sandbox');
-const { writeJsonAtomic } = require('../lib/core/index.mjs'); // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
+// 본체(src/main.js)가 require('../lib/meeting/import-audio.mjs')로 불러 쓴다 (결정 70).
+import { execFile } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import * as sandbox from '../core/sandbox.mjs';
+import { writeJsonAtomic } from '../core/write.mjs'; // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
 
 const AFCONVERT = '/usr/bin/afconvert';
 const AFINFO = '/usr/bin/afinfo';
-const EXTS = ['.wav', '.m4a', '.mp3', '.aac', '.caf', '.aif', '.aiff', '.flac', '.mp4', '.mov', '.3gp'];
+export const EXTS = ['.wav', '.m4a', '.mp3', '.aac', '.caf', '.aif', '.aiff', '.flac', '.mp4', '.mov', '.3gp'];
 
-function run(cmd, args, { write = [] } = {}) {
+function run(cmd: string, args: string[], { write = [] as string[] } = {}): Promise<string> {
   const [bin, argv] = sandbox.wrap(cmd, args, { write, network: 'none' });
   return new Promise((resolve, reject) => {
     execFile(bin, argv, { timeout: 30 * 60 * 1000, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => (err ? reject(new Error((stderr || err.message).trim().split('\n')[0])) : resolve(stdout)));
   });
 }
 
-async function probe(file) {
+async function probe(file: string): Promise<{ rate: number | null; durationSec: number | null }> {
   const out = await run(AFINFO, [file]).catch(() => '');
   return { rate: Number(/Data format:.*?(\d+) Hz/.exec(out)?.[1]) || null, durationSec: Number(/estimated duration: ([\d.]+)/.exec(out)?.[1]) || null };
 }
-const sampleRate = async (file) => (await probe(file)).rate;
+const sampleRate = async (file: string): Promise<number | null> => (await probe(file)).rate;
 
 // 이어 붙일 순서: 이름 순서 (녹음 앱은 보통 시각을 넣어 이름을 짓는다)
-const sortFiles = (files) => [...files].sort((a, b) => path.basename(a).localeCompare(path.basename(b), 'ko', { numeric: true }));
+const sortFiles = (files: string[]): string[] => [...files].sort((a, b) => path.basename(a).localeCompare(path.basename(b), 'ko', { numeric: true }));
 
 // 가져오기 확인 창에 보여 줄 목록 (순서·길이). 형식이 맞지 않으면 여기서 알린다
-async function describe(files) {
+export async function describe(files: string[]): Promise<{ path: string; name: string; durationSec: number | null }[]> {
   const bad = files.find((f) => !EXTS.includes(path.extname(f).toLowerCase()));
   if (bad) throw new Error(`가져올 수 없는 형식입니다: ${path.basename(bad)}`);
   return Promise.all(sortFiles(files).map(async (f) => ({ path: f, name: path.basename(f), durationSec: (await probe(f)).durationSec })));
@@ -39,9 +40,9 @@ async function describe(files) {
 
 // 녹음 시각 짐작 (가져오기 확인 창에 미리 채운다, 사용자가 고칠 수 있다): 첫 파일 이름의 시각 → 첫 파일 수정 시각(녹음이 끝난 때)에서 길이를 뺀 것 → 지금.
 // 수정 시각은 메신저·AirDrop으로 받으면 받은 시각이 되고, 압축을 풀면 1970년이 되기도 해서 있을 수 없는 값이면 버린다
-const sane = (d) => d instanceof Date && !Number.isNaN(d.getTime()) && d.getFullYear() >= 2000 && d.getTime() <= Date.now() + 86400e3;
-async function guessStart(files) {
-  const first = sortFiles(files)[0];
+const sane = (d: unknown): d is Date => d instanceof Date && !Number.isNaN(d.getTime()) && d.getFullYear() >= 2000 && d.getTime() <= Date.now() + 86400e3;
+export async function guessStart(files: string[]): Promise<{ at: Date; source: 'name' | 'mtime' | 'now' }> {
+  const first = sortFiles(files)[0]!;
   const named = timeFromName(path.basename(first));
   if (named) return { at: named, source: 'name' };
   const { durationSec } = await probe(first);
@@ -51,7 +52,7 @@ async function guessStart(files) {
 }
 
 // WAV 안 data 덩어리의 위치와 길이
-function dataChunk(file) {
+function dataChunk(file: string): { offset: number; size: number } {
   const fd = fs.openSync(file, 'r');
   try {
     const head = Buffer.alloc(64 * 1024);
@@ -68,7 +69,7 @@ function dataChunk(file) {
   throw new Error('변환한 파일에서 소리 데이터를 찾지 못했습니다');
 }
 
-function wavHeader(dataBytes, rate) {
+function wavHeader(dataBytes: number, rate: number): Buffer {
   const h = Buffer.alloc(44);
   h.write('RIFF', 0);
   h.writeUInt32LE(36 + dataBytes, 4);
@@ -92,11 +93,11 @@ const NAME_TIMES = [
   /(?<!\d)(\d{4})[-._]?(\d{2})[-._]?(\d{2})[\s_T-]*(오전|오후|AM|PM)?\s*(\d{1,2})[.:\-_]?(\d{2})[.:\-_]?(\d{2})(?!\d)/gi,
   /(?<!\d)(\d{2})(\d{2})(\d{2})[\s_T-]+()(\d{2})(\d{2})(\d{2})(?!\d)/g,
 ];
-function timeFromName(name, now = new Date()) {
-  const found = NAME_TIMES.flatMap((re) => [...name.matchAll(re)]).sort((a, b) => a.index - b.index);
+export function timeFromName(name: string, now = new Date()): Date | null {
+  const found = NAME_TIMES.flatMap((re) => [...name.matchAll(re)]).sort((a, b) => a.index! - b.index!);
   for (const m of found) {
-    const year = m[1].length === 2 ? 2000 + Number(m[1]) : Number(m[1]);
-    const [month, day, min, sec] = [m[2], m[3], m[6], m[7]].map(Number);
+    const year = m[1]!.length === 2 ? 2000 + Number(m[1]) : Number(m[1]);
+    const [month, day, min, sec] = [m[2], m[3], m[6], m[7]].map(Number) as [number, number, number, number];
     let hour = Number(m[5]);
     if (/오후|PM/i.test(m[4] ?? '') && hour < 12) hour += 12;
     if (/오전|AM/i.test(m[4] ?? '') && hour === 12) hour = 0;
@@ -109,19 +110,15 @@ function timeFromName(name, now = new Date()) {
   return null;
 }
 
-function folderName(d) {
-  const p = (n) => String(n).padStart(2, '0');
+function folderName(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}-${p(d.getMinutes())}-${p(d.getSeconds())}_meeting`;
 }
 
-/**
- * @param {string[]} files 가져올 녹음 파일 (이름 순서대로 이어 붙인다)
- * @param {string} recordingsDir 녹음 폴더
- * @param {{notes?: string, speakers?: number|null, startedAt?: string|null}} opts notes: 녹음에 담기지 않은 내용(회의록에 '녹음 외 메모'로), speakers: 참석 인원,
- *   startedAt: 확인 창에서 사용자가 정한 회의 시각 (없거나 있을 수 없는 값이면 짐작)
- * @returns {Promise<string>} 만든 회의 폴더
- */
-async function importAudio(files, recordingsDir, { notes = '', speakers = null, startedAt: chosen = null } = {}) {
+// files: 가져올 녹음 파일 (이름 순서대로 이어 붙인다), recordingsDir: 녹음 폴더 → 만든 회의 폴더.
+// notes: 녹음에 담기지 않은 내용(회의록에 '녹음 외 메모'로), speakers: 참석 인원,
+// startedAt: 확인 창에서 사용자가 정한 회의 시각 (없거나 있을 수 없는 값이면 짐작)
+export async function importAudio(files: string[], recordingsDir: string, { notes = '', speakers = null, startedAt: chosen = null }: { notes?: string; speakers?: number | null; startedAt?: string | null } = {}): Promise<string> {
   if (!files.length) throw new Error('가져올 파일이 없습니다');
   const bad = files.find((f) => !EXTS.includes(path.extname(f).toLowerCase()));
   if (bad) throw new Error(`가져올 수 없는 형식입니다: ${path.basename(bad)}`);
@@ -130,9 +127,9 @@ async function importAudio(files, recordingsDir, { notes = '', speakers = null, 
   const rate = rates.every((r) => r && r <= 16000) ? 16000 : 48000;
 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mr-import-'));
-  let dir = null;
+  let dir: string | null = null;
   try {
-    const parts = [];
+    const parts: { file: string; offset: number; size: number }[] = [];
     for (const [i, file] of sorted.entries()) {
       const out = path.join(tmp, `${i}.wav`);
       await run(AFCONVERT, ['-f', 'WAVE', '-d', `LEI16@${rate}`, '-c', '1', file, out], { write: [tmp] }).catch((err) => {
@@ -144,7 +141,7 @@ async function importAudio(files, recordingsDir, { notes = '', speakers = null, 
     // 녹음 시각: 첫 파일 이름의 시각, 없으면 첫 파일 수정 시각(녹음이 끝난 때)에서 길이를 뺀다
     const durations = parts.map((p) => p.size / 2 / rate);
     const total = durations.reduce((a, b) => a + b, 0);
-    let startedAt = chosen && sane(new Date(chosen)) ? new Date(chosen) : timeFromName(path.basename(sorted[0])) ?? new Date(fs.statSync(sorted[0]).mtimeMs - durations[0] * 1000);
+    let startedAt = chosen && sane(new Date(chosen)) ? new Date(chosen) : timeFromName(path.basename(sorted[0]!)) ?? new Date(fs.statSync(sorted[0]!).mtimeMs - durations[0]! * 1000);
     // 수정 시각도 이상하면(압축 풀기 등으로 1970년·미래) 지금으로. 폴더 이름이 늘 네 자리 연도라 목록에서 사라지지 않게
     if (!(startedAt.getFullYear() >= 2000 && startedAt.getTime() <= Date.now() + 86400e3)) startedAt = new Date();
     let name = folderName(startedAt);
@@ -175,8 +172,8 @@ async function importAudio(files, recordingsDir, { notes = '', speakers = null, 
 
     let offset = 0;
     const sources = sorted.map((f, i) => {
-      const s = { name: path.basename(f), offsetSec: Number(offset.toFixed(2)), durationSec: Number(durations[i].toFixed(2)) };
-      offset += durations[i];
+      const s = { name: path.basename(f), offsetSec: Number(offset.toFixed(2)), durationSec: Number(durations[i]!.toFixed(2)) };
+      offset += durations[i]!;
       return s;
     });
     // meta.json을 마지막에 써야 목록에 나타난다 (그 전에는 만드는 중인 폴더로 보고 건너뛴다)
@@ -194,5 +191,3 @@ async function importAudio(files, recordingsDir, { notes = '', speakers = null, 
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 }
-
-module.exports = { importAudio, describe, guessStart, timeFromName, EXTS };
