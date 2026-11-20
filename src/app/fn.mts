@@ -9,6 +9,7 @@
 // - 누르면 바로 듣기 시작. 0.5초 이상 누르고 있다 떼면 받아써서 입력
 // - 0.5초 안에 뗐다면 0.5초 더 기다렸다가 두 번째 누름이 없으면 버린다
 // - 시작 후 0.5초 안에 다시 누르면 지금 녹음을 그대로 이어서 잠금(손을 떼도 계속 듣기)
+//   (잠금은 처음 누른 때부터, 기다림은 뗀 때부터 잰다. 그 사이의 늦은 누름은 아무 일도 없고, 그 누름을 떼면 끝내고 입력)
 // - 잠긴 상태에서 다시 누르면 끝내고 입력, 시작 후 0.5초 안에 세 번째로 누르면 취소
 // 앞 받아쓰기를 아직 처리하는 중이면 새로 시작하지 않는다 (Wispr Flow와 같이, 알림은 0.5초에 한 번만)
 // 처음 설정 중에는 fn 받아쓰기를 막는다 (연습 단계만 예외). fn 키 확인 단계에서는 누름만 알린다
@@ -113,6 +114,17 @@ export function createFnMachine(deps: FnDeps): FnMachine {
     if (fnTestMode) return deps.onboardingFn(false);
     if (ignoreNextUp) {
       ignoreNextUp = false;
+      return;
+    }
+    if (fnState === 'tapped') {
+      // 톡 뒤 기다리는 중 늦게 다시 누른 키를 뗐다 (Wispr Flow와 같이 "key_release", 결정 76):
+      // 시작 후 0.5초가 지났으면 처음 누른 때부터의 녹음을 끝내고 입력한다. 늦은 누름 자체는 아무 일도 하지 않았다.
+      // 0.5초 안의 뗌은 진짜 누름 뒤에 올 수 없다(그 누름이 잠갔다) — 지금처럼 아무것도 하지 않는다. chord도 그대로 무시
+      if (!chord && deps.now() - dictationStartAt >= DEBOUNCE_MS) {
+        deps.clearTimeout(tapTimer);
+        fnState = 'idle';
+        command('stop');
+      }
       return;
     }
     if (fnState !== 'holding') return;
