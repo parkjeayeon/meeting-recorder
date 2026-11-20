@@ -9,7 +9,7 @@ const dictation = require('./dictation');
 const { complete, parseJson } = require('./cleanup');
 const sandbox = require('./sandbox');
 const glossary = require('./glossary');
-const { nameSpeakers, writeFileAtomic, writeJsonAtomic, copyFileAtomic, cleanGuess, inlineGuesses, toReviewItems, finalizeResults, noteVariants, stampFor, locateHeard, searchKeys, checkMinutes, smoothTurns } = require('../lib/core/index.mjs'); // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
+const { nameSpeakers, writeFileAtomic, writeJsonAtomic, copyFileAtomic, cleanGuess, inlineGuesses, toReviewItems, finalizeResults, noteVariants, stampFor, locateHeard, searchKeys, checkMinutes, smoothTurns, meetingVad } = require('../lib/core/index.mjs'); // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
 
 const LONG_TIMEOUT_MS = 10 * 60 * 1000; // 1시간짜리 회의도 여유 있게
 const SPEAKER = { mic: '나', system: '상대방' };
@@ -586,8 +586,13 @@ async function transcribeMeeting(dir, meta, settings, speakers, timing, report) 
     report('transcribe', { progress: 0 });
     const t = Date.now();
     const modelFile = path.join(app.getPath('userData'), 'models', MEETING_MODEL);
-    server = await dictation.startDedicatedServer(modelFile).catch(() => null);
+    // VAD는 MR_MEETING_VAD를 줄 때만 켠다 (재 보기용). 반복 구간 다시 받아쓰기도 같은 서버를 쓴다
+    const vad = meetingVad(process.env, fs.existsSync);
+    server = await dictation.startDedicatedServer(modelFile, { vad }).catch(() => null);
     timing.model = server ? 'large-v3' : 'large-v3-turbo';
+    // 기록에는 모델 경로를 빼고 값만 남긴다. 회의용 서버를 못 띄웠으면(turbo로 받아씀) VAD도 안 쓴 것
+    const vadUsed = server && vad ? { threshold: vad.threshold, padMs: vad.padMs, minSilenceMs: vad.minSilenceMs } : null;
+    if (vadUsed) timing.vad = vadUsed;
 
     const lines = [];
     const redo = []; // 같은 문장 반복으로 다시 받아쓴 구간
@@ -634,7 +639,7 @@ async function transcribeMeeting(dir, meta, settings, speakers, timing, report) 
     lines.sort((a, b) => a.start - b.start);
     // 중간 결과를 남겨 두면 나중에 스크립트 규칙을 바꿔도 녹취·화자 구분을 다시 돌리지 않아도 된다
     if (redo.length) timing.redo = redo;
-    writeJsonAtomic(path.join(dir, 'segments.json'), { model: timing.model, tracks, redo, segments: lines }, 0);
+    writeJsonAtomic(path.join(dir, 'segments.json'), { model: timing.model, ...(vadUsed ? { vad: vadUsed } : {}), tracks, redo, segments: lines }, 0);
     if (diarization?.segments) writeJsonAtomic(path.join(dir, 'diarization.json'), diarization, 0);
 
     const { text: transcript, speakerCount } = buildTranscript(lines, diarization, tracks);
@@ -884,4 +889,4 @@ function makeCleanScript(dir) {
 module.exports = {
   minutesSystem,
   decodeTo16k,
-  findLoops, nameSpeakers, buildTranscript, makeMinutes, canResume, addCheckItems, makeCleanScript, renameSpeaker, diarizeAvailable, readReview, makeReview, addReview, applyReview, setReviewStatus, chatReview, finalizeReview, retranscribeRange, applyRetranscribe, speakerTurns, revertReview, markReviewItems, reopenReview };
+  findLoops, nameSpeakers, buildTranscript, makeMinutes, transcribeMeeting, canResume, addCheckItems, makeCleanScript, renameSpeaker, diarizeAvailable, readReview, makeReview, addReview, applyReview, setReviewStatus, chatReview, finalizeReview, retranscribeRange, applyRetranscribe, speakerTurns, revertReview, markReviewItems, reopenReview };

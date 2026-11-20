@@ -128,6 +128,11 @@ HTML 차이는 React 껍데기(`<div style="display: contents;">`) 한 겹뿐이
 mkdir /tmp/m && cp -c ~/Documents/MeetingRecorder/<회의>/{mic.wav,meta.json} /tmp/m/
 npx electron scripts/dev/rerun-meeting.js /tmp/m
 ```
+`--transcribe-only`(폴더 앞뒤 어디든)를 붙이면 녹취 단계(16kHz 변환 → 조각별 Whisper → 반복 구간 다시 → 화자 구분)만 돌리고 LLM 단계는 건너뛴 뒤, 모델·VAD 값·녹취/화자 구분 시간·구간 수·글자 수·반복 구간 수와 길이·화자 수를 JSON 한 줄로 찍는다. 화자 수는 사본 `meta.json`의 `speakers`를 쓴다(없으면 자동).
+회의용 Whisper 서버의 VAD는 `MR_MEETING_VAD`에 Silero VAD ggml 모델의 절대 경로를 줄 때만 켜진다 — 재 보기 위한 스위치이고 앱 기능이 아니다. 변수가 없거나 파일이 없으면 지금과 같다. `MR_MEETING_VAD_THRESHOLD`(기본 0.3)·`MR_MEETING_VAD_PAD_MS`(200)·`MR_MEETING_VAD_MIN_SILENCE_MS`(500)로 값을 바꾼다. 쓴 값은 `segments.json`의 `vad`에 남는다.
+```bash
+MR_MEETING_VAD=$PWD/.work/vad/dl/ggml-silero-v5.1.2.bin npx electron scripts/dev/rerun-meeting.js --transcribe-only /tmp/m
+```
 결과의 `segments.json`의 `redo`에 다시 받아쓴 구간(시작·끝, 걸린 시간, 그래도 반복이 남았는지)이 남는다. 결과를 실제 회의에 넣을 때는 기존 파일을 회의 폴더 안 `이전 결과 (…)` 폴더로 옮겨 두고 복사한다.
 
 녹음 압축 전후 비교(2026-11-08)도 이 스크립트로 했다: 사본 폴더 셋(원본 WAV · `ffmpeg -af adelay=1S`로 1샘플 민 WAV · `afconvert -d aac -b 96000`으로 만든 `mic.m4a` + meta.json의 `files.mic.file`·`compressed`)을 차례로 돌려 녹취·확인 필요·회의록을 비교. 2시간 회의 한 번에 약 20분, LLM 단계는 다듬기 계정을 쓴다. **Mac이 잠들면 거의 멈춘다** — `caffeinate -dims`로 감싸고 뚜껑을 열어 둔다.
