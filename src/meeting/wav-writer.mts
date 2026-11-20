@@ -1,12 +1,20 @@
 // 디스크에 바로바로 쓰는 WAV(PCM 16bit) 작성기.
 // 헤더를 주기적으로 갱신해서 앱이 죽어도 그때까지 녹음된 부분은 재생 가능하다.
-const fs = require('fs');
+// 본체(src/main.js)가 녹음할 때 require('../lib/meeting/wav-writer.mjs')로 불러 쓴다 (결정 70).
+import fs from 'node:fs';
 
 const HEADER_BYTES = 44;
 const HEADER_REFRESH_MS = 5000;
 
-class WavWriter {
-  constructor(filePath, { sampleRate, channels = 1 }) {
+export class WavWriter {
+  declare filePath: string;
+  declare sampleRate: number;
+  declare channels: number;
+  declare dataBytes: number;
+  declare fd: number;
+  declare lastHeaderAt: number;
+
+  constructor(filePath: string, { sampleRate, channels = 1 }: { sampleRate: number; channels?: number }) {
     this.filePath = filePath;
     this.sampleRate = sampleRate;
     this.channels = channels;
@@ -16,7 +24,7 @@ class WavWriter {
     this.lastHeaderAt = Date.now();
   }
 
-  writeHeader() {
+  writeHeader(): void {
     const h = Buffer.alloc(HEADER_BYTES);
     const blockAlign = this.channels * 2;
     h.write('RIFF', 0);
@@ -36,10 +44,10 @@ class WavWriter {
   }
 
   // samples: Float32Array (-1..1)
-  append(samples) {
+  append(samples: Float32Array): void {
     const buf = Buffer.alloc(samples.length * 2);
     for (let i = 0; i < samples.length; i++) {
-      const s = Math.max(-1, Math.min(1, samples[i]));
+      const s = Math.max(-1, Math.min(1, samples[i]!));
       buf.writeInt16LE(s < 0 ? Math.round(s * 32768) : Math.round(s * 32767), i * 2);
     }
     fs.writeSync(this.fd, buf, 0, buf.length, HEADER_BYTES + this.dataBytes);
@@ -50,14 +58,12 @@ class WavWriter {
     }
   }
 
-  get durationSec() {
+  get durationSec(): number {
     return this.dataBytes / (this.sampleRate * this.channels * 2);
   }
 
-  close() {
+  close(): void {
     this.writeHeader();
     fs.closeSync(this.fd);
   }
 }
-
-module.exports = { WavWriter };

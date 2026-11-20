@@ -1,15 +1,9 @@
 import fs from 'node:fs';
-import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import * as mod from './import-audio.mjs';
 
-type Guess = { at: Date; source: 'name' | 'mtime' | 'now' };
-const mod = createRequire(import.meta.url)('../import-audio.js') as {
-  timeFromName: (name: string, now?: Date) => Date | null;
-  guessStart: (files: string[]) => Promise<Guess>;
-  importAudio: (files: string[], dir: string, opts?: { startedAt?: string | null }) => Promise<string>;
-};
 const { timeFromName } = mod;
 const now = new Date(2026, 10, 6, 20, 0, 0);
 const at = (name: string) => {
@@ -91,5 +85,51 @@ describe.runIf(process.platform === 'darwin' && fs.existsSync('/usr/bin/afconver
     expect(new Date(JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8')).startedAt).getTime()).toBe(new Date(2025, 2, 4, 9, 30).getTime());
     const dir2 = await mod.importAudio([wav('2026-01-02 10-00-00.wav')], root, { startedAt: '2099-01-01T00:00:00Z' });
     expect(path.basename(dir2)).toBe('2026-01-02_10-00-00_meeting');
+  }, 30000);
+});
+
+// ── 여러 파일: 이름 순서(숫자는 크기 순)로 이어 붙이고, 표준 44바이트 머리로 다시 쓴다 ──
+function tone(name: string, sec: number, level: number) {
+  const rate = 16000;
+  const n = rate * sec;
+  const b = Buffer.alloc(44 + n * 2);
+  b.write('RIFF', 0); b.writeUInt32LE(36 + n * 2, 4); b.write('WAVEfmt ', 8); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22);
+  b.writeUInt32LE(rate, 24); b.writeUInt32LE(rate * 2, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34); b.write('data', 36); b.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i++) b.writeInt16LE(level, 44 + i * 2);
+  const f = path.join(tmp, name);
+  fs.writeFileSync(f, b);
+  return f;
+}
+
+describe('가져오기 형식 확인', () => {
+  it('모르는 형식이면 파일 이름과 함께 알린다', async () => {
+    await expect(mod.describe(['/a/회의.wav', '/a/메모.txt'])).rejects.toThrow('가져올 수 없는 형식입니다: 메모.txt');
+    await expect(mod.importAudio(['/a/회의.WAV', '/a/표.xlsx'], tmp)).rejects.toThrow('가져올 수 없는 형식입니다: 표.xlsx');
+    await expect(mod.importAudio([], tmp)).rejects.toThrow('가져올 파일이 없습니다');
+    expect(mod.EXTS).toContain('.m4a');
+  });
+});
+
+describe.runIf(process.platform === 'darwin' && fs.existsSync('/usr/bin/afconvert'))('여러 파일 이어 붙이기', () => {
+  it('이름 순서(10이 2 뒤), 표본율 16kHz 유지, 파일별 시작 시각·길이를 meta.imported에', async () => {
+    const files = [tone('녹음 10.wav', 1, 3000), tone('녹음 2.wav', 2, -2000)];
+    const list = await mod.describe(files);
+    expect(list.map((x) => x.name)).toEqual(['녹음 2.wav', '녹음 10.wav']);
+    expect(list.map((x) => Math.round(x.durationSec ?? 0))).toEqual([2, 1]);
+
+    const root = fs.mkdtempSync(path.join(tmp, 'join-'));
+    const dir = await mod.importAudio(files, root, { startedAt: new Date(2026, 0, 5, 9, 0).toISOString(), notes: '  녹음 전 합의한 것  ', speakers: 3 });
+    const b = fs.readFileSync(path.join(dir, 'mic.wav'));
+    expect([b.toString('ascii', 0, 4), b.toString('ascii', 36, 40), b.readUInt32LE(24), b.readUInt32LE(40)]).toEqual(['RIFF', 'data', 16000, b.length - 44]);
+    expect(b.length - 44).toBe(3 * 16000 * 2);
+    // 앞 2초는 '녹음 2'(-2000), 뒤 1초는 '녹음 10'(3000)
+    expect([b.readInt16LE(44 + 1000 * 2), b.readInt16LE(44 + (2 * 16000 + 1000) * 2)]).toEqual([-2000, 3000]);
+    const meta = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8'));
+    expect(meta).toMatchObject({ mode: 'meeting', sampleRate: 16000, bitDepth: 16, files: { mic: { file: 'mic.wav', durationSec: 3 } }, speakers: 3, notes: '녹음 전 합의한 것' });
+    expect(meta.imported).toEqual([{ name: '녹음 2.wav', offsetSec: 0, durationSec: 2 }, { name: '녹음 10.wav', offsetSec: 2, durationSec: 1 }]);
+    expect(new Date(meta.endedAt).getTime() - new Date(meta.startedAt).getTime()).toBe(3000);
+    // 같은 시각으로 또 가져오면 -2를 붙인다
+    const again = await mod.importAudio([files[1]!], root, { startedAt: new Date(2026, 0, 5, 9, 0).toISOString() });
+    expect(path.basename(again)).toBe('2026-01-05_09-00-00_meeting-2');
   }, 30000);
 });
