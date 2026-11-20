@@ -42,6 +42,7 @@
   - `docs/renderer-architecture.md`: 머리말의 "남은 일" 둘이 끝났음을 적고, 고정 대기는 `waitForTimeout` 7곳이 남았다고 고침.
   - `docs/testing.md`: `npm run typecheck`가 보는 범위(화면·preload·E2E·경계 검사까지), 경계 검사 규칙에서 지운 `legacy/` 빼기.
   - `PRODUCT.md`: "통계 화면은 아직 없음" → 있음.
+- **회의 녹취에 VAD를 켤지 재고 켜지 않기로 함** (앱 동작 바뀜 없음): 19분·102분·125분 회의 사본으로 첫 받아쓰기만(앱 밖)과 앱의 녹취 과정 그대로(`rerun-meeting.js --transcribe-only`)를 비교했다. VAD는 첫 받아쓰기의 반복을 크게 줄이지만, 반복 구간 다시 받아쓰기까지 치면 세 회의 모두 내용이 더 적었다(−2%, −9%, −19%). 개발자용 스위치 `MR_MEETING_VAD`는 다시 잴 수 있게 남긴다. [결정 73](docs/decisions.md), [measurements.md](docs/measurements.md).
 
 ## 2026-11-14
 
