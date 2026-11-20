@@ -76,6 +76,7 @@ describe('받아쓰기 기록 화면', () => {
     const { page, text } = mount(async (query) => (query.q === '1' ? new Promise<DictPage>((r) => slow.push(() => r(fakePage(query)))) : fakePage(query)));
     await flush();
     const box = page.el.querySelector('input[type=search]') as HTMLInputElement;
+    expect(box.getAttribute('spellcheck')).toBe('false'); // 검색어에 맞춤법 밑줄이 생기지 않게 (shared/ui SearchBox)
     box.value = '1';
     box.dispatchEvent(new Event('input')); // 화면 시험이 넣는 방식 그대로
     await act(async () => vi.advanceTimersByTime(300));

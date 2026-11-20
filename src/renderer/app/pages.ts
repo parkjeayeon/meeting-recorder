@@ -50,6 +50,12 @@ export function createPages({ api, history, issues, settingsStore, session, rout
   let askStore: AskStore;
   let vocabulary: VocabularyModel;
 
+  // 회의를 연다. review면 확인 필요 탭으로 (회의 목록의 '확인하기'·홈의 확인할 회의가 같이 쓴다)
+  const goMeeting = (id: string, review = false) => {
+    if (review) meeting.openReview(id);
+    location.hash = `#meeting/${encodeURIComponent(id)}`;
+  };
+
   const routes: RouteTable = {
     home: { title: '홈', mount: () => reactPage(HomePage, { source: homeSource, actions: homeActions }) },
     dictations: { title: '받아쓰기', mount: () => reactPage(DictationsPage, { source: dictationsSource, actions: dictationsActions }) },
@@ -82,6 +88,7 @@ export function createPages({ api, history, issues, settingsStore, session, rout
       openSettings: (sec) => openSettings(sec),
       openMeetingStart: () => recording.openStart(),
       openMeetings,
+      openReview: (id) => goMeeting(id, true),
       dismissIssue: (key) => issues.set(key, null),
       copy: (text) => api.copy(text),
       repaste: async (text) => {
@@ -178,10 +185,6 @@ export function createPages({ api, history, issues, settingsStore, session, rout
 
   function createMeetings() {
     // ── 회의 목록 ────────────────────────────────────────────────────────────
-    const goMeeting = (r: MeetingItem, review = false) => {
-      if (review) meeting.openReview(r.id);
-      location.hash = `#meeting/${encodeURIComponent(r.id)}`;
-    };
     // 회의 목록 화면(React)이 읽는 창구와 명령. 갈래(meetFilter)는 주인인 여기 — 질문으로 찾기가 탭을 열고 홈이 갈래를 골라 들어온다.
     // 질문 탭은 질문으로 찾기 store를 읽는다 (질문이 바뀌면 store가 알린다)
     session.initializeMeetings();
@@ -191,8 +194,8 @@ export function createPages({ api, history, issues, settingsStore, session, rout
     );
     meetingsActions = {
       setFilter: setMeetFilter,
-      openMeeting: (r) => goMeeting(r),
-      openReview: (r) => goMeeting(r, true),
+      openMeeting: (r) => goMeeting(r.id),
+      openReview: (r) => goMeeting(r.id, true),
       trash: (list) => trashMeetings(list),
       trashStrays: (list) => trashStrays(list),
       reveal: (dir) => api.reveal(dir),

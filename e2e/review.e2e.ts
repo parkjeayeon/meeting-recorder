@@ -167,3 +167,30 @@ test('확인 필요 · 키보드로 훑기', async ({ page, go, id, called }) =>
     await expect.poll(focusedCard).toBe(ids[2]);
   });
 });
+
+test('확인 필요 · 채팅은 항목을 덮지 않고 Escape로 닫힌다', async ({ page, go, id }) => {
+  await toReview({ page, go, id });
+  const card = page.locator('.review-list .ritem[data-id="r1"]'); // 추정(Memcached)이 있어 적용 버튼이 있는 항목
+  const chat = page.locator('.chat');
+  await test.step('기본 창 크기(1240px)에서 채팅을 열면 본문이 비켜 서서 항목 오른쪽 끝이 채팅 왼쪽 끝보다 왼쪽', async () => {
+    await card.getByRole('button', { name: /채팅/ }).click();
+    await expect(chat).toBeVisible();
+    await expect(chat.getByRole('textbox')).toBeFocused();
+    const cardBox = (await card.boundingBox())!;
+    const chatBox = (await chat.boundingBox())!;
+    expect(cardBox.x + cardBox.width).toBeLessThan(chatBox.x);
+    // 적용 버튼 한가운데에 다른 것이 덮여 있지 않다
+    const apply = card.getByRole('button', { name: '적용', exact: true }).first();
+    expect(await apply.evaluate((b) => {
+      const r = b.getBoundingClientRect();
+      return b.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+    })).toBe(true);
+    // 비켜 선 만큼 본문 칸에 가로 막대가 생기지 않는다
+    expect(await page.locator('#view').evaluate((v) => v.scrollWidth <= v.clientWidth)).toBe(true);
+  });
+  await test.step('Escape로 닫으면 연 채팅 버튼으로 포커스가 돌아온다', async () => {
+    await page.keyboard.press('Escape');
+    await expect(chat).toHaveCount(0);
+    await expect(card.getByRole('button', { name: /채팅/ })).toBeFocused();
+  });
+});

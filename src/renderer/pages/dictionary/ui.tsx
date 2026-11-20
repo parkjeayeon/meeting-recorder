@@ -31,7 +31,7 @@ export function DictionaryPage({ model }: { readonly model: VocabularyModel }) {
         </div>
       </div>
       <div className="add-row">
-        <input ref={input} type="text" placeholder="단어나 이름 (예: PJY, Whisper, 김신우)" />
+        <input ref={input} type="text" placeholder="단어나 이름 (예: PJY, Whisper, 김신우)" spellCheck={false} />
         <button className="btn primary" onClick={() => void add()}>
           <Icon id="i-plus" />
           추가
