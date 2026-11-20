@@ -123,7 +123,10 @@ export function PlayerBody({ playback, raw, color, durationSec, missing }: Playe
         role="slider"
         aria-label="재생 위치"
         tabIndex={0}
+        aria-valuemin={0}
+        aria-valuemax={Math.round(T)}
         aria-valuenow={Math.round(s.time)}
+        aria-valuetext={`${clock(s.time)} / ${clock(T)}`}
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture(e.pointerId);
           dragging.current = true;

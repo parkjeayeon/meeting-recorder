@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import { parseScript } from '../../../core/script.mts';
 import { createIslands } from '../../shared/page-host/index.tsx';
-import { createPlayback, playingIndex, ScriptBody, speakerRuns, SpeakerBarBody } from './index.ts';
+import { createPlayback, PlayerBody, playingIndex, ScriptBody, speakerRuns, SpeakerBarBody } from './index.ts';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const lines = parseScript(['[00:02] [화자 1] 배포 얘기', '[00:06] [화자 2] 화요일 오전', '[00:11] [화자 1] QA는 월요일', '설명 줄'].join('\n'));
@@ -43,6 +43,20 @@ describe('재생', () => {
 
   it('재생 중인 줄: 지금 시각 직전 줄, 멈춘 채 0초면 없음', () => {
     expect([playingIndex([2, 6, 11], 7, false), playingIndex([2, 6, 11], 1, false), playingIndex([2, 6, 11], 0, true)]).toEqual([1, -1, -1]);
+  });
+
+  it('재생 위치 막대: 화면 읽기 프로그램용 범위·현재 값과 "지금 / 전체" 글', () => {
+    const audio = fakeAudio();
+    const pb = createPlayback(audio, { initial: false, save: vi.fn() });
+    act(() => createIslands().mount(host, PlayerBody, { playback: pb, raw: lines, color: () => 'var(--s1)', durationSec: 3730, missing: [] }));
+    const slider = host.querySelector('[role="slider"]')!;
+    const attrs = () => ['aria-valuemin', 'aria-valuemax', 'aria-valuenow', 'aria-valuetext'].map((a) => slider.getAttribute(a));
+    expect(attrs()).toEqual(['0', '3730', '0', '00:00 / 1:02:10']);
+    act(() => {
+      audio.currentTime = 750;
+      audio.dispatchEvent(new Event('timeupdate'));
+    });
+    expect(attrs()).toEqual(['0', '3730', '750', '12:30 / 1:02:10']);
   });
 
   it('화자 덩어리: 같은 사람이 8초 안에 이어 말하면 한 덩어리, 한 줄은 최대 30초', () => {
