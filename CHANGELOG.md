@@ -5,6 +5,16 @@
 
 ---
 
+## 2026-11-20
+
+### 문서
+- **React·Playwright 전환 전 상태로 남아 있던 문서를 지금 코드에 맞춤** (코드 바뀜 없음): 문서를 코드와 대조해 어긋난 곳을 고쳤다.
+  - `docs/known-issues.md`: 없어진 `src/renderer/app.js`를 말하던 세 곳(3,400줄 한계 → 지금 남은 `pages/meeting/controller.ts` 약 1,050줄, 코어와 겹친 스크립트 해석 복사본 → 화면이 코어를 쓰므로 지움, "화면별 파일로 나누기" 할 일 → 끝남). 스타일 나누기와 맞춤법 검사 끄기는 "전환 때 한다"에서 "전환은 끝났고 아직 안 했다"로 바꾸고 할 일에 올림.
+  - `README.md` 구조 절: 없는 파일(`src/renderer/onboarding.js`·`recorder.js`)을 지금 자리(`features/configuration/`, `features/recording/capture.ts`)로, 두 번 나오던 `src/renderer/` 줄을 하나로.
+  - `docs/renderer-architecture.md`: 머리말의 "남은 일" 둘이 끝났음을 적고, 고정 대기는 `waitForTimeout` 7곳이 남았다고 고침.
+  - `docs/testing.md`: `npm run typecheck`가 보는 범위(화면·preload·E2E·경계 검사까지), 경계 검사 규칙에서 지운 `legacy/` 빼기.
+  - `PRODUCT.md`: "통계 화면은 아직 없음" → 있음.
+
 ## 2026-11-14
 
 ### 기능

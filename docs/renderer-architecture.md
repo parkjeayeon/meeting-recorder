@@ -1,7 +1,7 @@
 # 화면 구조 — TypeScript + React
 
 전환 완료(2026-11-13). `src/renderer/legacy/`는 삭제했다. `main.ts`가 `app/boot.ts`의 `startRenderer()`를 호출하고, `app/`이 상태·명령·화면을 엮는다.
-남은 일: 녹음 위 막대·회의 시작 창 마크업의 React 전환(보류, `feat/recording-react`), E2E 시험의 Playwright 전환(다음 단계).
+그 뒤 남았던 두 가지 — 녹음 위 막대·회의 시작 창 마크업의 React 전환, E2E 시험의 Playwright 전환 — 도 끝났다(2026-11-14, [결정 68](decisions.md)). 아래 글에서 옛 시험 도구(`el.value = …`로 입력, 건수 48·46·7)를 말하는 곳은 전환 당시의 기록이다. 지금 시험은 [testing.md](testing.md).
 
 pstack `architect`로 설계했다(2026-11-12): 같은 문제를 Opus·Codex가 따로 설계하고, Codex가 채점하고, 하나로 합쳤다. 계획 전체는 [react-migration.md](react-migration.md), 결정은 [결정 61](decisions.md).
 
@@ -63,7 +63,7 @@ API 타입: `src/preload.js`에 함수를 더하면 그것만 고친다. 화면 
 
 ## 열린 질문과 위험
 - 화면 코드의 `clock()`은 음수 초를 0으로 막고 코어의 `clock()`은 안 막는다 — 동작을 유지해 두 계산을 그대로 뒀다.
-- E2E 시험의 고정 대기(600~1,500ms)는 Playwright 전환 때 자동 대기로 바꾼다.
+- E2E 시험의 고정 대기(600~1,500ms)는 Playwright 전환 때 대부분 자동 대기(`expect`·`expect.poll`)로 바꿨다. `waitForTimeout`이 `e2e/`에 7곳 남아 있다.
 - 오디오 워크릿·`rec://` 재생·글꼴이 설치본(asar)에서 그대로인지는 설치해서 확인한다(묶음은 `lib/`로 들어간다).
 
 ## 전환 기록 (완료)

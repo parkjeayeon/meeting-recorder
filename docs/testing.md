@@ -4,7 +4,7 @@
 
 ## 빌드 전 자동 검사 — `npm run dist`
 `npm run dist`(`npm run install-app`도)는 빌드 전에 아래를 차례로 돌리고, 실패하면 빌드하지 않는다.
-1. 타입 검사 `npm run typecheck` (`src/core`·`src/cli`의 TypeScript)
+1. 타입 검사 `npm run typecheck` (코어·명령줄 도구, 화면 `tsconfig.renderer.json`, preload, E2E 시험의 TypeScript + 화면 경계 검사. 본체 `src/*.js`는 preload 말고는 검사하지 않는다)
 2. 단위 테스트 `npm test` (컴파일 후 Vitest, 1초 안팎)
 3. 키보드 처리기 검사 `node scripts/dev/check-handlers.js` (1초 미만)
 4. E2E 시험 `playwright test --project=e2e` (`npm run test:e2e`와 같음, 약 25초): 기능 시험·화면 시험·떠 있는 막대·검증 스킬 흐름 59건, 아래
@@ -61,7 +61,7 @@
 
 ## 화면 묶음과 경계
 - 화면은 `lib/renderer/main.js`로 묶어 띄운다 — 시험 스크립트를 `electron …`으로 바로 돌릴 땐 먼저 `npm run build:renderer` (`npm run test:*`·`dist`는 알아서). 묶음이 없으면 가짜 API가 콘솔에 크게 알리고, `verify/doctor.js`가 원본보다 오래됐는지 본다.
-- `node scripts/dev/check-boundaries.js` (`npm run typecheck`가 돌림): 화면 가져오기 경계 — `legacy/`는 `main.ts`만, FSD 층 순서, 다른 조각은 `index`로만, Node·Electron 금지.
+- `node scripts/dev/check-boundaries.js` (`npm run typecheck`가 돌림): 화면 가져오기 경계 — FSD 층 순서(같은 층의 다른 조각도 금지), 다른 조각은 `index`로만, Node·Electron 금지(화면 밖은 `src/core` 순수 모듈과 preload 타입만), 문자열이 아닌 동적 import 금지.
 - `src/renderer/shared/page-host/index.test.tsx` (`npm test`, jsdom): 이음새 `reactPage`.
 
 ## 단위 테스트 — `npm test`
