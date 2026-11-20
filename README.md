@@ -123,7 +123,7 @@ fn 규칙은 Wispr Flow 앱 코드에서 확인한 값을 따른다 (`DICTATION_
 1. 말소리 크기(-50dBFS 이상)가 0.3초 미만이면 무음으로 보고 Whisper에 넘기지 않는다 (무음에서 "감사합니다"를 지어내는 문제 방지)
 2. 로컬 Whisper(large-v3-turbo q8_0, 약 0.9GB)로 변환. `whisper-server`를 앱이 띄워 모델을 메모리에 올려 두므로 짧은 문장은 0.3초 안팎
 3. Whisper가 무음·잡음에서 자주 지어내는 문장("감사합니다", "시청해 주셔서 감사합니다" 등)은 입력하지 않는다
-4. (선택) 다듬기: 군말·자기 정정·띄어쓰기 정리 (`src/cleanup.js`)
+4. (선택) 다듬기: 군말·자기 정정·띄어쓰기 정리 (`src/llm/cleanup.mts`)
    - 자동: Claude Code(`claude -p`, 약 2.5초) → Codex(`codex exec`, 약 3.5~5초) → Anthropic API 키(`claude-opus-5-5`, safeStorage 암호화 저장) 순으로 로그인된 것
    - 설정 › 다듬기에서 로그인된 계정마다 **남은 사용량**을 보여 준다 (Claude Code: 현재 세션·이번 주·모델별, Codex: 이번 주·크레딧, 초기화 시각, 20% 미만 주황). 토큰을 쓰지 않는 `claude -p /usage`·`codex app-server`로 읽고 5분 동안 저장해 둔다 ([결정 49](docs/decisions.md))
    - 600자가 넘으면 문장 단위로 나눠 최대 4개를 동시에 다듬고 다시 잇는다. 실패한 조각은 원문 그대로 둔다
@@ -234,8 +234,8 @@ mr schema actions           # 출력 JSON Schema
 - `src/setup.js`: 엔진 설치·크기·삭제 (설정 › 엔진, 처음 설정)
 - `src/sandbox.js`: 외부 프로그램을 감싸는 macOS 샌드박스 프로필
 - `src/dictation.js`: whisper-server 관리(고아 정리 포함), 모델 다운로드, 무음·지어낸 문장 거르기, 붙여 넣기
-- `src/cleanup.js`: 다듬기·회의록 작성 호출 (Claude Code / Codex / API, 긴 글 나누기, CLI 실패 이유를 로그인·한도·시간 초과로 나눔)
-- `src/usage.js`: 다듬기 계정의 남은 사용량 (Claude Code `/usage` 글 → 규칙, 못 읽으면 LLM·숫자 검증 / Codex app-server JSON, 5분 저장)
+- `src/llm/`: LLM 층 (TypeScript, Electron 없이 돎, `npm run build:ts` → `lib/llm/`) — 계정 고르기와 호출(Claude Code / Codex / API, CLI 실패 이유를 로그인·한도·시간 초과로 나눔), 받아쓴 글 다듬기(긴 글 나누기), 남은 사용량(Claude Code `/usage` 글 → 규칙, 못 읽으면 LLM·숫자 검증 / Codex app-server JSON, 5분 저장)
+- `src/cleanup.js`, `src/usage.js`: LLM 층을 본체에 잇는 얇은 파일 (앱 데이터 폴더·지금 설정을 넘김, [결정 70](docs/decisions.md))
 - `src/import-audio.js`: 녹음 파일 가져오기 (afconvert로 16비트 모노 WAV, 여러 개면 이름 순서대로 이어 붙임)
 - `src/actions.js`: 액션 (할 일·조언을 LLM이 뽑고 녹취 인용으로 확인)
 - `src/flow.js`: 흐름도 (요청할 때 원본·정리본·회의록으로 흐름을 뽑고 녹취 인용으로 검증, 그림마다 채팅·다시 만들기)

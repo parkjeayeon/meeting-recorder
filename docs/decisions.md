@@ -458,3 +458,13 @@
 - **한 일:** `scripts/build-app.mjs`가 이름을 `Meeting Recorder.app` 하나로 묶는다(package.json의 productName 그대로). 설치(`npm run install-app`)는 `/Applications`의 `Meeting Recorder*.app`(예전 버전 붙은 이름 포함)을 지우고 복사한다.
 - **이유:** 2026-11-13에 어떤 빌드가 깔렸는지 보이게 이름에 버전·빌드 시각을 붙였는데, 설치할 때마다 앱 이름이 바뀌어 Dock·로그인 항목·권한 목록에 옛 이름이 남고 교체가 번거로웠다(이름의 괄호가 프로세스 찾기를 깨뜨린 일도 있었다).
 - **트레이드오프:** Finder·Dock에서 어떤 빌드인지 이름으로는 안 보인다 — git 기록과 CHANGELOG로 본다.
+
+## 70. 본체(메인 프로세스)를 관심사별 TypeScript로 — Electron은 그대로, Rust는 하지 않음, 한 덩어리씩 (2026-11-20)
+- **누가:** 사용자 ("JS 하나로 되어 있는 게 마음에 걸린다, 테스트하기 쉽게 폴더를 나눠 리팩터링하자. 크롬 기능을 안 쓰면 서버만 Rust로 해도 된다") → 제안(Rust 없이 TypeScript로)을 사용자가 승인.
+- **배경:** 화면은 React + TypeScript로 옮겼지만(결정 60) 본체는 CommonJS `src/*.js` 15개 5,243줄로 남았고, `main.js`(1,432줄)와 `minutes.js`(1,424줄)가 절반을 넘는다. 타입 검사 밖이고 단위 시험이 거의 없다.
+- **선택지:** ① 본체를 Rust로(Tauri) ② Electron은 두고 서버만 Rust로 떼기 ③ JS 그대로 `checkJs`만 켜기 ④ 관심사별로 `src/<영역>/*.mts`로 옮기고 옛 `.js`는 얇은 연결 파일로 줄이다 없애기.
+- **결정과 이유:** ④. 녹음이 Chromium 기능(`getUserMedia`, `getDisplayMedia` + loopback, `AudioWorklet`)을 쓰고 E2E 59건·화면 캡처 93장이 Playwright의 Electron 지원에 기대므로 ①은 녹음과 시험을 다시 만들어야 한다. 무거운 일(Whisper·pyannote·Claude/Codex 호출)은 이미 별도 프로세스라 Rust로 얻는 속도가 없고, ②는 언어·빌드·통신 층만 늘린다. ③은 큰 파일과 얽힌 의존을 그대로 둔다. ④는 코어를 옮길 때 쓴 방식(결정 43: `.mts` → `lib/`, 본체가 `require()`로 불러 씀) 그대로라 새 빌드 길이 필요 없다.
+- **규칙:** 동작은 그대로(결정 60과 같은 기준) — 기존 시험을 고치지 않고 통과. 새 모듈은 Electron을 가져오지 않고, Electron이 아는 값(앱 데이터 폴더 등)과 설정은 연결 파일이 넘긴다 → 단위 시험이 그 모듈을 바로 불러 쓸 수 있다. PR 하나에 한 영역.
+- **순서:** LLM 층(`cleanup.js`·`usage.js`) → `minutes.js`(소리 변환 / 녹취 / 화자 구분 / 스크립트 조립 / 확인 필요 / 구간 다시 받아쓰기 / 확인 마치기) → `main.js`(fn 상태 머신, IPC 처리기를 영역별로).
+- **트레이드오프:** 얻은 것 — 타입 검사·단위 시험이 닿는 범위가 영역마다 늘고, 위험이 PR 하나 크기로 나뉜다. 감수한 것 — 옮기는 동안 `.js` 연결 파일과 `.mts`가 같이 있다. `scripts/dev`의 시험이 `src/cleanup.js`의 함수를 가짜로 바꿔 끼우므로(ESM 내보내기는 못 바꾼다) 그 연결 파일은 시험을 손볼 때까지 남는다.
+- **한 일 (첫 덩어리, LLM 층):** `src/llm/` — `providers.mts`(실행 파일·실행·로그인), `call.mts`(계정 순서·호출), `cleanup.mts`(다듬기), `usage.mts`(남은 사용량), `text.mts`(글 나누기·잇기·JSON 꺼내기). `cleanup.js` ↔ `usage.js`가 서로를 늦게 `require`하던 순환은 `index.mts`가 사용량 훅을 끼워 넣는 것으로 바꿨다.
