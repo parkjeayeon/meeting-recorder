@@ -45,6 +45,15 @@ API 타입: `src/preload.js`에 함수를 더하면 그것만 고친다. 화면 
 - **코어는 원본에서.** 화면이 `../../core/*.mts`를 바로 가져오고 Vite가 묶는다(`lib/core`는 본체·명령줄 도구용).
 - **설치본**: `lib/**`(묶음 포함)는 그대로 들어가고, 화면 원본(`*.ts(x)`, `style.css`, `fonts/`)은 뺀다. `index.html`·`recorder-worklet.js`는 들어간다.
 
+## 회의 페이지 주인 — 역할 모듈 (2026-11-21, [결정 77](decisions.md))
+`pages/meeting/controller.ts`의 `meetingPage(id, deps)`는 엮기만 한다(약 100줄): 맥락(`PageCtx`, `state.ts`) 하나를 만들고, 역할마다 `createX(ctx, 고른 다른 역할)`로 만들고, 그리기·문서 키·떠날 때 치우기를 잇는다. 역할 팩토리는 만들 때 아무것도 하지 않는다 — 문서·창에 붙이는 것은 `meetingPage`가 옛 차례 그대로 한다.
+- `paint.ts` 그리기(view·version·그린 페이지·`focusWant`·한글 조합 중 미룬 그리기) · `view.ts` `draw()`(머리·탭·본문 값 모으기)와 탭 고르기 명령·상태가 바뀐 경우에만 다시 그리기
+- `review.ts` 확인 필요 명령과 탭 상태(고른 항목·고쳐 쓴 말·직접 고르는 구간·보기·직접 추가 입력칸) · `review-chat.ts` 확인 필요 채팅·구간 다시 받아쓰기 · `chats.ts` 채팅 자리(열린 채팅 하나·연 버튼·닫기)
+- `flows.ts` 흐름도 명령·흐름도 채팅·그림 폭·창 크기 · `terms.ts` 용어 카드·용어 칸·'설명 추가' · `actions.ts` · `minutes-doc.ts` 회의록 본문 값 · `script.ts` 스크립트·화자·이름 바꾸기 · `menu.ts` 머리 메뉴·상태 카드·압축
+- `find.ts` ⌘F 막대 · `keys.ts` 문서 키(⌘F·⌘G·Escape·스페이스)
+
+상태는 주인 역할 안에 든다. 여러 역할이 쓰는 것만 맥락의 이름 붙은 함수로: 보일 탭(`ctx.tab`·`ctx.setTab` — `meetingPage`가 든다), 다음 그리기의 포커스(`ctx.wantFocus` → paint), 쓰던 글(`ctx.drafts` — 확인 필요 카드 칸·채팅 제안 칸·그릴 흐름 칸이 같이), `ctx.draw`·`ctx.refreshDoc`. 다른 역할의 상태는 그 역할의 좁은 명령으로만 본다 — 채팅이 열렸나·기다리는 중인가(`chats`), 찾기 막대·용어 카드가 열렸나(`find.isOpen`·`terms.cardOpen`, Escape 차례), 직접 추가 입력칸에 글 넣기(`review.startAdd`). 다시 그리기는 그대로 안을 통째로 새로 만들기다 — 다시 그려도 남아야 하는 것은 주인 쪽(역할) 상태에 둔다.
+
 ## 초기 설계 결정 (2026-11-12)
 - **기준: Codex 안.** API 타입을 preload 객체에서 끌어내 두 번째 목록이 없고(Opus 안은 99개짜리 `preload-api.d.ts`를 따로 두고 타입 검사로 묶었다), 1단계 동안 옛 코드가 상태 주인이라 첫 화면 옮기기가 작다(Opus 안은 사전 화면을 옮기면서 설정 상태를 통째로 옮겨 옛 코드 약 25곳을 고친다). 교차 심사(Codex)도 이 안을 골랐다(21 : 18) — 심사자가 작성자와 같은 계열이라 근거를 따로 확인했다.
 - **Opus 안에서 옮겨 붙임:** ① 화면 문서를 그대로 두고 묶음만 불러오기(Codex 안은 `lib/renderer/index.html`로 옮겨 시험의 여는 코드를 고치고 `localStorage` 유지가 불확실했다) ② 설정 이름 `vite.renderer.config.mts`(Codex 안의 루트 `vite.config.mts`는 vitest를 깨뜨린다) ③ 시험하는 묶음 = 설치하는 묶음(`dist`가 한 번 묶어 둘 다 씀) ④ uncontrolled 입력칸·시험이 찾는 클래스 유지라는 함정 기록 ⑤ `check-handlers.js`를 하위 폴더·.ts(x)까지(안 그러면 옮긴 `app.js`를 조용히 안 본다).
@@ -56,7 +65,7 @@ API 타입: `src/preload.js`에 함수를 더하면 그것만 고친다. 화면 
 - API 함수의 인자·결과 타입은 처음엔 any/unknown. 99개를 미리 지어내지 않고 쓰는 곳이 생길 때 적는다. 인자 개수도 그때부터 검사된다.
 - 옮긴 화면도 시험이 찾는 클래스 이름을 그대로 둔다. 스타일은 파일을 나누지 않고 화면마다 `@scope`로 묶었다(2026-11-21, 결정 75).
 - 묶음을 줄이지 않는다(minify 끔) — 오류 위치를 읽을 수 있게.
-- 회의 페이지는 다시 그리기 = 안을 통째로 새로 만들기(`<Page key={version}>`)라 포커스·커서가 풀린다. 주인(`pages/meeting/controller.ts`)이 그리기 전후로 열쇠(`data-focus`)를 보고 되돌린다(`shared/ui`의 `focusMark`·`restoreFocus`, 주인이 정한 곳은 `focusWant`로 먼저). 회의 페이지에 포커스를 받는 칸을 새로 만들면 열쇠를 달고, 쓰던 글을 주인이 들게 한다 — 안 그러면 상관없는 다시 그리기에 쓰던 글과 포커스가 날아간다. 포커스를 옮기려고 타이머(`setTimeout`·`requestAnimationFrame`)를 쓰지 않는다: 늦게 와서 그사이 사용자가 옮겨 간 칸을 빼앗는다.
+- 회의 페이지는 다시 그리기 = 안을 통째로 새로 만들기(`<Page key={version}>`)라 포커스·커서가 풀린다. 주인의 그리기 역할(`pages/meeting/paint.ts`)이 그리기 전후로 열쇠(`data-focus`)를 보고 되돌린다(`shared/ui`의 `focusMark`·`restoreFocus`, 주인이 정한 곳은 `focusWant`로 먼저). 회의 페이지에 포커스를 받는 칸을 새로 만들면 열쇠를 달고, 쓰던 글을 주인이 들게 한다 — 안 그러면 상관없는 다시 그리기에 쓰던 글과 포커스가 날아간다. 포커스를 옮기려고 타이머(`setTimeout`·`requestAnimationFrame`)를 쓰지 않는다: 늦게 와서 그사이 사용자가 옮겨 간 칸을 빼앗는다.
 
 ## 버린 대안
 - **Vite 개발 서버 + HMR** (`loadURL`): 출처가 둘(별도 `localStorage`), 개발용 CSP(ws·inline), `main.js` 분기, 시험 5곳의 여는 코드 수정, 시험이 안 도는 개발 경로. 겉은 빠르지만 창이 코드를 받는 길이 늘어난다.

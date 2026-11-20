@@ -985,7 +985,7 @@ button.who:hover { color: var(--ink); text-decoration: underline; text-underline
 .chat { position: fixed; top: 52px; right: 16px; bottom: 16px; width: 400px; z-index: 40; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); box-shadow: var(--shadow-pop); animation: pop .22s cubic-bezier(.16, 1, .3, 1); user-select: text; }
 /* 채팅이 열리면 넓은 창에서는 본문이 채팅 폭만큼 비켜 선다 (결정 72). 채팅은 창 오른쪽 끝에서 416px(폭 400 + 여백 16)까지,
    본문 칸(.view)은 창 끝에서 9px 안쪽에서 끝나므로 408px이 겹친다 → 오른쪽 여백 44px에 408px을 더하고 max-width도 같이 늘려
-   본문 폭(1040 − 88)은 그대로 남은 자리 가운데에 둔다 (pages/meeting/controller.ts CHAT_SIDE·CHAT_DOCK_MIN과 같게).
+   본문 폭(1040 − 88)은 그대로 남은 자리 가운데에 둔다 (pages/meeting/flows.ts CHAT_SIDE·CHAT_DOCK_MIN과 같게).
    1160px보다 좁은 창은 본문이 너무 좁아져 예전처럼 채팅이 위에 뜬다. 오른쪽 아래 질문 버튼은 채팅 밑에 가려 마치기 띠가 자리를 비울 필요가 없다 */
 @media (min-width: 1160px) {
   .page.with-chat { max-width: calc(1040px + 408px); padding-right: calc(44px + 408px); }
