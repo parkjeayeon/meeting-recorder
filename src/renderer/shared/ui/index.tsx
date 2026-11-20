@@ -65,8 +65,7 @@ export function SearchBox({ placeholder, hidden = false, onInput }: { readonly p
   return (
     <label className="search" hidden={hidden}>
       <Icon id="i-search" />
-      {/* 옛 searchBox도 spellcheck: false를 주려 했지만 h()가 false 값을 건너뛰어 맞춤법 검사는 늘 켜져 있었다 — 동작을 그대로 두려고 같게 (docs/known-issues.md) */}
-      <input ref={input} type="search" placeholder={placeholder} />
+      <input ref={input} type="search" placeholder={placeholder} spellCheck={false} />
     </label>
   );
 }

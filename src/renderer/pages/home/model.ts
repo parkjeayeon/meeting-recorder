@@ -20,6 +20,8 @@ export type MeetFilter = 'hand' | 'rest' | 'all';
 export type TodoRow = { readonly mark: 'open' | 'fail' | 'ok' | 'plain'; readonly n: number; readonly title: string; readonly sub: string } & (
   | { readonly go: 'meetings'; readonly filter: MeetFilter }
   | { readonly go: 'meeting'; readonly id: string }
+  /** 그 회의의 확인 필요 탭 */
+  | { readonly go: 'review'; readonly id: string }
 );
 export interface Step {
   readonly key: 'perms' | 'dictate' | 'meeting';
@@ -68,7 +70,8 @@ function todoRows(meets: readonly MeetingItem[], strayCount: number): TodoRow[] 
   const hand = meets.filter((r) => ['open', 'draft'].includes(meetState(r)));
   if (hand.length) {
     const names = hand.slice(0, 2).map(meetTitle).join(' · ') + (hand.length > 2 ? ` 외 ${hand.length - 2}개` : '');
-    rows.push({ mark: 'open', n: hand.length, title: '확인할 회의', sub: names, go: 'meetings', filter: 'hand' });
+    // 하나뿐이면 목록을 거치지 않고 그 회의의 확인 필요 탭으로 바로
+    rows.push({ mark: 'open', n: hand.length, title: '확인할 회의', sub: names, ...(hand.length === 1 ? { go: 'review', id: hand[0]!.id } as const : { go: 'meetings', filter: 'hand' } as const) });
   }
   const rest = meets.filter((r) => ['fail', 'none'].includes(meetState(r)));
   if (rest.length) rows.push({ mark: 'fail', n: rest.length, title: '회의록이 없는 녹음', sub: '실패했거나 녹음만 저장된 회의 — 다시 만들 수 있습니다', go: 'meetings', filter: 'rest' });
