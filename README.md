@@ -244,7 +244,8 @@ mr schema actions           # 출력 JSON Schema
 - `src/renderer/`: 메인 창 화면 (홈 · 받아쓰기 · 회의 · 사전 · 통계 · 설정 · 처음 설정 · ⌘K). Pretendard 글꼴(OFL) 포함, 디자인 규칙은 `DESIGN.md`. `index.html`이 Vite로 묶은 `lib/renderer/main.js·main.css`를 불러온다(`npm run build:renderer`, 개발은 `npm run dev`). TypeScript·React와 FSD 층(`app/`·`pages/`·`features/`·`shared/` 등)을 쓰며 `app/boot.ts`에서 시작한다([docs/react-migration.md](docs/react-migration.md))
 - `src/core/`: Electron 없는 회의 데이터 읽기 (TypeScript·ESM, `npm run build:ts` → `lib/`). 화자 이름 바꿔 끼우기, 요약·확인 필요 요약, 액션, 스크립트 해석·마크다운 복사, 확인 필요 항목 다듬기(`review.mts`), 목록에 안 나오는 폴더(`stray.mts`), 남은 사용량 읽기(`usage.mts`), 계정 순서·CLI 오류 나누기(`route.mts`), 회의록 형식 검사(`check.mts`), 원자적 쓰기, TypeBox 스키마. 메인 프로세스·화면·명령줄 도구가 같이 쓴다
 - `src/cli/`: 명령줄 도구 `mr` (`mr.mts` 명령 처리, `mr.sh` 앱 안 실행 스크립트 → `Contents/Resources/mr`)
-- `src/minutes.js`: 회의 녹취(같은 문장 반복 구간 다시 받아쓰기) + 화자 구분 → 스크립트·정리본·회의록, 확인 필요(목록·적용·채팅·확인 마치기), 화자 이름 표시
+- `src/minutes.js`: 회의 녹취(같은 문장 반복 구간 다시 받아쓰기) + 화자 구분 → 스크립트·정리본·회의록, 구간 다시 받아쓰기, 화자 이름 표시
+- `src/review/`: 확인 필요 (TypeScript, Electron 없이 돎) — 목록 만들기·직접 추가·채팅·확인 마치기(`assist.mts`), 적용·되돌리기(`apply.mts`), review.json(`store.mts`)
 - `native/fn-listener.swift`: CGEventTap(listen-only)으로 fn down/up을 stdout으로 출력
 - `native/permissions.swift`: 권한 확인·요청, ⌘V 입력, 앞에 있는 앱 이름
 - `native/diarize.py`: pyannote 화자 구분 (앱 전용 파이썬 환경에서 실행)
