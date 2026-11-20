@@ -98,6 +98,7 @@ describe('회의 페이지', () => {
       source.changed();
     });
     expect(document.querySelector('.page')!.className).toBe('page with-chat');
+    expect(document.querySelector('.page.with-chat .meet-head > .meet-title h1')?.textContent).toBe('배포 회의'); // 채팅이 열리면 이 칸이 한 줄을 다 쓴다 (style.css)
     expect(document.querySelector('aside.chat')?.getAttribute('aria-label')).toBe('확인 필요 채팅');
   });
 

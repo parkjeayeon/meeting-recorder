@@ -150,7 +150,7 @@ function Actions({ m, c }: { readonly m: MeetingMenu; readonly c: MeetingCommand
 function Head({ h, menu, c }: { readonly h: MeetingHead; readonly menu: MeetingMenu; readonly c: MeetingCommands }) {
   return (
     <div className="meet-head">
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="meet-title">
         <h1>{h.title}</h1>
         <div className="meet-meta">
           <span className="tag">{h.when}</span>
