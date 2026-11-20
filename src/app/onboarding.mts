@@ -1,5 +1,5 @@
 // ── 처음 설정(온보딩): 어디까지 했는지 저장해 두고, 끝나면 본 화면으로 ─────────
-// src/main.js에서 옮김 (결정 70). fn 키 확인 단계 표시(fnTestMode)는 fn 상태 머신이 읽으므로 본체에 남고 setter로 바꾼다.
+// src/main.js에서 옮김 (결정 70). fn 키 확인 단계 표시(fnTestMode)는 fn 상태 머신(fn.mts)이 갖고, 본체가 넘긴 setter로 바꾼다.
 // 창·앱(app:focus)은 본체가 getter로 넘긴다 — 부를 때의 창을 쓴다.
 import type { Ipc } from './ipc.mjs';
 

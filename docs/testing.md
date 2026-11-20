@@ -89,6 +89,8 @@ fn 이벤트를 흉내 내 실제 녹음 흐름을 시험한다 (`src/main.js`�
 | 회의 녹음 중 fn | 무시 (새 녹음 없음) |
 | 회의 녹음 2.8초 | `saved …_meeting`, 회의록을 만들지 않음(`minutes.json`의 `status: short`) |
 
+fn 규칙 자체(위 시나리오와 처음 설정 중 막기·fn 키 확인 단계·버튼·20분 제한 등)는 `src/app/fn.test.mts`가 가짜 시계로 단위 시험한다 — 이 시간표도 가짜 녹음기로 돌려 위 표와 맞춰 본다. 셀프테스트는 그 규칙이 진짜 녹음기·받아쓰기·창과 이어져 도는지 보는 확인으로 남는다.
+
 셀프테스트는 임시 녹음 폴더(`SELFTEST recordings …`로 출력)에 녹음·받아쓰기 기록을 남겨 실제 녹음 폴더와 `dictations.jsonl`은 건드리지 않는다 (2026-11-05부터. 예전에는 실제 폴더에 써서 손으로 지웠고, `dictations.jsonl`을 통째로 되돌리다 실제 기록을 지운 적이 있다). 다만 앱 데이터(설정·모델·whisper-server 번호 파일)는 같이 쓰므로 설치된 앱은 먼저 끈다 — 켜 둔 채 돌리면 설치된 앱의 whisper-server를 고아로 보고 정리한다.
 
 ## 화면 캡처 비교 — `npm run test:screens` (`e2e/screens.e2e.ts`)
