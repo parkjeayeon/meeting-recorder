@@ -10,9 +10,8 @@ import os from 'node:os';
 import path from 'node:path';
 import * as sandbox from '../core/sandbox.mjs';
 import { writeJsonAtomic } from '../core/write.mjs'; // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
+import { platform } from '../platform/index.mjs'; // 소리 변환·정보 명령 (macOS afconvert·afinfo, 결정 78)
 
-const AFCONVERT = '/usr/bin/afconvert';
-const AFINFO = '/usr/bin/afinfo';
 export const EXTS = ['.wav', '.m4a', '.mp3', '.aac', '.caf', '.aif', '.aiff', '.flac', '.mp4', '.mov', '.3gp'];
 
 function run(cmd: string, args: string[], { write = [] as string[] } = {}): Promise<string> {
@@ -23,7 +22,7 @@ function run(cmd: string, args: string[], { write = [] as string[] } = {}): Prom
 }
 
 async function probe(file: string): Promise<{ rate: number | null; durationSec: number | null }> {
-  const out = await run(AFINFO, [file]).catch(() => '');
+  const out = await run(...platform.audio.info(file)).catch(() => '');
   return { rate: Number(/Data format:.*?(\d+) Hz/.exec(out)?.[1]) || null, durationSec: Number(/estimated duration: ([\d.]+)/.exec(out)?.[1]) || null };
 }
 const sampleRate = async (file: string): Promise<number | null> => (await probe(file)).rate;
@@ -132,7 +131,8 @@ export async function importAudio(files: string[], recordingsDir: string, { note
     const parts: { file: string; offset: number; size: number }[] = [];
     for (const [i, file] of sorted.entries()) {
       const out = path.join(tmp, `${i}.wav`);
-      await run(AFCONVERT, ['-f', 'WAVE', '-d', `LEI16@${rate}`, '-c', '1', file, out], { write: [tmp] }).catch((err) => {
+      const [bin, args] = platform.audio.convert(file, out, { format: 'wav', rate, channels: 1 });
+      await run(bin, args, { write: [tmp] }).catch((err) => {
         throw new Error(`${path.basename(file)}을(를) 변환하지 못했습니다: ${err.message}`);
       });
       parts.push({ file: out, ...dataChunk(out) });

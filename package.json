@@ -10,7 +10,7 @@
   "scripts": {
     "build:fn": "swiftc -O native/fn-listener.swift -o native/fn-listener && swiftc -O native/permissions.swift -o native/permissions",
     "build:ts": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.renderer.json && tsc -p tsconfig.preload.json && tsc -p tsconfig.e2e.json && node scripts/dev/check-boundaries.js && node scripts/dev/check-css-scope.js && node scripts/dev/check-ipc.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.renderer.json && tsc -p tsconfig.preload.json && tsc -p tsconfig.e2e.json && node scripts/dev/check-boundaries.js && node scripts/dev/check-css-scope.js && node scripts/dev/check-ipc.js && node scripts/dev/check-platform.js",
     "start": "npm run build:fn && npm run build:ts && npm run build:renderer && electron .",
     "selftest": "npm run build:fn && npm run build:ts && npm run build:renderer && electron . --selftest",
     "test": "npm run build:ts && vitest run --exclude '.claude/**'",

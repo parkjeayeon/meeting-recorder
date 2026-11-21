@@ -7,11 +7,13 @@ const { spawn } = require('child_process');
 const { app } = require('electron');
 const sandbox = require('./sandbox');
 const dictation = require('./dictation');
+// Homebrew 자리·uv 내려받기 주소는 플랫폼 층 (src/platform, 결정 78)
+const { platform } = require('../lib/platform/index.mjs');
 
 const PYANNOTE = 'pyannote.audio==4.0.7';
 const DIARIZE_MODEL = 'pyannote/speaker-diarization-community-1';
 const DIARIZE_MODEL_DIR = 'models--pyannote--speaker-diarization-community-1';
-const BREW_CANDIDATES = ['/opt/homebrew/bin/brew', '/usr/local/bin/brew'];
+const BREW_CANDIDATES = platform.paths.brew;
 const MODELS = {
   turbo: { file: 'ggml-large-v3-turbo-q8_0.bin', approx: 874e6 },
   large: { file: 'ggml-large-v3.bin', approx: 3.1e9 },
@@ -150,13 +152,13 @@ async function installDiarize() {
   if (!fs.existsSync(p.uv())) {
     step(1, 'uv 받는 중');
     const arch = process.arch === 'arm64' ? 'aarch64' : 'x86_64';
-    const url = `https://github.com/astral-sh/uv/releases/latest/download/uv-${arch}-apple-darwin.tar.gz`;
+    const { url, dir: uvDir } = platform.paths.uvArchive(arch);
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mr-uv-'));
     try {
       await download(url, path.join(tmp, 'uv.tar.gz'), (got, total) => set('diarize', { text: `1/4 uv 받는 중 ${mb(got)}`, pct: total ? got / total : null }));
       await run('/usr/bin/tar', ['xzf', path.join(tmp, 'uv.tar.gz'), '-C', tmp], { sandboxed: { write: [tmp], network: 'none' } });
       fs.mkdirSync(path.dirname(p.uv()), { recursive: true });
-      fs.copyFileSync(path.join(tmp, `uv-${arch}-apple-darwin`, 'uv'), p.uv());
+      fs.copyFileSync(path.join(tmp, uvDir, 'uv'), p.uv());
       fs.chmodSync(p.uv(), 0o755);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });

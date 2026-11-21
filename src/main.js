@@ -3,7 +3,7 @@ const { Readable } = require('stream');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { spawn, execFile, execFileSync } = require('child_process');
+const { spawn } = require('child_process');
 const { WavWriter } = require('../lib/meeting/wav-writer.mjs'); // 녹음 파일 쓰기 (src/meeting, 결정 70)
 const dictation = require('./dictation');
 const minutes = require('./minutes');
@@ -20,6 +20,8 @@ const setup = require('./setup');
 const core = require('../lib/core/index.mjs');
 // IPC 처리기 중 공유 상태가 적은 구역(기록·질문으로 찾기·토큰·권한·처음 설정·녹음 폴더 바꾸기)은 src/app (TypeScript, 결정 70)
 const appIpc = require('../lib/app/index.mjs');
+// 운영체제에 묶인 일(fn 키 듣기·고아 프로세스·권한 도우미·시스템 소리 방식·창 종류 등)은 플랫폼 층으로 (src/platform, 결정 78)
+const { platform } = require('../lib/platform/index.mjs');
 
 const SELFTEST = process.argv.includes('--selftest');
 const TAP_MAX_MS = 300; // 이보다 짧게 눌렀다 떼면 실수로 누른 것으로 보고 버린다
@@ -65,17 +67,8 @@ function setRecordingsDir(dir) {
 }
 
 // ── 시스템 오디오 캡처 경로 (Wispr Flow와 같은 분기) ──────────────────────
-// macOS 14.4+ : Core Audio Process Tap / 13~14.3 : ScreenCaptureKit / 그 이하 : 미지원
-function systemAudioCapability() {
-  if (process.platform === 'win32') return 'wasapi_loopback';
-  if (process.platform !== 'darwin') return 'unsupported';
-  const [major, minor] = process.getSystemVersion().split('.').map(Number);
-  if (major < 13) return 'unsupported';
-  if (major > 14 || (major === 14 && minor >= 4)) return 'process_tap';
-  return 'screen_capture_kit';
-}
-
-const capability = systemAudioCapability();
+// macOS 14.4+ : Core Audio Process Tap / 13~14.3 : ScreenCaptureKit / 그 이하 : 미지원. 고르는 일은 src/platform/system-audio.mts
+const capability = platform.systemAudio();
 if (capability === 'process_tap') {
   app.commandLine.appendSwitch('enable-features', 'MacCatapSystemAudioLoopbackCapture,MacLoopbackAudioForScreenShare');
 } else if (capability === 'screen_capture_kit') {
@@ -203,13 +196,11 @@ function killOrphanFnListeners(bin) {
   if (orphanFnChecked) return;
   orphanFnChecked = true;
   try {
-    for (const line of execFileSync('ps', ['-axo', 'pid=,ppid=,command=']).toString().split('\n')) {
-      const m = line.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/);
-      if (m && m[2] === '1' && m[3].trim() === bin) process.kill(Number(m[1]));
-    }
+    for (const { pid, command } of platform.processes.orphans()) if (command.trim() === bin) process.kill(pid);
   } catch {}
 }
 
+// 도우미 띄우기·줄 나누기는 src/platform (keyListener). 한 번만 띄우기·줄의 뜻·종료 안내는 여기
 function startFnListener() {
   if (fnProc) return;
   const bin = helperPath('fn-listener');
@@ -218,19 +209,12 @@ function startFnListener() {
     send('fn:status', { ok: false, reason: 'fn-listener 바이너리가 없습니다. npm run build:fn 을 실행하세요.' });
     return;
   }
-  fnProc = spawn(bin, [], { stdio: ['ignore', 'pipe', 'inherit'] });
-  let buf = '';
-  fnProc.stdout.on('data', (data) => {
-    buf += data.toString();
-    let idx;
-    while ((idx = buf.indexOf('\n')) >= 0) {
-      handleFnLine(buf.slice(0, idx).trim());
-      buf = buf.slice(idx + 1);
-    }
-  });
-  fnProc.on('exit', (code) => {
-    fnProc = null;
-    if (code !== 2 && !quitting) send('fn:status', { ok: false, reason: `fn 감지기가 종료됨 (code ${code})` });
+  fnProc = platform.keyListener.start(bin, {
+    line: handleFnLine,
+    exit: (code) => {
+      fnProc = null;
+      if (code !== 2 && !quitting) send('fn:status', { ok: false, reason: `fn 감지기가 종료됨 (code ${code})` });
+    },
   });
 }
 
@@ -251,13 +235,9 @@ function runFnSimulation() {
   setTimeout(() => app.quit(), 13500);
 }
 
+// fn 키가 다른 동작과 겹치는지 (src/platform keyListener.usageWarning)
 function fnUsageWarning() {
-  // 0: 아무것도 안 함, 1: 입력 소스 변경, 2: 이모지, 3: 받아쓰기
-  try {
-    const v = execFileSync('defaults', ['read', 'com.apple.HIToolbox', 'AppleFnUsageType']).toString().trim();
-    if (v !== '0') return '시스템 설정 › 키보드 › "🌐 키를 누르면"을 "아무것도 안 함"으로 바꾸세요. 지금은 fn을 누를 때 다른 동작도 함께 실행됩니다.';
-  } catch {}
-  return null;
+  return platform.keyListener.usageWarning();
 }
 
 // ── 녹음 파일 저장 ───────────────────────────────────────────────────────
@@ -298,7 +278,8 @@ ipcMain.handle('rec:start', (_e, { mode, sampleRate, tracks, devices }) => {
   }
   updateTray();
   // 셀프테스트: 시스템 소리 트랙에 실제로 소리가 잡히는지 확인용 효과음 재생
-  if (SELFTEST && mode === 'meeting') setTimeout(() => spawn('afplay', ['/System/Library/Sounds/Submarine.aiff']), 1000);
+  const sound = platform.shell.selftestSound;
+  if (SELFTEST && mode === 'meeting' && sound) setTimeout(() => spawn(...sound), 1000);
   return { dir };
 });
 
@@ -719,7 +700,7 @@ const { listFolders, listHistory } = appIpc.registerHistory(ipcMain, {
 ipcMain.handle('clipboard:write', (_e, text) => clipboard.writeText(text));
 ipcMain.handle('dict:repaste', async (_e, text) => {
   win.hide();
-  if (process.platform === 'darwin') app.hide(); // 직전에 쓰던 앱이 다시 앞으로 온다
+  if (platform.shell.hideAppBeforeRepaste) app.hide(); // 직전에 쓰던 앱이 다시 앞으로 온다
   await new Promise((r) => setTimeout(r, 350));
   const status = await dictation.paste(text, helperPath('permissions'));
   showOverlay();
@@ -759,7 +740,7 @@ ipcMain.handle('dict:download', () => dictation.downloadModel().catch((err) => s
 ipcMain.handle('app:info', async () => ({
   capability,
   fnWarning: fnUsageWarning(),
-  micAccess: process.platform === 'darwin' ? systemPreferences.getMediaAccessStatus('microphone') : 'granted',
+  micAccess: platform.shell.micAccessFromSystem ? systemPreferences.getMediaAccessStatus('microphone') : 'granted',
   recordingsDir: RECORDINGS_DIR,
   defaultRecordingsDir: DEFAULT_RECORDINGS_DIR,
   selftest: SELFTEST,
@@ -769,9 +750,7 @@ ipcMain.handle('app:info', async () => ({
 // 처리기(perm:status·fnKey·openKeyboard·request·openSettings)와 시스템 설정 창 열기는 src/app/permissions.mts.
 // 권한 상태 읽기와 권한 도우미는 녹음 시작(rec:start)·창 띄우기(init)도 써서 여기 둔다
 function runPermissionsHelper(args) {
-  return new Promise((resolve) => {
-    execFile(helperPath('permissions'), args, { timeout: 130000 }, (err, stdout) => resolve(err ? null : stdout.trim()));
-  });
+  return platform.permissions.runHelper(helperPath('permissions'), args);
 }
 
 async function permissionStatus() {
@@ -855,7 +834,7 @@ function createOverlay() {
     focusable: false, // 클릭해도 지금 쓰던 앱의 포커스를 빼앗지 않는다
     // macOS: 앱을 깨우지 않는 패널(NSPanel). 일반 창이면 막대를 마우스로 누를 때 앱 전체가 활성화되며 메인 창까지 올라온다
     // (fn으로는 안 올라오고 마우스로 누를 때만 그랬다). Wispr Flow의 막대("Flow Status Indicator")도 type: 'panel'
-    ...(process.platform === 'darwin' ? { type: 'panel' } : {}),
+    ...platform.shell.overlayWindow,
     acceptFirstMouse: true, // 다른 앱을 쓰던 중 첫 클릭도 버튼으로 받는다
     hasShadow: false,
     skipTaskbar: true,
@@ -984,7 +963,7 @@ if (!SELFTEST && !app.requestSingleInstanceLock()) {
 async function init() {
   protocol.handle('rec', serveRecording);
   // 개발 모드에서도 Dock에 앱 아이콘을 쓴다 (설치본은 build/icon.icns가 앱에 들어간다)
-  if (!app.isPackaged && process.platform === 'darwin') app.dock?.setIcon(path.join(__dirname, '..', 'build', 'icon.png'));
+  if (!app.isPackaged && platform.shell.devDockIcon) app.dock?.setIcon(path.join(__dirname, '..', 'build', 'icon.png'));
   const saved = dictation.getSettings().recordingsDir;
   if (saved && fs.existsSync(saved)) setRecordingsDir(saved); // 지정한 폴더가 사라졌으면(외장 디스크 분리 등) 기본 폴더를 쓴다
   // 셀프테스트는 실제 녹음 폴더·받아쓰기 기록에 쓰지 않는다 (예전에는 끝나고 손으로 지워야 했다)
@@ -996,7 +975,7 @@ async function init() {
   writePortableSettings();
   askMod.init({ getMeetings: askMeetings, onChange: (job) => send('ask:update', job) }); // 질문으로 찾기: 회의 목록과 진행 소식을 화면에
   // 권한 대화상자를 기다리느라 fn 감지·독·로그인 항목 설정이 멈추지 않게 await하지 않는다
-  if (process.platform === 'darwin') systemPreferences.askForMediaAccess('microphone');
+  if (platform.shell.askMicAtLaunch) systemPreferences.askForMediaAccess('microphone');
   fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
   watchRecordings();
 
