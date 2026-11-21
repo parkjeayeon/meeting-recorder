@@ -238,7 +238,8 @@ mr schema actions           # 출력 JSON Schema
 - `src/setup.js`: 엔진 설치를 본체에 잇는 얇은 파일 — 앱 데이터 폴더·받아쓰기·샌드박스를 `src/setup`에 넘겨 한 번 만든다 ([결정 70](docs/decisions.md))
 - `src/setup/`: 엔진 설치·크기·삭제 (설정 › 엔진, 처음 설정. TypeScript, Electron 없이 돎) — 앱 폴더 안 자리(`paths.mts`), 명령 실행·내려받기(`run.mts`), 화자 구분 환경 uv → 파이썬 → pyannote → 모델(`diarize.mts`), 항목 목록·진행 상태·설치·삭제(`index.mts`의 `createSetup`)
 - `src/sandbox.js`: 외부 프로그램을 감싸는 macOS 샌드박스 프로필을 본체·`scripts/dev/sandbox-check.js`에 잇는 얇은 파일 (구현은 `src/core/sandbox.mts`, 앞문은 `src/platform`)
-- `src/dictation.js`: whisper-server 관리(고아 정리 포함), 모델 다운로드, 무음·지어낸 문장 거르기, 붙여 넣기
+- `src/dictation.js`: 받아쓰기를 본체에 잇는 얇은 파일 — 앱 데이터 폴더·safeStorage·클립보드·샌드박스·다듬기를 `src/dictation`에 넘겨 한 번 만든다 ([결정 70](docs/decisions.md))
+- `src/dictation/`: 받아쓰기 (TypeScript, Electron 없이 돎, `npm run build:ts` → `lib/dictation/`) — 설정·토큰(`settings.mts`), whisper-server 관리(고아 정리 포함)·회의용 서버·모델 다운로드·엔진 상태(`server.mts`), 받아쓰기·자동 언어·지어낸 문장 거르기(`transcribe.mts`), 붙여 넣기(`paste.mts`), 무음 거르기부터 붙여 넣기까지(`dictate.mts`)
 - `src/llm/`: LLM 층 (TypeScript, Electron 없이 돎, `npm run build:ts` → `lib/llm/`) — 계정 고르기와 호출(Claude Code / Codex / API, CLI 실패 이유를 로그인·한도·시간 초과로 나눔), 받아쓴 글 다듬기(긴 글 나누기), 남은 사용량(Claude Code `/usage` 글 → 규칙, 못 읽으면 LLM·숫자 검증 / Codex app-server JSON, 5분 저장)
 - `src/cleanup.js`, `src/usage.js`: LLM 층을 본체에 잇는 얇은 파일 (앱 데이터 폴더·지금 설정을 넘김, [결정 70](docs/decisions.md))
 - `src/compress.js`: 녹음 압축을 본체·`scripts/dev/compress-check.js`에 잇는 얇은 파일 (구현은 `src/meeting/compress.mts`)
