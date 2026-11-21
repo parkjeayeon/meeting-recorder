@@ -3,7 +3,7 @@
 // 뜻(약속인가 조언인가)은 LLM이 원본·정리본·회의록을 모두 보고 판단하고, 코드는 사실만 확인한다:
 // 인용이 그 시각 앞뒤 1분 녹취에 있는가, 할 일에 하는 사람이 있는가, 같은 내용이 겹치지 않는가 (결정 39).
 // 기존 탭의 파일(회의록·정리본·원본·확인 필요)은 읽기만 하고, 결과는 회의 폴더의 actions.json에만 쓴다.
-// 본체(src/main.js)가 require('../lib/meeting/actions.mjs')로 불러 쓴다. LLM 호출·지금 설정·API 키는 deps.mts로 받는다 (src/minutes.js가 configure, 결정 70).
+// 본체(src/app/meeting.mts)가 불러 쓴다. LLM 호출·지금 설정·API 키는 deps.mts로 받는다 (src/minutes.js가 configure, 결정 70).
 import fs from 'node:fs';
 import path from 'node:path';
 import { writeJsonAtomic } from '../core/write.mjs'; // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)

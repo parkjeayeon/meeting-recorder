@@ -87,7 +87,7 @@ export async function run(dir: string, onStage: OnStage, { speakers = null, prev
     report('done', { provider, title, ...diarizeInfo });
   } catch (err: any) {
     const error = err.killed ? '시간 초과' : err.message.split('\n')[0];
-    // 회의록 쓰기는 인터넷이 필요하다. 끊겨서 실패했으면 연결이 돌아올 때 이어서 쓴다 (main.js)
+    // 회의록 쓰기는 인터넷이 필요하다. 끊겨서 실패했으면 연결이 돌아올 때 이어서 쓴다 (본체 src/app/minutes-run.mts)
     report('error', { stage, error, offline: stage === 'write' && !isOnline(), ...diarizeInfo });
   }
 }

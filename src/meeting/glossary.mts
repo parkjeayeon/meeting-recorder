@@ -3,7 +3,7 @@
 // 설명의 근거: general(널리 알려진 용어, LLM 지식) · meeting(녹취에서 그 말이 쓰인 맥락) · unknown(녹취로도 알 수 없음).
 // LLM이 지어내기 쉬운 사내 용어는 'suggested'(추정)로 두고 사용자가 확인·고치게 한다. 일반 용어는 처음부터 'confirmed'.
 // 인터넷 검색은 하지 않는다 (회의 내용을 검색 엔진에 보내지 않기 위해).
-// 본체(src/main.js)가 require('../lib/meeting/glossary.mjs')로 불러 쓴다. LLM 호출·지금 설정·API 키는 deps.mts로 받는다 (src/minutes.js가 configure, 결정 70).
+// 본체(src/app/meeting.mts)와 src/minutes.js가 불러 쓴다. LLM 호출·지금 설정·API 키는 deps.mts로 받는다 (src/minutes.js가 configure, 결정 70).
 import fs from 'node:fs';
 import path from 'node:path';
 import { writeJsonAtomic } from '../core/write.mjs'; // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)

@@ -98,8 +98,8 @@ app.whenReady().then(async () => {
     early = err.message;
   }
   check('준비 전에는 시작하지 않음', Boolean(early?.includes('준비')), String(early));
-  // 앱 시작(main.js의 init())에서 준비하는지
-  const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.js'), 'utf8');
+  // 앱 시작(src/app/main.mts의 init())에서 준비하는지
+  const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/app/main.mts'), 'utf8');
   const initBody = mainSrc.slice(mainSrc.indexOf('async function init() {'), mainSrc.indexOf('\n}\n', mainSrc.indexOf('async function init() {')));
   check('앱 시작에서 준비', /askMod\.init\(\{ getMeetings: askMeetings, onChange:/.test(initBody) && (mainSrc.match(/askMod\.init\(/g) ?? []).length === 1, `init() 안 ${/askMod\.init\(/.test(initBody)} · 전체 ${(mainSrc.match(/askMod\.init\(/g) ?? []).length}곳`);
   const events = [];

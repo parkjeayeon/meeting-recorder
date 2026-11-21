@@ -3,7 +3,7 @@
 // (회의록이 정수 배로 묶어 16kHz로 줄이므로 44.1kHz 같은 값은 쓰지 않는다).
 // Apple이 쓴 WAV는 'FLLR' 같은 덩어리가 붙어 소리 데이터가 44바이트 뒤에서 시작하지 않는다. 회의록 파이프라인은 44바이트 헤더를
 // 가정하므로 data 덩어리만 꺼내 표준 헤더로 다시 쓴다. 원본 파일은 읽기만 한다.
-// 본체(src/main.js)가 require('../lib/meeting/import-audio.mjs')로 불러 쓴다 (결정 70).
+// 본체(src/app/meeting.mts)가 불러 쓴다 (결정 70).
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
