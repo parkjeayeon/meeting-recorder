@@ -1,5 +1,5 @@
 {
-  // 코어(src/core)·LLM 층(src/llm)·확인 필요(src/review)·회의 녹취·회의록·흐름도·용어 설명·액션·가져오기·압축(src/meeting)·질문으로 찾기(src/ask)·명령줄 도구(src/cli)·본체 IPC 처리기(src/app)·플랫폼 층(src/platform)만 TypeScript(ESM, .mts)로 쓴다. 나머지 src/*.js는 아직 CommonJS — 메인 프로세스가 require()로 이 ESM을 불러 쓴다 (결정 43).
+  // 코어(src/core)·LLM 층(src/llm)·확인 필요(src/review)·회의 녹취·회의록·흐름도·용어 설명·액션·가져오기·압축(src/meeting)·질문으로 찾기(src/ask)·받아쓰기(src/dictation)·명령줄 도구(src/cli)·본체 IPC 처리기(src/app)·플랫폼 층(src/platform)만 TypeScript(ESM, .mts)로 쓴다. 나머지 src/*.js는 아직 CommonJS — 메인 프로세스가 require()로 이 ESM을 불러 쓴다 (결정 43).
   // 실행은 언제나 앱에 들어 있는 Electron의 Node(45 → Node 24)라서 target·@types/node를 그 버전에 맞춘다. 사용자 Mac의 Node와는 상관없다.
   "compilerOptions": {
     "target": "es2024",
@@ -15,5 +15,5 @@
     "skipLibCheck": true,
     "noEmitOnError": true
   },
-  "include": ["src/core/**/*.mts", "src/llm/**/*.mts", "src/review/**/*.mts", "src/meeting/**/*.mts", "src/cli/**/*.mts", "src/app/**/*.mts", "src/ask/**/*.mts", "src/platform/**/*.mts", "src/test/**/*.mts"]
+  "include": ["src/core/**/*.mts", "src/llm/**/*.mts", "src/review/**/*.mts", "src/meeting/**/*.mts", "src/cli/**/*.mts", "src/app/**/*.mts", "src/ask/**/*.mts", "src/dictation/**/*.mts", "src/platform/**/*.mts", "src/test/**/*.mts"]
 }

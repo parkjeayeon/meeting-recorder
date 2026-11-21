@@ -1,5 +1,5 @@
 // macOS: 붙여넣기 키(⌘V) 보내기 — Swift 도우미 `permissions paste`. src/dictation.js paste()의 도우미 실행 부분을 그대로 옮겼다 (결정 78).
-// 클립보드 보관·글 넣기·되돌리기는 dictation.js에 남는다.
+// 클립보드 보관·글 넣기·되돌리기는 src/dictation/paste.mts가 한다.
 import { spawn } from 'node:child_process';
 import type { Paster, PasteResult } from '../types.mjs';
 
