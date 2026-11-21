@@ -5,7 +5,7 @@ import { test, expect } from '../app.ts';
 test.use({ entry: path.join(__dirname, 'overlay.cjs'), noMeeting: true });
 
 test('떠 있는 막대 · 언어와 창 크기', async ({ page }) => {
-  const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/main.js'), 'utf8');
+  const mainSrc = fs.readFileSync(path.join(__dirname, '../../src/app/windows.mts'), 'utf8');
   const height = Number(/const OVERLAY_SIZE = \{ width: \d+, height: (\d+) \}/.exec(mainSrc)?.[1]);
   expect(Number.isFinite(height)).toBe(true);
   await page.locator('#dock').evaluate((dock) => dock.classList.add('open'));

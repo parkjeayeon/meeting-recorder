@@ -3,7 +3,7 @@
 // 원본 녹취·정리본·회의록을 모두 넣어 흐름을 최대 3장까지(서로 관련 없는 흐름은 따로) 뽑고, 지어내기만 코드로 막는다:
 //   단계·메모·덧붙임은 녹취 인용이 그 시각 앞뒤 1분 안에 있어야 하고, 인수인계 항목은 회의록에 있는 문장이어야 한다.
 // LLM은 JSON만 돌려주고 그림은 앱 코드가 그린다 (모델이 쓴 코드를 실행하지 않음). 결과는 회의 폴더의 flow.json.
-// 본체(src/main.js)가 require('../lib/meeting/flow.mjs')로 불러 쓴다. LLM 호출·지금 설정·API 키는 deps.mts로 받는다 (src/minutes.js가 configure, 결정 70).
+// 본체(src/app/meeting.mts)가 불러 쓴다. LLM 호출·지금 설정·API 키는 deps.mts로 받는다 (src/minutes.js가 configure, 결정 70).
 import fs from 'node:fs';
 import path from 'node:path';
 import { writeJsonAtomic } from '../core/write.mjs'; // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)

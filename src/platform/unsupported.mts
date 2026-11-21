@@ -19,7 +19,7 @@ export function createUnsupported(os: NodeJS.Platform): Platform {
     processes: { orphans: () => [], commandOf: () => null },
     keyListener: {
       keyName: 'fn',
-      // 도우미가 있는지는 main.js가 먼저 보고 없으면 예전처럼 "바이너리가 없습니다"를 알린다. 있으면 띄우는 것까지는 OS와 상관없는 일이다
+      // 도우미가 있는지는 본체(src/app/fn-keys.mts)가 먼저 보고 없으면 예전처럼 "바이너리가 없습니다"를 알린다. 있으면 띄우는 것까지는 OS와 상관없는 일이다
       start: startLineHelper,
       usageWarning: () => null, // 예전: defaults가 없으면 던지고 null
     },

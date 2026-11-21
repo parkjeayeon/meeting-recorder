@@ -161,7 +161,7 @@ export function readStatus(dir: string): MinutesStatus | null {
 }
 
 // 녹취·화자 구분은 끝났고 회의록 쓰기에서 멈춘 회의인지 (인터넷이 끊겨 실패했거나, 쓰는 중에 앱이 종료됨)
-// 지금 만들고 있는 회의인지는 부르는 쪽(main.js)이 확인한다
+// 지금 만들고 있는 회의인지는 부르는 쪽(본체 src/app)이 확인한다
 export function canResume(dir: string, status: MinutesStatus | null | undefined = readStatus(dir)): boolean {
   const stopped = status?.status === 'write' || (status?.status === 'error' && status.stage === 'write');
   return stopped && fs.existsSync(path.join(dir, 'transcript.txt'));

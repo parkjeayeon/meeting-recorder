@@ -1,6 +1,6 @@
 // 플랫폼 층의 포트: 운영체제에 묶인 일을 "무엇을 해 달라"로만 적는다 (결정 78).
 // 구현은 darwin/(지금 macOS 코드를 옮긴 것)과 unsupported.mts(다른 OS — 지금 코드가 그 OS에서 보이던 대답)뿐이다.
-// 여기 있는 것은 Electron을 가져오지 않는다. Electron 객체가 필요한 일(창 옵션·독·마이크 권한)은 값만 돌려주고 부르는 쪽(main.js)이 Electron을 부른다.
+// 여기 있는 것은 Electron을 가져오지 않는다. Electron 객체가 필요한 일(창 옵션·독·마이크 권한)은 값만 돌려주고 부르는 쪽(본체 src/app)이 Electron을 부른다.
 import type { Network, SandboxOptions } from '../core/sandbox.mjs';
 
 // ── 1. 프로세스: 앱이 남긴 고아 프로세스 찾기 ─────────────────────────────

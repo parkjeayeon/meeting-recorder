@@ -1,6 +1,6 @@
 // 디스크에 바로바로 쓰는 WAV(PCM 16bit) 작성기.
 // 헤더를 주기적으로 갱신해서 앱이 죽어도 그때까지 녹음된 부분은 재생 가능하다.
-// 본체(src/main.js)가 녹음할 때 require('../lib/meeting/wav-writer.mjs')로 불러 쓴다 (결정 70).
+// 본체(src/app/recording.mts)가 녹음할 때 불러 쓴다 (결정 70).
 import fs from 'node:fs';
 
 const HEADER_BYTES = 44;

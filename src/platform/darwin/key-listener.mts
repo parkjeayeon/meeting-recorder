@@ -1,6 +1,6 @@
 // macOS: fn 키 듣기 — Swift 도우미(native/fn-listener)를 띄우고 표준 출력을 줄마다 넘긴다.
 // src/main.js startFnListener의 spawn·줄 나누기·exit와 fnUsageWarning을 그대로 옮겼다 (결정 78).
-// 한 번만 띄우기(fnProc)·고아 정리·실행 파일 확인·줄의 뜻(handleFnLine)·종료 안내 문장은 main.js에 남는다.
+// 한 번만 띄우기(fnProc)·고아 정리·실행 파일 확인·줄의 뜻(handleFnLine)·종료 안내 문장은 본체(src/app/fn-keys.mts)에 있다.
 import { execFileSync } from 'node:child_process';
 import { startLineHelper } from '../lines.mjs';
 import type { KeyListener } from '../types.mjs';
