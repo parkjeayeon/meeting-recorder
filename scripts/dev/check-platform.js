@@ -41,8 +41,8 @@ const TOKENS = {
 
 // 일부러 남긴 것: '파일:토큰 이름': '이유'. 짧게 — 하나하나가 phase 0b에 할 일이다
 const ALLOW = {
-  'src/setup.js:/usr/bin/': "엔진 설치의 uv 압축 풀기('/usr/bin/tar'). 엔진 설치 전체(Homebrew·uv·venv 자리)를 EngineInstaller 포트로 옮길 때 같이",
-  'src/setup.js:HOMEBREW_': '엔진 설치 방법 자체(brew install whisper-cpp와 그 환경 변수). Windows에서는 설치 방법이 달라 포트 모양을 그때 정한다',
+  'src/setup/diarize.mts:/usr/bin/': "엔진 설치의 uv 압축 풀기('/usr/bin/tar'). 엔진 설치 전체(Homebrew·uv·venv 자리)를 EngineInstaller 포트로 옮길 때 같이",
+  'src/setup/index.mts:HOMEBREW_': '엔진 설치 방법 자체(brew install whisper-cpp와 그 환경 변수). Windows에서는 설치 방법이 달라 포트 모양을 그때 정한다',
   "src/main.js:Command+": "메뉴바 '종료'의 단축키 표기. 메뉴바·트레이(setTitle 등) 전체가 macOS 모양이라 Windows 트레이를 만들 때 같이",
   'src/cli/mr.mts:/Applications/': '명령줄 도구 설치 안내 문장 속 앱 자리. 화면·안내 글은 이번에 바꾸지 않는다',
   'src/renderer/features/configuration/settings/setup.ts:Library/Application Support': "설정 › 앱 폴더 사용량에 보이는 '~/Library/Application Support/meeting-recorder' 글. 화면 글은 이번에 바꾸지 않는다 — 본체가 앱 데이터 폴더를 넘겨 주게 할 때 같이",
