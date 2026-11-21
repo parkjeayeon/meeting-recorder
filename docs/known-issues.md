@@ -34,6 +34,8 @@
 - **`sandbox-exec`**: Apple이 "권장하지 않음"으로 표시한 기능이다. macOS에서 빠지면 외부 프로그램 샌드박스가 동작하지 않는다 (지금은 Codex·Claude Code도 같은 방식).
 - **샌드박스는 읽기를 막지 않는다**: 쓰기·네트워크만 막는다.
 - **처음 설정의 "나중에 하기"**: 권한·엔진 없이 넘어갈 수 있어서, 넘어가면 fn 받아쓰기가 동작하지 않는다 (홈의 확인할 문제로 안내).
+- **macOS에서만 돈다 — 플랫폼 층 밖에 남은 OS 의존**: OS에 묶인 코드는 `src/platform`에 모았지만(2026-11-21, [결정 78](decisions.md)) Windows 구현은 없고 macOS 밖에서 돌려 본 적이 없다. 검사(`scripts/dev/check-platform.js`)의 허용 목록에 남은 것: `setup.js`의 엔진 설치(Homebrew `brew install whisper-cpp`·`HOMEBREW_*`, uv 압축 풀기 `/usr/bin/tar`), `main.js` 메뉴바 `Command+Q`, `cli/mr.mts`의 `/Applications/…` 안내 문장, 설정 화면의 `~/Library/Application Support/meeting-recorder` 글. 검사 토큰에 걸리지 않아 목록에 없는 것: 도우미 이름(`fn-listener`·`permissions`)과 `native/`·`Contents/Resources` 자리, 화자 구분 환경의 `diarize-env/bin/python`(Windows venv는 `Scripts\python.exe`)과 `native/diarize.py`의 `mps`, afinfo 출력을 읽는 정규식(가져오기·압축, 서로 조금 다름), 창의 `titleBarStyle: 'hidden'`·`trafficLightPosition`, 트레이 `setTitle`, 셀프테스트의 `app.dock?.hide()`, 빌드·서명·설치(`scripts/build-app.mjs`의 `--mac`, `sign-app.sh`), `src/cli/mr.sh`.
+- **붙여넣기 도우미가 없으면 붙여넣기가 끝나지 않을 수 있다** (고치지 않음, 2026-11-21 플랫폼 층으로 옮기며 봄): `permissions paste`를 `spawn`할 때 `'error'`를 받는 곳이 없어, 실행 파일이 없거나 실행할 수 없으면 `'exit'`가 오지 않아 약속이 풀리지 않거나 처리되지 않은 오류로 본체가 죽을 수 있다. fn-listener 실행도 `'error'`를 받지 않는다(먼저 파일이 있는지는 본다). 셀프테스트의 `afplay`도 같다. 설치본·개발 모드 모두 도우미가 있어 겪은 적은 없다.
 - **Hugging Face 토큰을 채팅에 붙여 넣은 적이 있다**: 대화 기록에 남아 있으므로 필요하면 Hugging Face에서 새 토큰으로 바꾸고 `hf auth login`(또는 설정 › 계정·토큰)으로 다시 저장한다.
 
 ### 파일 쓰기

@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { cliError, type CliErrorKind } from '../core/route.mjs';
+import { platform } from '../platform/index.mjs'; // 실행 파일을 찾는 자리 (결정 78)
 
 export type CliId = 'claude-code' | 'codex';
 export type ProviderId = CliId | 'api';
@@ -12,8 +13,8 @@ export type LoginState = { installed: boolean; loggedIn: boolean; account?: stri
 export type ProviderStatus = Record<ProviderId, LoginState>;
 
 export const PROVIDERS: Record<CliId, { label: string; bins: string[] }> = {
-  'claude-code': { label: 'Claude Code', bins: ['/opt/homebrew/bin/claude', '/usr/local/bin/claude', path.join(os.homedir(), '.local/bin/claude'), path.join(os.homedir(), '.claude/local/claude')] },
-  codex: { label: 'Codex', bins: ['/opt/homebrew/bin/codex', '/usr/local/bin/codex', path.join(os.homedir(), '.local/bin/codex')] },
+  'claude-code': { label: 'Claude Code', bins: platform.paths.cli('claude-code') },
+  codex: { label: 'Codex', bins: platform.paths.cli('codex') },
 };
 
 export function findBin(id: CliId): string | null {

@@ -234,8 +234,9 @@ mr schema actions           # 출력 JSON Schema
 ## 구조
 - `src/main.js`: fn 감지기(fn-listener) 실행과 셀프테스트 시간표, 회의 일시정지·취소·참석 인원, WAV 저장, 녹음 폴더·설정 사본, 녹음·회의록·받아쓰기 설정·앱 정보의 IPC 처리기, 회의 녹음 재생용 `rec://` 프로토콜(Range 지원), 메뉴바·플로팅 독, 창·앱 수명. 기록·질문으로 찾기·토큰·권한·처음 설정·녹음 폴더 바꾸기의 처리기는 `src/app/`의 것을 녹음 폴더·창 등을 넘겨 등록한다
 - `src/app/`: 본체 IPC 처리기를 구역별로 (TypeScript, Electron 없이 돎, `npm run build:ts` → `lib/app/`, [결정 70](docs/decisions.md)) — 기록·받아쓰기 통계(`history.mts`), 질문으로 찾기 연결(`ask.mts`), 토큰·키(`tokens.mts`), 권한(`permissions.mts`), 처음 설정 진행(`onboarding.mts`), 녹음 폴더 바꾸기·옮기기(`recordings.mts`). 각각 `register(ipc, ctx)`로 ipcMain과 그 구역이 쓰는 것만 받는다. fn 키 상태 머신(`fn.mts`: 받아쓰기 전용 규칙, 처음 설정 중 막기)은 본체가 `createFnMachine(deps)`로 한 번 만들어 fn 누름·버튼·녹음 저장 쪽 일을 알린다
+- `src/platform/`: 운영체제에 묶인 일을 모은 층 (TypeScript, Electron 없이 돎, `npm run build:ts` → `lib/platform/`, [결정 78](docs/decisions.md)) — 포트(`types.mts`), OS를 보고 구현 고르기(`index.mts`의 `platform`), macOS 구현(`darwin/`: ps로 고아 찾기, fn-listener 띄우기·줄 나누기·fn 키 설정 경고, 붙여넣기 도우미, 권한 도우미·시스템 설정 주소, afconvert·afinfo 명령, whisper-server·Homebrew·CLI 자리·uv 주소, 본체가 할지 말지 고르던 잡일), 다른 OS(`unsupported.mts`, Windows 구현은 아직 없음), 시스템 소리 방식(`system-audio.mts`). 본체·회의 모듈은 여기서 받은 값으로 Electron·`child_process`를 부른다. 이 밖에서 `process.platform`·macOS 도구 이름을 쓰면 `scripts/dev/check-platform.js`가 막는다
 - `src/setup.js`: 엔진 설치·크기·삭제 (설정 › 엔진, 처음 설정)
-- `src/sandbox.js`: 외부 프로그램을 감싸는 macOS 샌드박스 프로필을 본체·`scripts/dev/sandbox-check.js`에 잇는 얇은 파일 (구현은 `src/core/sandbox.mts`)
+- `src/sandbox.js`: 외부 프로그램을 감싸는 macOS 샌드박스 프로필을 본체·`scripts/dev/sandbox-check.js`에 잇는 얇은 파일 (구현은 `src/core/sandbox.mts`, 앞문은 `src/platform`)
 - `src/dictation.js`: whisper-server 관리(고아 정리 포함), 모델 다운로드, 무음·지어낸 문장 거르기, 붙여 넣기
 - `src/llm/`: LLM 층 (TypeScript, Electron 없이 돎, `npm run build:ts` → `lib/llm/`) — 계정 고르기와 호출(Claude Code / Codex / API, CLI 실패 이유를 로그인·한도·시간 초과로 나눔), 받아쓴 글 다듬기(긴 글 나누기), 남은 사용량(Claude Code `/usage` 글 → 규칙, 못 읽으면 LLM·숫자 검증 / Codex app-server JSON, 5분 저장)
 - `src/cleanup.js`, `src/usage.js`: LLM 층을 본체에 잇는 얇은 파일 (앱 데이터 폴더·지금 설정을 넘김, [결정 70](docs/decisions.md))
@@ -255,6 +256,6 @@ mr schema actions           # 출력 JSON Schema
 - `src/renderer/features/recording/capture.ts`, `src/renderer/recorder-worklet.js`: getUserMedia + getDisplayMedia → AudioContext(48kHz) → 트랙별 100ms 청크
 - `src/overlay/`: 화면 왼쪽 플로팅 독 (받아쓰기 진행 띠, 회의 녹음 시간)
 - `scripts/sign-app.sh`: 빌드한 앱 서명 (자체 서명 인증서가 있으면 그걸로, 없으면 ad-hoc)
-- `scripts/dev/`: 개발용 — 서명 인증서 만들기, 키보드 처리기 검사(`check-handlers.js`), 화면 HTML 비교(`view-parity.js`), 샌드박스 확인, 고아 프로세스 점검, 회의 사본에 회의록 다시 돌리기, 실험 페이지(`lab/`), 검색 평가(`eval/`) ([docs/testing.md](docs/testing.md))
+- `scripts/dev/`: 개발용 — 서명 인증서 만들기, 키보드 처리기 검사(`check-handlers.js`), 플랫폼 경계 검사(`check-platform.js`), 화면 HTML 비교(`view-parity.js`), 샌드박스 확인, 고아 프로세스 점검, 회의 사본에 회의록 다시 돌리기, 실험 페이지(`lab/`), 검색 평가(`eval/`) ([docs/testing.md](docs/testing.md))
 - `eval-runs/`: 검색 평가 원본 결과·LLM 호출 기록·실제 회의 정답·금지어 목록 (git 제외, 실제 회의 내용이 들어감) → 걸러서 `docs/eval/`
 - `docs/images/diagrams.py`: README 아키텍처 그림(SVG) 생성기

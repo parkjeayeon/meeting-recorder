@@ -2,16 +2,9 @@
 // src/main.js에서 옮김 (결정 70). 권한 상태 읽기(permissionStatus)와 권한 도우미 실행(runPermissionsHelper)은 녹음 시작·창 띄우기도
 // 쓰므로 본체에 남고 ctx로 받는다. 시스템 설정 창 열기는 여기서만 써서 같이 옮겼다.
 // perm:request·perm:openSettings는 예전 main.js에서 처음 설정(온보딩) 구역 사이에 있었지만 권한 일이라 여기로.
+// 시스템 설정 창 주소는 플랫폼 층 (src/platform, 결정 78). 열 곳이 없는 OS에서는(null) 아무것도 열지 않는다
+import { platform } from '../platform/index.mjs';
 import type { Ipc } from './ipc.mjs';
-
-const SETTINGS_PANE = {
-  microphone: 'Privacy_Microphone',
-  inputMonitoring: 'Privacy_ListenEvent',
-  systemAudio: 'Privacy_AudioCapture',
-  accessibility: 'Privacy_Accessibility',
-  files: 'Privacy_FilesAndFolders',
-};
-type PaneKind = keyof typeof SETTINGS_PANE;
 
 // granted | denied | not-determined | restricted | unknown | unsupported
 export interface PermissionStatus {
@@ -31,14 +24,17 @@ export interface PermissionsContext {
 
 export function registerPermissions(ipc: Ipc, ctx: PermissionsContext): void {
   function openPrivacySettings(kind: unknown) {
-    // macOS 13부터의 주소. 예전 com.apple.preference.security?… 는 macOS 26에서 아무 창도 열지 않는다
-    ctx.shell.openExternal(`x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?${SETTINGS_PANE[kind as PaneKind]}`);
+    const url = platform.permissions.privacyPaneUrl(kind);
+    if (url !== null) ctx.shell.openExternal(url);
   }
 
   ipc.handle('perm:status', ctx.permissionStatus);
   // 🌐(fn) 키가 다른 동작(입력 소스 변경·이모지·받아쓰기)과 겹치는지
   ipc.handle('perm:fnKey', () => ctx.fnUsageWarning());
-  ipc.on('perm:openKeyboard', () => ctx.shell.openExternal('x-apple.systempreferences:com.apple.Keyboard-Settings.extension'));
+  ipc.on('perm:openKeyboard', () => {
+    const url = platform.permissions.keyboardSettingsUrl();
+    if (url !== null) ctx.shell.openExternal(url);
+  });
   ipc.handle('perm:request', async (_e, kind) => {
     const before = (await ctx.permissionStatus())[kind as keyof PermissionStatus];
     if (kind === 'microphone' && before === 'not-determined') await ctx.systemPreferences.askForMediaAccess('microphone');

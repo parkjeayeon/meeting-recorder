@@ -3,6 +3,7 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { platform } from '../platform/index.mjs'; // 소리 변환 명령 (macOS afconvert, 결정 78)
 
 export const PIECE_SEC = 600; // 긴 녹음은 약 10분씩, 조용한 지점에서 잘라 녹취한다
 
@@ -21,7 +22,8 @@ export const recordedTracks = (dir: string, meta: TrackMeta): string[] => Object
 // 압축한 녹음(AAC .m4a)을 16kHz 모노 WAV(44바이트 머리, 아래 함수들이 읽는 형식)로 푼다. 2시간에 약 1초
 export async function decodeTo16k(src: string, dst: string): Promise<void> {
   const tmp = `${dst}.af.wav`;
-  await new Promise<void>((resolve, reject) => execFile('/usr/bin/afconvert', ['-f', 'WAVE', '-d', 'LEI16@16000', '-c', '1', src, tmp], (err, _o, stderr) => (err ? reject(new Error((stderr || err.message).trim().split('\n')[0])) : resolve())));
+  const [bin, args] = platform.audio.convert(src, tmp, { format: 'wav', rate: 16000, channels: 1 });
+  await new Promise<void>((resolve, reject) => execFile(bin, args, (err, _o, stderr) => (err ? reject(new Error((stderr || err.message).trim().split('\n')[0])) : resolve())));
   // afconvert는 확장 WAV 머리(FLLR 등 덧붙은 칸)를 쓴다 → data 칸만 꺼내 표준 44바이트 머리로 다시 쓴다
   const fd = fs.openSync(tmp, 'r');
   let offset = 12;

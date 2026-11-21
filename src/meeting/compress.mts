@@ -8,6 +8,7 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { writeJsonAtomic } from '../core/write.mjs';
+import { platform } from '../platform/index.mjs'; // 소리 변환·정보 명령 (macOS afconvert·afinfo, 결정 78)
 
 // meta.json 중 여기서 읽고 고치는 부분
 export interface CompressTrack {
@@ -31,8 +32,6 @@ export interface AudioInfo {
   declined: boolean;
 }
 
-const AFCONVERT = '/usr/bin/afconvert';
-const AFINFO = '/usr/bin/afinfo';
 export const BITRATE = 96000;
 // macOS AAC 변환기는 표본율이 낮으면 96kbps를 받지 않는다 (16kHz는 48kbps까지, 22·24kHz는 64kbps까지). 측정한 것은 48kHz의 96kbps뿐이고
 // 64kbps 이하는 반복 고장이 늘었다 → 32kHz 미만 녹음(전화 녹음 등을 가져온 회의는 16kHz로 저장된다)은 압축하지 않는다. 16kHz WAV는 원래 1시간 115MB
@@ -47,7 +46,7 @@ const sizeOf = (file: string): number => {
   }
 };
 async function durationOf(file: string): Promise<number> {
-  const out = await run(AFINFO, [file]);
+  const out = await run(...platform.audio.info(file));
   return Number(/estimated duration:\s*([\d.]+)/.exec(out)?.[1] ?? NaN);
 }
 
@@ -77,7 +76,7 @@ export async function compressMeeting(dir: string): Promise<{ before: number; af
     if (!fs.existsSync(wavPath)) throw new Error(`${track} 녹음 파일이 없습니다`);
     const tmp = path.join(dir, `.${track}.m4a.part`);
     fs.rmSync(tmp, { force: true });
-    await run(AFCONVERT, ['-f', 'm4af', '-d', 'aac', '-b', String(BITRATE), wavPath, tmp]);
+    await run(...platform.audio.convert(wavPath, tmp, { format: 'm4a', codec: 'aac', bitrate: BITRATE }));
     // 길이가 맞는지 (AAC는 앞뒤로 아주 조금 붙을 수 있다)
     const got = await durationOf(tmp);
     const want = f.durationSec ?? (await durationOf(wavPath));

@@ -6,13 +6,14 @@ const net = require('net');
 const { spawn } = require('child_process');
 const cleanupText = require('./cleanup');
 const { writeJsonAtomic, chooseLanguage, AUTO_LANGUAGES, SHORT_VOICED_MS } = require('../lib/core/index.mjs'); // 파일 쓰기는 끊겨도 깨지지 않게 (결정 45)
+// whisper-server 자리·고아 프로세스 찾기·붙여넣기 키 보내기는 플랫폼 층 (src/platform, 결정 78)
+const { platform } = require('../lib/platform/index.mjs');
 
 const MODEL_FILE = 'ggml-large-v3-turbo-q8_0.bin';
 const MODEL_URL = `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${MODEL_FILE}`;
 const WHISPER_SERVER_CANDIDATES = [
   process.env.WHISPER_SERVER,
-  '/opt/homebrew/bin/whisper-server', // brew install whisper-cpp
-  '/usr/local/bin/whisper-server',
+  ...platform.paths.whisperServer, // brew install whisper-cpp
 ].filter(Boolean);
 const CLIPBOARD_RESTORE_MS = 600;
 const sandbox = require('./sandbox');
@@ -168,11 +169,10 @@ process.on('exit', () => {
 
 function killOrphanServers() {
   try {
-    const out = require('child_process').execFileSync('ps', ['-axo', 'pid=,ppid=,command=']).toString();
+    const orphans = platform.processes.orphans();
     const models = path.join(app.getPath('userData'), 'models');
-    for (const line of out.split('\n')) {
-      const m = line.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/);
-      if (m && m[2] === '1' && m[3].includes('whisper-server') && m[3].includes(models)) process.kill(Number(m[1]));
+    for (const { pid, command } of orphans) {
+      if (command.includes('whisper-server') && command.includes(models)) process.kill(pid);
     }
   } catch {}
 }
@@ -180,8 +180,8 @@ function killOrphanServers() {
 function killStaleServer() {
   try {
     const pid = Number(fs.readFileSync(pidFile(), 'utf8'));
-    const cmd = require('child_process').execFileSync('ps', ['-o', 'command=', '-p', String(pid)]).toString();
-    if (cmd.includes('whisper-server')) process.kill(pid);
+    const cmd = platform.processes.commandOf(pid);
+    if (cmd?.includes('whisper-server')) process.kill(pid);
   } catch {}
   fs.rmSync(pidFile(), { force: true });
 }
@@ -372,12 +372,7 @@ async function restoreClipboard(items) {
 async function paste(text, helperBin) {
   const snap = await snapshotClipboard().catch(() => null);
   await clipboard.writeText(text);
-  const result = await new Promise((resolve) => {
-    const proc = spawn(helperBin, ['paste'], { stdio: ['ignore', 'pipe', 'ignore'] });
-    let out = '';
-    proc.stdout.on('data', (d) => (out += d));
-    proc.on('exit', (code) => resolve(code === 0 ? 'pasted' : out.includes('permission') ? 'no-permission' : 'failed'));
-  });
+  const result = await platform.paster.sendPaste(helperBin); // 'pasted' | 'no-permission' | 'failed'
   // 붙여 넣기에 실패하면 클립보드에 남겨 두어 사용자가 직접 ⌘V 할 수 있게 한다
   if (result === 'pasted' && snap) {
     setTimeout(() => restoreClipboard(snap).catch(() => {}), CLIPBOARD_RESTORE_MS);
