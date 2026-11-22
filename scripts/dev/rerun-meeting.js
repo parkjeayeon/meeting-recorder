@@ -6,6 +6,7 @@
 // LLM 단계(정리본·회의록·확인 필요·용어)는 건너뛴다. 끝나면 잰 값을 JSON 한 줄로 찍는다. 화자 수는 meta.json의 speakers(녹음할 때 고른 값)를 쓴다, 없으면 자동.
 // VAD를 켜 재려면 Silero VAD 모델 경로를 MR_MEETING_VAD로 준다 (MR_MEETING_VAD_THRESHOLD·_PAD_MS·_MIN_SILENCE_MS로 값 바꾸기):
 //   MR_MEETING_VAD=$PWD/.work/vad/dl/ggml-silero-v5.1.2.bin npx electron scripts/dev/rerun-meeting.js --transcribe-only <사본 폴더>
+// 조각을 나눠 받을 회의용 서버 수는 MR_MEETING_SERVERS=<1..4>로 바꾼다 (기본: 조각이 둘 이상이고 메모리 24GB 이상이면 2). 찍는 JSON의 servers = 실제로 조각을 받은 서버 수
 // 메인 창을 띄우지 않으므로 설치된 앱이 켜져 있어도 된다 (같은 모델·설정 폴더를 읽기만 한다).
 const fs = require('fs');
 const path = require('path');
@@ -35,6 +36,7 @@ async function transcribe(minutes) {
     JSON.stringify({
       model: timing.model,
       vad: timing.vad ?? null,
+      servers: timing.servers,
       transcribeMs: timing.transcribeMs,
       diarizeMs: timing.diarizeMs ?? null,
       segments: seg.segments.length,

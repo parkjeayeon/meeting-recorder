@@ -13,3 +13,4 @@ export { parseDictationLog, pageDictations, dictationStats, type DictRecord, typ
 export { checkMinutes, type CheckIssue, type CheckCode } from './check.mjs';
 export { smoothTurns, ISLAND_MAX_SEC, ISLAND_GAP_SEC, type Turn } from './turns.mjs';
 export { meetingVad, VAD_THRESHOLD, VAD_PAD_MS, VAD_MIN_SILENCE_MS, type MeetingVad } from './vad.mjs';
+export { meetingServers, envCount, MEETING_SERVERS_MIN_MEM, MEETING_SERVERS_MAX } from './parallel.mjs';
