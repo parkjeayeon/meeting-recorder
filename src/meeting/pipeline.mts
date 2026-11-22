@@ -13,11 +13,14 @@ import { clock } from './transcript.mjs';
 export type OnStage = (stage: { dir: string; status: string; [k: string]: unknown }) => void;
 
 // resume: 회의록 쓰기 단계에서 멈춘 회의를 저장된 녹취(transcript.txt)로 이어서 쓴다
-export function makeMinutes(dir: string, { onStage = () => {}, speakers = null, resume = false }: { onStage?: OnStage; speakers?: number | null; resume?: boolean } = {}): Promise<void> {
+// after: 이것이 끝난 뒤에 줄에 선다 — 녹음 중 미리 받아쓰기가 받던 조각을 마칠 때까지 (결정 83). 그동안에도 '기다리는 중'(queued)으로 보인다.
+// 실패해도 그대로 줄에 선다 (미리 받은 것이 없으면 녹취가 예전처럼 받아쓴다)
+export function makeMinutes(dir: string, { onStage = () => {}, speakers = null, resume = false, after = null }: { onStage?: OnStage; speakers?: number | null; resume?: boolean; after?: Promise<unknown> | null } = {}): Promise<void> {
   const prev = resume ? readStatus(dir) : null;
   writeStatus(dir, { status: 'queued' });
   onStage({ dir, status: 'queued' });
-  return enqueue(() => run(dir, onStage, { speakers, prev }));
+  const job = () => enqueue(() => run(dir, onStage, { speakers, prev }));
+  return after ? after.then(job, job) : job();
 }
 
 // 화자 붙이기(assignSpeakers)·연달아 같은 말 합치기·스크립트 조립(buildTranscript)은 transcript.mts

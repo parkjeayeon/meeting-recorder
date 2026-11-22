@@ -5,17 +5,35 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { writeFileAtomic, writeJsonAtomic } from '../core/write.mjs';
-import { meetingVad } from '../core/vad.mjs';
+import { meetingVad, type MeetingVad } from '../core/vad.mjs';
 import { meetingServers } from '../core/parallel.mjs';
 import { recordedTracks, splitAtPauses, to16k, trackPath, writeWav, type Piece, type TrackMeta } from './audio.mjs';
 import { startDedicatedServer, transcribeSegments, userData, type DedicatedServer, type MeetingSettings } from './deps.mjs';
 import { diarize, diarizeAvailable, type Diarization } from './diarize.mjs';
+import { getPiece, pieceKey, removeCache, type CachedPiece, type PieceContext } from './piece-cache.mjs';
 import { buildTranscript, findLoops, type Segment } from './transcript.mjs';
 
 export const MEETING_MODEL = 'ggml-large-v3.bin'; // 회의는 속도보다 정확도 (없으면 받아쓰기용 turbo로)
 
 // 회의 녹취는 회의 언어로 (설정 › 회의, 받아쓰기 언어와 따로)
 export const meetingAsr = (settings: MeetingSettings): MeetingSettings => ({ ...settings, language: settings.meetingLanguage || settings.language });
+
+// 조각 결과 보관함(piece-cache.mts)의 열쇠에 넣는 '결과를 바꾸는 것들' — 녹취와 녹음 중 미리 받아쓰기(pretranscribe.mts)가 같은 함수로 만든다.
+// 회의용 서버(modelFile)로 받을 때만 쓴다. 언어·사전은 transcribeSegments가 Whisper에 넘기는 값 그대로 (사전이 비면 넘기지 않으므로 '')
+export function pieceContext(modelFile: string, settings: MeetingSettings, vad: MeetingVad | null): PieceContext {
+  let modelBytes = -1;
+  try {
+    modelBytes = fs.statSync(modelFile).size;
+  } catch {}
+  const asr = meetingAsr(settings);
+  return {
+    model: path.basename(modelFile),
+    modelBytes,
+    language: String(asr.language ?? ''),
+    vocabulary: asr.vocabulary || '',
+    vad: vad ? { model: vad.model, threshold: vad.threshold, padMs: vad.padMs, minSilenceMs: vad.minSilenceMs } : null,
+  };
+}
 
 // ── 같은 문장 반복 구간 다시 받아쓰기 ─────────────────────────────────────
 // Whisper는 앞 문장을 이어 받아 쓰는데, 작은 목소리·잡음 구간에서 한 문장에 갇히면 조각이 끝날 때까지
@@ -89,13 +107,20 @@ interface PieceQueue {
 
 // 진행률 = (끝난 조각 + 받는 중인 조각들의 진행률(각 0.99까지)) / 조각 수 → 줄지 않고, 모두 끝나야 1.
 // 받는 도중 값은 1% 단위로만, 조각이 끝날 때는 그 값 그대로 알린다. 반복 구간 다시 받아쓰기는 진행률을 움직이지 않는다
-function pieceQueue(pieces: Piece[], settings: MeetingSettings, progress: (p: number) => void): PieceQueue {
+// cached: 녹음 중에 미리 받아 둔 조각의 결과(조각 번호 자리에, 없으면 null) — 큐에 넣지 않고 처음부터 끝난 조각으로 센다 (결정 83)
+function pieceQueue(pieces: Piece[], settings: MeetingSettings, progress: (p: number) => void, cached: (PieceResult | null)[] = []): PieceQueue {
   const results: PieceResult[] = new Array(pieces.length);
+  const todo: number[] = [];
+  for (let i = 0; i < pieces.length; i++) {
+    const c = cached[i];
+    if (c) results[i] = c;
+    else todo.push(i);
+  }
   const used = new Set<DedicatedServer | null>();
   const inFlight = new Map<number, number>();
   const workers: Promise<void>[] = [];
   let next = 0;
-  let finished = 0;
+  let finished = pieces.length - todo.length;
   let failed = false;
   let last = 0;
   let resolve = (): void => {};
@@ -104,7 +129,7 @@ function pieceQueue(pieces: Piece[], settings: MeetingSettings, progress: (p: nu
     resolve = res;
     reject = rej;
   });
-  if (!pieces.length) resolve();
+  if (!todo.length) resolve();
 
   const report = (exact: boolean) => {
     let sum = finished;
@@ -118,10 +143,10 @@ function pieceQueue(pieces: Piece[], settings: MeetingSettings, progress: (p: nu
 
   const work = async (server: DedicatedServer | null) => {
     const port = server?.port ?? null;
-    while (!failed && next < pieces.length) {
-      const i = next++;
-      const piece = pieces[i];
-      if (!piece) break;
+    while (!failed && next < todo.length) {
+      const i = todo[next++];
+      const piece = i === undefined ? undefined : pieces[i];
+      if (i === undefined || !piece) break;
       used.add(server);
       inFlight.set(i, 0);
       // 조각 안 진행률은 서버마다 따로 온다 (Whisper 서버가 알려 줌)
@@ -147,6 +172,8 @@ function pieceQueue(pieces: Piece[], settings: MeetingSettings, progress: (p: nu
       if (finished === pieces.length) resolve();
     }
   };
+
+  if (finished) report(true); // 미리 받은 조각만큼 처음부터 앞서 있다 (모두 미리 받았으면 1)
 
   return {
     start: (server) => void workers.push(work(server)),
@@ -198,6 +225,9 @@ export async function transcribeMeeting(dir: string, meta: MeetingMeta, settings
         () => {},
       );
     const usedServers = new Set<DedicatedServer | null>();
+    // 녹음 중에 미리 받아 둔 조각(.pre): 회의용 서버로 받을 때만 찾는다 — 받아쓰기용 서버로 받는 결과는 미리 받은 것과 다르다
+    const preContext = first ? pieceContext(modelFile, settings, vad) : null;
+    const pre = { reused: 0, total: 0 };
 
     const lines: (Segment & { track: string })[] = [];
     const redo: (Redone & { track: string })[] = []; // 같은 문장 반복으로 다시 받아쓴 구간
@@ -217,11 +247,16 @@ export async function transcribeMeeting(dir: string, meta: MeetingMeta, settings
       const tDiarize = Date.now();
       const pieces = splitAtPauses(small, dir);
       temp.push(...pieces.map((p) => p.file));
-      const queue = pieceQueue(pieces, settings, (progress) => report('transcribe', { progress, diarizing: Boolean(diarizeJob) }));
+      // 조각마다 제 바이트로 열쇠를 만들어 찾는다 → 찾은 조각은 받아쓰지 않는다. 못 찾으면 예전처럼 받는다
+      const cached: (CachedPiece | null)[] = pieces.map((p) => (preContext ? getPiece(dir, pieceKey(fs.readFileSync(p.file), preContext)) : null));
+      const reused = cached.filter(Boolean).length;
+      pre.reused += reused;
+      pre.total += pieces.length;
+      const queue = pieceQueue(pieces, settings, (progress) => report('transcribe', { progress, diarizing: Boolean(diarizeJob) }), cached);
       if (first) {
         for (const s of pool) queue.start(s);
         joinTrack = (s) => queue.start(s);
-        const want = meetingServers({ totalMemBytes, pieces: pieces.length, env: process.env });
+        const want = meetingServers({ totalMemBytes, pieces: pieces.length - reused, env: process.env });
         for (; 1 + extraTried < want; extraTried++) void startExtra();
       } else {
         queue.start(null); // 회의용 서버가 없으면 받아쓰기용 서버로 차례로 (예전과 같다)
@@ -250,6 +285,7 @@ export async function transcribeMeeting(dir: string, meta: MeetingMeta, settings
     }
     stopAll();
     timing.transcribeMs = Date.now() - t;
+    timing.pre = pre; // 녹음 중에 미리 받아 둔 조각을 다시 쓴 수 / 조각 수 (결정 83)
     timing.servers = usedServers.size; // 조각을 하나라도 받은 서버 수 (회의용 서버가 없으면 받아쓰기용 서버 1)
     lines.sort((a, b) => a.start - b.start);
     // 서버 수·끝난 순서와 상관없이 같은 파일이 되도록 트랙 순서, 그 안에서 시각 순서로 (조각 순서로 모았으니 이미 그 순서다)
@@ -261,6 +297,7 @@ export async function transcribeMeeting(dir: string, meta: MeetingMeta, settings
 
     const { text: transcript, speakerCount } = buildTranscript(lines, diarization, tracks);
     writeFileAtomic(path.join(dir, 'transcript.txt'), transcript ? `${transcript}\n` : '');
+    removeCache(dir); // 녹취를 마쳤으니 미리 받아 둔 조각은 더 쓸 일이 없다 (실패하면 남겨 두어 다시 만들 때 쓴다)
     return { transcript, diarizeInfo: { speakers: speakerCount, diarizeError: diarization?.error ?? null } };
   } finally {
     stopAll();

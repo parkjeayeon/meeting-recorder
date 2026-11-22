@@ -19,7 +19,7 @@ export interface MinutesRunContext {
 }
 
 export interface MinutesRun {
-  runMinutes(dir: string, speakers?: number | null, opts?: { resume?: boolean }): Promise<void>;
+  runMinutes(dir: string, speakers?: number | null, opts?: { resume?: boolean; after?: Promise<unknown> }): Promise<void>;
   waitForOnline(dir: string): void;
   activeMinutes: ReadonlySet<string>;
   waitingOnline: ReadonlySet<string>;
@@ -32,7 +32,8 @@ export function createMinutesRun(ctx: MinutesRunContext): MinutesRun {
   const waitingOnline = new Set<string>();
   let onlineTimer: ReturnType<typeof setInterval> | undefined;
 
-  function runMinutes(dir: string, speakers: number | null = null, { resume = false }: { resume?: boolean } = {}): Promise<void> {
+  // after: 녹음 중 미리 받아쓰기가 끝난 뒤에 녹취를 시작한다 (recording.mts, 결정 83). 상태('기다리는 중')는 바로 알린다
+  function runMinutes(dir: string, speakers: number | null = null, { resume = false, after }: { resume?: boolean; after?: Promise<unknown> } = {}): Promise<void> {
     const meta = readJson(path.join(dir, 'meta.json')) as FolderMeta | null;
     const durationSec = Math.max(0, ...Object.values(meta?.files ?? {}).map((f) => f.durationSec ?? 0));
     if (durationSec < MIN_MEETING_SEC) {
@@ -46,6 +47,7 @@ export function createMinutesRun(ctx: MinutesRunContext): MinutesRun {
     return minutes.makeMinutes(dir, {
       speakers,
       resume,
+      ...(after ? { after } : {}),
       onStage: (s) => {
         if (s.status === 'error' && s.offline) waitForOnline(dir);
         ctx.send('minutes:status', { id: path.basename(dir), ...s });

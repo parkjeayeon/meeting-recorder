@@ -142,6 +142,18 @@ MR_MEETING_VAD=$PWD/.work/vad/dl/ggml-silero-v5.1.2.bin npx electron scripts/dev
 
 녹음 압축 전후 비교(2026-11-08)도 이 스크립트로 했다: 사본 폴더 셋(원본 WAV · `ffmpeg -af adelay=1S`로 1샘플 민 WAV · `afconvert -d aac -b 96000`으로 만든 `mic.m4a` + meta.json의 `files.mic.file`·`compressed`)을 차례로 돌려 녹취·확인 필요·회의록을 비교. 2시간 회의 한 번에 약 20분, LLM 단계는 다듬기 계정을 쓴다. **Mac이 잠들면 거의 멈춘다** — `caffeinate -dims`로 감싸고 뚜껑을 열어 둔다.
 
+## 녹음 중 미리 받아쓰기 재 보기 — `scripts/dev/pretranscribe-replay.js`
+회의 폴더 **사본**의 녹음을 녹음기처럼(같은 `WavWriter`) 한 걸음(기본 60초, `--step <초>`)씩 키우며 미리 받아쓰기를 찌르고(`poke()`, 실제 시간만큼 기다리지 않고 돌기가 끝나기를 기다린다), 다 키우면 `finish()` 뒤 녹취(`transcribeMeeting`)를 돌린다([결정 83](decisions.md)). `--no-pre`는 같은 과정을 미리 받아쓰기 없이 — 비교 기준. 실제 녹음 폴더(기본 폴더·설정에서 바꾼 폴더)를 지정하면 거부한다. 먼저 `npm run build:ts`.
+```bash
+mkdir -p .work/pre/a .work/pre/b
+cp -c ~/Documents/MeetingRecorder/<회의>/{mic.wav,meta.json} .work/pre/a/ && cp -c ~/Documents/MeetingRecorder/<회의>/{mic.wav,meta.json} .work/pre/b/
+npx electron scripts/dev/pretranscribe-replay.js .work/pre/a
+npx electron scripts/dev/pretranscribe-replay.js --no-pre .work/pre/b
+diff <(sed -E 's/"ms":[0-9]+/"ms":0/g' .work/pre/a/segments.json) <(sed -E 's/"ms":[0-9]+/"ms":0/g' .work/pre/b/segments.json)
+diff .work/pre/a/transcript.txt .work/pre/b/transcript.txt && cmp .work/pre/a/diarization.json .work/pre/b/diarization.json
+```
+JSON 한 줄: 조각 수·다시 쓴 수(`piecesTotal`·`piecesReused`), 녹음 중 돌기마다 걸린 초(`liveRuns`)와 합(`liveSec`), 멈춘 뒤 `finish()`를 기다린 초(`finishWaitSec`, 걸음 사이를 기다리지 않으므로 대개 0), 녹취 초(`transcribeSec`), `diarizeMs`, `timing` 전체. 시작할 때 지난 실행의 `.pre`·`segments.json`·`transcript.txt`·`diarization.json`을 지운다. 원본은 처음에 `.replay-<트랙>.wav`로 옮겨 두고 다시 쓴 녹음이 PCM까지 같으면 지운다(끊기면 다음 실행이 그것을 원본으로 쓴다). WAV 녹음만(압축한 `.m4a`는 거부).
+
 ## 녹음 품질 통계 — `scripts/dev/eval/audio-quality.py`
 정답 녹취 없이 원본과 압축본의 받아쓰기 품질을 통계로 비교한다. 회의 폴더는 읽기만 하고 변형(원본·1·2샘플 밀기·압축·압축+1샘플)은 `/tmp/aq`에 만들어, 앱과 같은 조건(large-v3, `-sns`, ko, temperature 0, 사전 단어 힌트)으로 5분 구간마다 받아써 Whisper의 단어별 확률·구간 평균 로그확률을 모은다. LLM은 쓰지 않는다.
 ```bash

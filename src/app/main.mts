@@ -121,7 +121,9 @@ export function start(deps: StartDeps): void {
     dictation,
     runPermissionsHelper,
     runDictation: (job) => dictRun.runDictation(job),
-    runMinutes: (dir, speakers) => minutesRun.runMinutes(dir, speakers),
+    runMinutes: (dir, speakers, opts) => minutesRun.runMinutes(dir, speakers, opts),
+    // 회의 녹음 중 미리 받아쓰기 (결정 83). 회의 모듈의 Whisper 서버·설정은 src/minutes.js가 이어 둔 것을 쓴다
+    createPretranscriber: (dir, tracks) => minutes.createPretranscriber({ dir, tracks, log }),
     updateTray: () => tray.updateTray(),
     send,
     sendOverlay: windows.sendOverlay,

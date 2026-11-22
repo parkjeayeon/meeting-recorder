@@ -122,12 +122,19 @@ export interface Piece {
   offset: number; // 초
 }
 
-// 16kHz WAV를 약 pieceSec(기본 PIECE_SEC)마다 가장 조용한 지점(앞뒤 5초 안)에서 잘라 조각 파일로 만든다
-// pieceSec는 단위 시험이 짧은 녹음으로 돌려 보려고 받는다 — 본체는 넘기지 않는다
-export function splitAtPauses(wavPath: string, outDir: string, pieceSec: number = PIECE_SEC): Piece[] {
-  const buf = fs.readFileSync(wavPath);
-  const rate = buf.readUInt32LE(24);
-  const pcm = new Int16Array(buf.buffer, buf.byteOffset + 44, Math.floor((buf.length - 44) / 2));
+// 자를 자리를 찾는 목표 시각(샘플)들: pieceSec마다, 끝에서 TAIL_SEC보다 앞인 것만.
+// 녹음 중 미리 받아쓰기(pretranscribe.mts)도 이 규칙으로 '더는 바뀌지 않는 조각'이 몇 개인지 센다 — 같은 함수라 규칙이 갈리지 않는다
+export const TAIL_SEC = 30; // 끝 30초 안쪽에서는 자르지 않는다 (마지막 조각이 너무 짧아지지 않게)
+export const SEARCH_SEC = 5; // 목표 시각 앞뒤 5초 안에서 가장 조용한 곳
+export function cutTargets(samples: number, rate: number, pieceSec: number = PIECE_SEC): number[] {
+  const targets: number[] = [];
+  for (let target = pieceSec * rate; target < samples - TAIL_SEC * rate; target += pieceSec * rate) targets.push(target);
+  return targets;
+}
+
+// 16kHz PCM에서 자를 자리 (처음 0과 끝 pcm.length 포함). 자리 하나는 목표 시각 앞뒤 SEARCH_SEC(+0.1초 창) 안의 소리만 보므로,
+// 녹음이 그 목표 시각보다 TAIL_SEC 넘게 더 이어진 뒤에는 녹음이 더 길어져도 그 자리는 바뀌지 않는다
+export function pauseCuts(pcm: Int16Array, rate: number, pieceSec: number = PIECE_SEC): number[] {
   const win = Math.round(rate * 0.1);
   const energyAt = (i: number): number => {
     let e = 0;
@@ -135,32 +142,56 @@ export function splitAtPauses(wavPath: string, outDir: string, pieceSec: number 
     return e;
   };
   const cuts = [0];
-  for (let target = pieceSec * rate; target < pcm.length - 30 * rate; target += pieceSec * rate) {
+  for (const target of cutTargets(pcm.length, rate, pieceSec)) {
     let best = target;
     let bestE = Infinity;
-    for (let i = target - 5 * rate; i <= target + 5 * rate; i += win) {
+    for (let i = target - SEARCH_SEC * rate; i <= target + SEARCH_SEC * rate; i += win) {
       const e = energyAt(i);
       if (e < bestE) [best, bestE] = [i, e];
     }
     cuts.push(best);
   }
   cuts.push(pcm.length);
+  return cuts;
+}
+
+// 16kHz WAV 파일 내용 → PCM (44바이트 머리 뒤)
+export const wavPcm = (buf: Buffer): Int16Array => new Int16Array(buf.buffer, buf.byteOffset + 44, Math.floor((buf.length - 44) / 2));
+
+// 조각 i의 파일 내용 (머리 + PCM [cuts[i], cuts[i+1])) — splitAtPauses가 쓰는 바이트와 같다
+export function pieceBytes(buf: Buffer, pcm: Int16Array, cuts: number[], i: number): Buffer {
+  const [a, b] = [cuts[i], cuts[i + 1]];
+  if (a === undefined || b === undefined) throw new RangeError(`조각 ${i}번이 없습니다`);
+  return wavBytes(buf, Buffer.from(pcm.buffer, pcm.byteOffset + a * 2, (b - a) * 2));
+}
+
+// 16kHz WAV를 약 pieceSec(기본 PIECE_SEC)마다 가장 조용한 지점(앞뒤 5초 안)에서 잘라 조각 파일로 만든다
+// pieceSec는 단위 시험이 짧은 녹음으로 돌려 보려고 받는다 — 본체는 넘기지 않는다
+export function splitAtPauses(wavPath: string, outDir: string, pieceSec: number = PIECE_SEC): Piece[] {
+  const buf = fs.readFileSync(wavPath);
+  const rate = buf.readUInt32LE(24);
+  const pcm = wavPcm(buf);
+  const cuts = pauseCuts(pcm, rate, pieceSec);
   const pieces: Piece[] = [];
-  for (let i = 0; i < cuts.length - 1; i++) {
+  for (const [i, a] of cuts.slice(0, -1).entries()) {
     const file = path.join(outDir, `.piece-${i}.wav`);
-    const [a, b] = [cuts[i]!, cuts[i + 1]!];
-    writeWav(file, buf, Buffer.from(pcm.buffer, pcm.byteOffset + a * 2, (b - a) * 2));
+    fs.writeFileSync(file, pieceBytes(buf, pcm, cuts, i));
     pieces.push({ file, offset: a / rate });
   }
   return pieces;
 }
 
-// 원본 WAV의 헤더를 본떠 PCM 일부를 새 파일로 쓴다
-export function writeWav(file: string, src: Buffer, body: Buffer): void {
+// 원본 WAV의 헤더를 본떠 PCM 일부를 붙인 파일 내용
+export function wavBytes(src: Buffer, body: Buffer): Buffer {
   const h = Buffer.from(src.subarray(0, 44));
   h.writeUInt32LE(36 + body.length, 4);
   h.writeUInt32LE(body.length, 40);
-  fs.writeFileSync(file, Buffer.concat([h, body]));
+  return Buffer.concat([h, body]);
+}
+
+// 원본 WAV의 헤더를 본떠 PCM 일부를 새 파일로 쓴다
+export function writeWav(file: string, src: Buffer, body: Buffer): void {
+  fs.writeFileSync(file, wavBytes(src, body));
 }
 
 // 16kHz 모노 16bit PCM을 표준 44바이트 머리를 붙여 쓴다

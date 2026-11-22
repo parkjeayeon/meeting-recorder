@@ -66,7 +66,7 @@ describe('설정 백업 (settings.json)', () => {
     stored = { vocabulary: '가나, 다라', language: 'en', recordingsDir: '/x', apiKey: 'secret', onboarding: { completed: true } };
     folders.writePortableSettings();
     const saved = readJson(path.join(folders.recordingsDir(), 'settings.json')) as Record<string, unknown>;
-    expect(Object.keys(saved).sort()).toEqual(['cleanup', 'diarize', 'enabled', 'language', 'meetingLanguage', 'meetingSystemAudio', 'minutes', 'provider', 'savedAt', 'vocabulary']);
+    expect(Object.keys(saved).sort()).toEqual(['cleanup', 'diarize', 'enabled', 'language', 'meetingLanguage', 'meetingPretranscribe', 'meetingSystemAudio', 'minutes', 'provider', 'savedAt', 'vocabulary']);
     expect(saved.vocabulary).toBe('가나, 다라');
     expect(saved.language).toBe('en');
   });
