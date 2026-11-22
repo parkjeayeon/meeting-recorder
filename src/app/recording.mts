@@ -3,12 +3,14 @@
 // 다른 구역은 get()으로 읽는다. 일시정지·경과 시간, 받아쓰기 19/20분 제한, 녹음 버튼·취소(rec:toggle·rec:cancel·rec:failed는
 // fn 상태 머신에 알린다), 취소 확인 창도 여기.
 // 받아쓰기 녹음은 임시 폴더에 두고 처리 뒤 지운다(dictation-run.mts). 회의 녹음은 녹음 폴더에 남는다.
+// 회의 녹음 중에는 끝난 조각을 미리 받아써 둔다(src/meeting/pretranscribe.mts, 결정 83) — 여기서는 만들고, 30초마다 찌르고, 멈추면 끝내거나 버린다.
 // 녹음 폴더·임시 폴더·fn 상태 머신·권한 도우미·창으로 보내기·메뉴바·받아쓰기와 회의록 시작은 본체가 넘긴다.
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import * as core from '../core/index.mjs';
 import { WavWriter } from '../meeting/wav-writer.mjs';
+import { POKE_MS, type Pretranscriber } from '../meeting/pretranscribe.mjs';
 import { platform } from '../platform/index.mjs';
 import type { Dictation } from '../dictation/index.mjs';
 import type { DictationJob, FrontApp } from './dictation-run.mjs';
@@ -31,6 +33,8 @@ export interface Recording {
   pausedMs: number;
   pausedAt: number | null;
   speakers: number | null; // 참석 인원 (null = 자동)
+  pre: Pretranscriber | null; // 녹음 중 미리 받아쓰기 (회의만, 설정이 켜져 있을 때)
+  preTimer: ReturnType<typeof setInterval> | null;
 }
 
 // 녹음 시간 (일시정지한 시간은 빼고) — 독·메뉴바·창의 시계
@@ -47,7 +51,8 @@ export interface RecordingContext {
   dictation: Pick<Dictation, 'getSettings'>;
   runPermissionsHelper: (args: string[]) => Promise<string | null>;
   runDictation: (job: DictationJob) => unknown;
-  runMinutes: (dir: string, speakers: number | null) => unknown;
+  runMinutes: (dir: string, speakers: number | null, opts?: { after?: Promise<unknown> }) => unknown; // after: 이것이 끝난 뒤 녹취를 시작한다
+  createPretranscriber?: (dir: string, tracks: string[]) => Pretranscriber; // src/minutes.js의 createPretranscriber (없으면 미리 받아쓰지 않는다)
   updateTray: () => void;
   send: (channel: string, payload?: unknown) => void; // 메인 창으로
   sendOverlay: (channel: string, payload?: unknown) => void; // 플로팅 독으로
@@ -84,6 +89,12 @@ interface RecStart {
 export function registerRecording(ipc: Ipc, ctx: RecordingContext): RecordingSession {
   let recording: Recording | null = null; // { dir, mode, writers: { mic, system }, startedAt, micPeak, pausedMs, pausedAt, speakers }
   let nextSpeakers: number | null = null; // 창의 시작 시트에서 고른 참석 인원 (다음 회의 녹음에 쓴다)
+  // 녹음은 멈췄지만 받던 조각을 마치는 중인 미리 받아쓰기 (앱을 끝내면 그만두게 한다)
+  const finishing = new Set<Pretranscriber>();
+  const stopPoking = (rec: Recording) => {
+    if (rec.preTimer) clearInterval(rec.preTimer);
+    rec.preTimer = null;
+  };
 
   // 회의 녹음 일시정지: 그동안 들어오는 소리를 파일에 쓰지 않는다 (재개하면 바로 이어서 기록)
   function elapsedMs(rec: Recording | null = recording): number {
@@ -129,7 +140,11 @@ export function registerRecording(ipc: Ipc, ctx: RecordingContext): RecordingSes
     fs.mkdirSync(dir, { recursive: true });
     const writers: Record<string, WavWriter> = {};
     for (const t of tracks) writers[t] = new WavWriter(path.join(dir, `${t}.wav`), { sampleRate });
-    recording = { dir, mode, writers, sampleRate, devices, startedAt: new Date(), micPeak: 0, voicedMs: 0, app: null, pausedMs: 0, pausedAt: null, speakers: mode === 'meeting' ? nextSpeakers : null };
+    // 미리 받아쓰기: 회의만, 설정(meetingPretranscribe, 기본 켬)이 켜져 있을 때. 30초마다 찌르면 굳은 조각이 새로 생겼을 때만 받아쓴다.
+    // 찌르기는 타이머에서 하고 기다리지 않는다 — 소리 조각 처리(rec:chunk)와 따로 돈다
+    const pre = mode === 'meeting' && ctx.createPretranscriber && ctx.dictation.getSettings().meetingPretranscribe ? ctx.createPretranscriber(dir, tracks) : null;
+    const preTimer = pre ? setInterval(() => void pre.poke(), POKE_MS) : null;
+    recording = { dir, mode, writers, sampleRate, devices, startedAt: new Date(), micPeak: 0, voicedMs: 0, app: null, pausedMs: 0, pausedAt: null, speakers: mode === 'meeting' ? nextSpeakers : null, pre, preTimer };
     if (mode === 'meeting') nextSpeakers = null;
     if (mode === 'memo') {
       // 받아쓰기가 너무 길어지면 19분에 미리 알리고 20분에서 끝내고 입력한다
@@ -189,9 +204,22 @@ export function registerRecording(ipc: Ipc, ctx: RecordingContext): RecordingSes
     if (!recording) return null;
     const { dir, mode, writers, sampleRate, devices, startedAt, micPeak, voicedMs, speakers } = recording;
     const rec = recording;
+    stopPoking(rec);
     if (discard) {
       for (const w of Object.values(writers)) w.close();
-      fs.rmSync(dir, { recursive: true, force: true });
+      const removeDir = () => fs.rmSync(dir, { recursive: true, force: true });
+      if (rec.pre) {
+        // 미리 받아쓰기를 멈춘다(서버를 끈다). 그 사이 임시 파일을 만들고 있었을 수 있어, 멈춘 뒤 한 번 더 지운다
+        const stopped = rec.pre.cancel();
+        try {
+          removeDir();
+        } catch {}
+        void stopped.then(() => {
+          try {
+            removeDir();
+          } catch {}
+        });
+      } else removeDir();
       recording = null;
       ctx.updateTray();
       if (ctx.selftest) ctx.log('SELFTEST discarded', path.basename(dir));
@@ -209,7 +237,17 @@ export function registerRecording(ipc: Ipc, ctx: RecordingContext): RecordingSes
     ctx.updateTray();
     if (ctx.selftest) ctx.log('SELFTEST saved', path.basename(dir), JSON.stringify(files));
     if (mode === 'memo') ctx.runDictation({ dir, peak: micPeak, voicedMs, startedAt, durationSec: files.mic?.durationSec ?? 0, rec });
-    if (mode === 'meeting' && ctx.dictation.getSettings().minutes) ctx.runMinutes(dir, speakers ?? null);
+    if (mode === 'meeting') {
+      const runMinutes = ctx.dictation.getSettings().minutes;
+      if (rec.pre) {
+        // 받던 조각까지 마치고(그 결과도 녹취가 다시 쓴다) 녹취를 시작한다. 창에는 바로 돌려준다(기다리게 하지 않는다).
+        // 회의록을 자동으로 만들지 않아도 마치게 둔다 — 나중에 손으로 만들 때 쓴다
+        const pre = rec.pre;
+        finishing.add(pre);
+        const after = pre.finish().finally(() => finishing.delete(pre));
+        if (runMinutes) ctx.runMinutes(dir, speakers ?? null, { after });
+      } else if (runMinutes) ctx.runMinutes(dir, speakers ?? null);
+    }
     return { dir, ...meta };
   });
 
@@ -233,9 +271,12 @@ export function registerRecording(ipc: Ipc, ctx: RecordingContext): RecordingSes
     confirmCancel,
     closeOnQuit: () => {
       if (recording) {
+        stopPoking(recording);
         for (const w of Object.values(recording.writers)) w.close();
+        void recording.pre?.cancel(); // 미리 받아쓰기의 서버를 끈다
         recording = null;
       }
+      for (const pre of finishing) void pre.cancel();
     },
   };
 }

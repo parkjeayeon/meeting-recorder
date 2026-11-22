@@ -147,3 +147,21 @@ describe('회의록 실행', () => {
     expect(run.waitingOnline.has(a)).toBe(false);
   });
 });
+
+describe('회의록 실행 — 녹음 중 미리 받아쓰기 뒤에 (결정 83)', () => {
+  it('after를 makeMinutes에 그대로 넘기고, 넘기지 않으면 칸도 없다', async () => {
+    const seen: unknown[] = [];
+    const own = createMinutesRun({
+      minutes: { makeMinutes: async (_dir, opts = {}) => void seen.push(opts), canResume: () => false },
+      isOnline: () => true,
+      send: () => {},
+      sendOverlay: () => {},
+    });
+    const dir = meeting('2026-01-01_10-00-00_meeting', { mic: { durationSec: 60 } });
+    const after = Promise.resolve();
+    await own.runMinutes(dir, 2, { after });
+    await own.runMinutes(dir, null);
+    expect((seen[0] as { after?: unknown }).after).toBe(after);
+    expect(seen[1]).not.toHaveProperty('after');
+  });
+});

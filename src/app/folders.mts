@@ -10,7 +10,7 @@ import type { Dictation, SettingsPatch } from '../dictation/index.mjs';
 import { DEFAULT_SETTINGS } from '../dictation/settings.mjs'; // 기본값만 (Electron·서버를 가져오지 않는다)
 
 // ── 사전·설정 백업: 녹음 폴더의 settings.json에 같이 적어 두어, 녹음 폴더만 옮겨도 이어 쓸 수 있게 한다 (토큰·키는 넣지 않는다)
-export const PORTABLE_KEYS = ['vocabulary', 'language', 'meetingLanguage', 'enabled', 'cleanup', 'provider', 'minutes', 'diarize', 'meetingSystemAudio'] as const;
+export const PORTABLE_KEYS = ['vocabulary', 'language', 'meetingLanguage', 'enabled', 'cleanup', 'provider', 'minutes', 'diarize', 'meetingSystemAudio', 'meetingPretranscribe'] as const;
 // 문자열이 아닌 값(손으로 고친 파일의 숫자·배열·객체·null)은 빈 사전으로 본다
 export const vocabList = (v: unknown): string[] => (typeof v === 'string' ? v : '').split(/[,\n]/).map((w) => w.trim()).filter(Boolean);
 
@@ -25,6 +25,7 @@ const PORTABLE_TYPES: Record<(typeof PORTABLE_KEYS)[number], string> = {
   minutes: typeof DEFAULT_SETTINGS.minutes,
   diarize: typeof DEFAULT_SETTINGS.diarize,
   meetingSystemAudio: typeof DEFAULT_SETTINGS.meetingSystemAudio,
+  meetingPretranscribe: typeof DEFAULT_SETTINGS.meetingPretranscribe,
 };
 
 export function readJson(file: string): unknown {

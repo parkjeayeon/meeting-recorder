@@ -32,10 +32,10 @@ meeting.configure({
 // 확인 필요에는 LLM 호출과 지금 설정만 넘긴다
 review.configure({ complete, credentials: () => ({ choice: dictation.getSettings().provider, apiKey: dictation.apiKey() }) });
 
-const { minutesSystem, decodeTo16k, findLoops, buildTranscript, makeMinutes, transcribeMeeting, canResume, makeCleanScript, renameSpeaker, diarizeAvailable, retranscribeRange, applyRetranscribe, speakerTurns } = meeting;
+const { minutesSystem, decodeTo16k, findLoops, buildTranscript, makeMinutes, transcribeMeeting, canResume, makeCleanScript, renameSpeaker, diarizeAvailable, retranscribeRange, applyRetranscribe, speakerTurns, createPretranscriber } = meeting;
 const { addCheckItems, readReview, makeReview, addReview, applyReview, setReviewStatus, chatReview, finalizeReview, revertReview, markReviewItems, reopenReview } = review;
 
 module.exports = {
   minutesSystem,
   decodeTo16k,
-  findLoops, nameSpeakers, buildTranscript, makeMinutes, transcribeMeeting, canResume, addCheckItems, makeCleanScript, renameSpeaker, diarizeAvailable, readReview, makeReview, addReview, applyReview, setReviewStatus, chatReview, finalizeReview, retranscribeRange, applyRetranscribe, speakerTurns, revertReview, markReviewItems, reopenReview };
+  findLoops, nameSpeakers, buildTranscript, makeMinutes, transcribeMeeting, canResume, addCheckItems, makeCleanScript, renameSpeaker, diarizeAvailable, readReview, makeReview, addReview, applyReview, setReviewStatus, chatReview, finalizeReview, retranscribeRange, applyRetranscribe, speakerTurns, revertReview, markReviewItems, reopenReview, createPretranscriber };

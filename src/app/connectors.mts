@@ -26,6 +26,7 @@ export type MinutesModule = Pick<
   | 'retranscribeRange'
   | 'applyRetranscribe'
   | 'speakerTurns'
+  | 'createPretranscriber'
 > &
   Pick<
     typeof review,
