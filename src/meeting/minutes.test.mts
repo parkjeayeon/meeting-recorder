@@ -47,8 +47,8 @@ describe('cleanScript', () => {
     for (const s of sizes) expect(s).toBeLessThanOrEqual(SCRIPT_CHUNK_CHARS * 2 + 200);
   });
 
-  it('동시에 넷까지만 부른다', async () => {
-    const blocks: [string, number][] = Array.from({ length: 10 }, (_, i) => [`화자 ${(i % 2) + 1}`, 30]);
+  it('동시에 여덟까지만 부른다 (SCRIPT_PARALLEL)', async () => {
+    const blocks: [string, number][] = Array.from({ length: 12 }, (_, i) => [`화자 ${(i % 2) + 1}`, 30]);
     let inFlight = 0;
     let most = 0;
     fakeDeps(root, {
@@ -60,8 +60,8 @@ describe('cleanScript', () => {
       },
     });
     const r = await cleanScript(script(blocks).join('\n'), settings);
-    expect(r.chunks).toBe(10);
-    expect(most).toBe(4);
+    expect(r.chunks).toBe(12);
+    expect(most).toBe(8);
   });
 
   it('형식이 깨진 조각(없던 시각·늘어난 줄)이나 실패한 호출은 원래 줄을 쓰고 failed로 센다', async () => {
@@ -114,8 +114,8 @@ describe('cleanScript', () => {
     };
 
     it('부를 때 읽어 동시에 정리할 수를 바꾼다, 틀린 값이면 기본값(SCRIPT_PARALLEL)', async () => {
-      expect(SCRIPT_PARALLEL).toBe(4);
-      for (const [v, want] of [['1', 1], ['8', 8], ['16', 12], ['0', 4], ['17', 4], ['abc', 4], ['', 4]] as const) {
+      expect(SCRIPT_PARALLEL).toBe(8);
+      for (const [v, want] of [['1', 1], ['8', 8], ['16', 12], ['0', 8], ['17', 8], ['abc', 8], ['', 8]] as const) {
         process.env.MR_SCRIPT_PARALLEL = v;
         expect(await most(), v).toBe(want);
       }
