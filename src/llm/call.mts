@@ -14,7 +14,9 @@ export const TIMEOUT_MS: Record<ProviderId, number> = { 'claude-code': 25000, co
 
 export type Effort = 'low' | 'medium' | 'high';
 export type Choice = ProviderId | 'auto';
-export type CallOptions = { system: string; input: string; effort: Effort; timeout: number; apiKey?: string | null; maxTokens?: number; cache?: boolean; signal?: AbortSignal };
+// model: Claude Code에서만 쓴다 — 받아쓰기 다듬기(cleanup)만 짧은 글에 sonnet을 넘기고, 나머지는 넘기지 않아 opus (결정 81). Codex·API는 무시한다
+export type ClaudeModel = 'opus' | 'sonnet';
+export type CallOptions = { system: string; input: string; effort: Effort; timeout: number; apiKey?: string | null; maxTokens?: number; cache?: boolean; signal?: AbortSignal; model?: ClaudeModel };
 
 // 사용량(자동 계정 고르기·한도에 걸린 계정 표시)은 usage.mts가 맡는다. usage.mts가 이 모듈의 complete를 쓰므로
 // 서로 가져오지 않게 index.mts가 여기에 끼워 넣는다 — 끼우지 않으면 사용량을 모르는 것으로 본다(시험)
@@ -55,10 +57,10 @@ function answerOf(out: LinesResult<Answer>, fallback: () => string): string {
   return checkLimitText(out.value.text.trim());
 }
 
-async function viaClaudeCode({ system, input, effort, timeout, cache = true, signal }: CallOptions): Promise<string> {
+async function viaClaudeCode({ system, input, effort, timeout, cache = true, signal, model = 'opus' }: CallOptions): Promise<string> {
   const out = await runLines(findBin('claude-code')!, [
     '-p',
-    '--model', 'opus',
+    '--model', model,
     '--effort', effort,
     '--system-prompt', system,
     '--tools', '',
