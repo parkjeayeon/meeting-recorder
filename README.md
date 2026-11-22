@@ -124,8 +124,9 @@ fn 규칙은 Wispr Flow 앱 코드에서 확인한 값을 따른다 (`DICTATION_
 2. 로컬 Whisper(large-v3-turbo q8_0, 약 0.9GB)로 변환. `whisper-server`를 앱이 띄워 모델을 메모리에 올려 두므로 짧은 문장은 0.3초 안팎
 3. Whisper가 무음·잡음에서 자주 지어내는 문장("감사합니다", "시청해 주셔서 감사합니다" 등)은 입력하지 않는다
 4. (선택) 다듬기: 군말·자기 정정·띄어쓰기 정리 (`src/llm/cleanup.mts`)
-   - 자동: Claude Code(`claude -p`, 약 2.5초) → Codex(`codex exec`, 약 3.5~5초) → Anthropic API 키(`claude-opus-5-5`, safeStorage 암호화 저장) 순으로 로그인된 것
+   - 자동: Claude Code(`claude -p`, 약 2.6~3.4초) → Codex(`codex exec`, 약 3.3~5.5초) → Anthropic API 키(`claude-opus-5-5`, safeStorage 암호화 저장) 순으로 로그인된 것
    - 설정 › 다듬기에서 로그인된 계정마다 **남은 사용량**을 보여 준다 (Claude Code: 현재 세션·이번 주·모델별, Codex: 이번 주·크레딧, 초기화 시각, 20% 미만 주황). 토큰을 쓰지 않는 `claude -p /usage`·`codex app-server`로 읽고 5분 동안 저장해 둔다 ([결정 49](docs/decisions.md))
+   - CLI는 JSON 줄로 출력하게 하고 턴이 끝나는 순간 답을 받아 프로세스를 끝낸다 — 프로세스가 스스로 끝나기를 기다리지 않는다 ([결정 80](docs/decisions.md))
    - 600자가 넘으면 문장 단위로 나눠 최대 4개를 동시에 다듬고 다시 잇는다. 실패한 조각은 원문 그대로 둔다
 5. 클립보드에 넣고 ⌘V 입력 후 0.6초 뒤 원래 클립보드 복원. 입력하지 못하면 클립보드에 남긴다
 
