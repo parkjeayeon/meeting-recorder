@@ -154,7 +154,8 @@ export function registerRecording(ipc: Ipc, ctx: RecordingContext): RecordingSes
     ctx.updateTray();
     // 셀프테스트: 시스템 소리 트랙에 실제로 소리가 잡히는지 확인용 효과음 재생
     const sound = platform.shell.selftestSound;
-    if (ctx.selftest && mode === 'meeting' && sound) setTimeout(() => spawn(...sound), 1000);
+    // 셀프테스트만 트는 소리라 띄우지 못해도('error') 넘어간다 (받는 곳이 없으면 본체가 죽는다)
+    if (ctx.selftest && mode === 'meeting' && sound) setTimeout(() => spawn(...sound).on('error', () => {}), 1000);
     return { dir };
   });
 

@@ -76,6 +76,8 @@ describe('paster: 도우미 끝 코드 → 결과 (예전 dictation.js paste)', 
     expect(await darwin.paster.sendPaste(fake('ok', '[ "$1" = paste ] && exit 0; exit 9'))).toBe('pasted');
     expect(await darwin.paster.sendPaste(fake('noperm', 'echo "error:permission"; exit 1'))).toBe('no-permission');
     expect(await darwin.paster.sendPaste(fake('fail', 'echo boom; exit 3'))).toBe('failed');
+    // 도우미를 띄우지 못하면(없음·실행할 수 없음) 'exit'가 오지 않는다 → 멈추거나 죽지 않고 실패
+    expect(await darwin.paster.sendPaste(path.join(os.tmpdir(), 'mr-no-such-permissions-helper'))).toBe('failed');
   });
 });
 

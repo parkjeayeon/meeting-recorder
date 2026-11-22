@@ -23,11 +23,24 @@ export function createServeRecording(recordingsDir: () => string): (request: Rec
       return new Response('not found', { status: 404 });
     }
     const size = fs.statSync(file).size;
+    const type = /\.m4a$/i.test(file) ? 'audio/mp4' : 'audio/wav';
     const range = /bytes=(\d*)-(\d*)/.exec(request.headers.get('range') ?? '');
-    const start = range?.[1] ? Number(range[1]) : 0;
-    const end = range?.[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
-    const headers: Record<string, string> = { 'Content-Type': /\.m4a$/i.test(file) ? 'audio/mp4' : 'audio/wav', 'Accept-Ranges': 'bytes', 'Content-Length': String(end - start + 1) };
+    let start = 0;
+    let end = size - 1;
+    if (range && !range[1] && range[2]) {
+      start = Math.max(0, size - Number(range[2])); // bytes=-N: 끝에서부터 N바이트 (파일보다 길면 처음부터)
+    } else if (range) {
+      start = range[1] ? Number(range[1]) : 0;
+      end = range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
+    }
+    // 줄 수 없는 범위(시작이 파일 끝 뒤, 시작 > 끝, 빈 파일의 Range, bytes=-0)는 416과 파일 크기만, 몸은 없다
+    if (range && (start >= size || start > end)) {
+      return new Response(null, { status: 416, headers: { 'Accept-Ranges': 'bytes', 'Content-Range': `bytes */${size}` } });
+    }
+    const headers: Record<string, string> = { 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Content-Length': String(end - start + 1) };
     if (range) headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
+    // 빈 파일 전체: 200, 길이 0, 몸 없음 (읽기 스트림은 end가 -1이면 만들 수 없다)
+    if (size === 0) return new Response(null, { status: 200, headers });
     // node:stream/web의 ReadableStream과 전역 Response가 받는 ReadableStream은 같은 것인데 @types/node에서 타입만 갈린다
     return new Response(Readable.toWeb(fs.createReadStream(file, { start, end })) as globalThis.ReadableStream<Uint8Array<ArrayBuffer>>, { status: range ? 206 : 200, headers });
   };

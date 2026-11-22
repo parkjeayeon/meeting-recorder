@@ -193,6 +193,18 @@ describe('start()', () => {
     expect(fs.existsSync(path.join(rec, 'settings.json'))).toBe(true);
   });
 
+  it('init(): 녹음 폴더 설정 백업의 사전이 문자열이 아니어도 창까지 만든다', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'clearTimeout', 'clearInterval'] });
+    for (const vocabulary of [42, ['가나'], { a: 1 }, null]) {
+      fs.writeFileSync(path.join(rec, 'settings.json'), JSON.stringify({ vocabulary, language: 'ko' }));
+      start(deps()); // whenReady().then(init)이 새 init을 ready에 넣는다
+      order = [];
+      if (!ready) throw new Error('whenReady().then(init)을 부르지 않음');
+      await ready();
+      expect(order).toContain('new BrowserWindow 1240x820');
+    }
+  });
+
   it('before-quit: 끝내는 중으로 두고 받아쓰기 서버를 내린다', () => {
     const d = deps();
     const handlers = new Map<string, () => void>();

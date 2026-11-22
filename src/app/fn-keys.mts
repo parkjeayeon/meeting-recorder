@@ -69,9 +69,16 @@ export function createFnKeys(ctx: FnKeysContext): FnKeys {
   function killOrphanFnListeners(bin: string): void {
     if (orphanFnChecked) return;
     orphanFnChecked = true;
+    let orphans: { pid: number; command: string }[] = [];
     try {
-      for (const { pid, command } of platform.processes.orphans()) if (command.trim() === bin) process.kill(pid);
+      orphans = platform.processes.orphans();
     } catch {}
+    for (const { pid, command } of orphans) {
+      if (command.trim() !== bin) continue;
+      try {
+        process.kill(pid); // 하나를 끄다 던져도(EPERM·ESRCH) 나머지는 끈다
+      } catch {}
+    }
   }
 
   // 도우미 띄우기·줄 나누기는 src/platform (keyListener). 한 번만 띄우기·줄의 뜻·종료 안내는 여기
@@ -87,7 +94,8 @@ export function createFnKeys(ctx: FnKeysContext): FnKeys {
       line: handleFnLine,
       exit: (code) => {
         fnProc = null;
-        if (code !== 2 && !ctx.quitting()) ctx.send('fn:status', { ok: false, reason: `fn 감지기가 종료됨 (code ${code})` });
+        // 끝 코드가 없으면(신호로 끝남·띄우지 못함) 'code null' 대신 코드 없이 알린다
+        if (code !== 2 && !ctx.quitting()) ctx.send('fn:status', { ok: false, reason: code === null ? 'fn 감지기가 종료됨' : `fn 감지기가 종료됨 (code ${code})` });
       },
     });
   }
