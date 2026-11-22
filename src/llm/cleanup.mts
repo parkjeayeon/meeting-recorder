@@ -1,5 +1,5 @@
 // 받아쓴 글 다듬기. 긴 글은 문장 단위로 나눠 동시에 다듬은 뒤 다시 잇는다.
-import { CALLERS, TIMEOUT_MS, providerOrder, withFallback, type Choice } from './call.mjs';
+import { CALLERS, TIMEOUT_MS, providerOrder, withFallback, type Choice, type ClaudeModel } from './call.mjs';
 import { joinCleaned, mapLimit, splitChunks } from './text.mjs';
 
 const MAX_PARALLEL = 4;
@@ -30,6 +30,11 @@ Return only the cleaned text, with no quotes or explanations.`;
 
 export const systemFor = (raw: string): string => SYSTEM.replace('{{ORGANIZE}}', raw.length >= ORGANIZE_MIN_CHARS ? ORGANIZE : LIST_ONLY);
 
+// Claude Code로 다듬을 때 짧은 받아쓰기(받아쓴 글 전체가 ORGANIZE_MIN_CHARS 미만)는 sonnet, 긴 것은 opus (결정 81)
+// 짧은 글에선 품질 차이를 못 봤고 sonnet이 약 절반 시간. 긴 여러 주제 글에선 sonnet이 뜻을 바꾼 적이 있어 opus로 둔다
+// 정리 규칙과 같은 경계로, 받아쓰기마다 한 번 정한다 — 긴 글의 조각은 모두 opus. Codex·API는 모델을 바꾸지 않는다
+export const modelFor = (raw: string): ClaudeModel => (raw.length >= ORGANIZE_MIN_CHARS ? 'opus' : 'sonnet');
+
 const wrap = (text: string): string => `<transcript>\n${text}\n</transcript>`;
 
 export type CleanupResult = { text: string; provider: string | null; chunks?: number; error: string | null };
@@ -39,9 +44,10 @@ export async function cleanup(raw: string, { provider: choice, apiKey }: { provi
   if (!order.length) return { text: raw, provider: null, error: '다듬기에 쓸 로그인된 계정이나 API 키가 없습니다' };
   let provider: string = order[0] as string;
   const system = systemFor(raw);
+  const model = modelFor(raw);
   // 한도에 걸리면 다음 계정으로 (그 뒤 조각들도 다음 계정으로)
   const call = async (chunk: string) => {
-    const res = await withFallback(order.slice(order.indexOf(provider as (typeof order)[number])), (id) => CALLERS[id]({ system, input: wrap(chunk), effort: 'low', timeout: TIMEOUT_MS[id], apiKey, maxTokens: 4096 }));
+    const res = await withFallback(order.slice(order.indexOf(provider as (typeof order)[number])), (id) => CALLERS[id]({ system, input: wrap(chunk), effort: 'low', timeout: TIMEOUT_MS[id], apiKey, maxTokens: 4096, model }));
     provider = res.provider;
     return res.value;
   };
