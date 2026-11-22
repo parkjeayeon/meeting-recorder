@@ -3,7 +3,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { CompleteOptions } from '../llm/call.mjs';
 import { fakeDeps, readJson, sleep, tmpDir } from '../test/meeting.mjs';
-import { canResume, cleanScript, MINUTES_MAX_CHARS, minutesSystem, minutesTarget, readStatus, renameSpeaker, SCRIPT_CHUNK_CHARS, writeStatus } from './minutes.mjs';
+import { canResume, cleanScript, MINUTES_MAX_CHARS, minutesSystem, minutesTarget, readStatus, renameSpeaker, SCRIPT_CHUNK_CHARS, SCRIPT_PARALLEL, writeStatus } from './minutes.mjs';
 
 let root = '';
 beforeEach(() => {
@@ -87,6 +87,39 @@ describe('cleanScript', () => {
     const f = fakeDeps(root, {});
     expect(await cleanScript('', settings)).toEqual({ text: '', provider: null, chunks: 0, failed: 0 });
     expect(f.llm).toEqual([]);
+  });
+
+  describe('MR_SCRIPT_PARALLEL (개발자용 스위치)', () => {
+    const saved = process.env.MR_SCRIPT_PARALLEL;
+    afterEach(() => {
+      if (saved === undefined) delete process.env.MR_SCRIPT_PARALLEL;
+      else process.env.MR_SCRIPT_PARALLEL = saved;
+    });
+    // 조각 12개를 정리하며 동시에 몇 개까지 불렀는지
+    const most = async () => {
+      const blocks: [string, number][] = Array.from({ length: 12 }, (_, i) => [`화자 ${(i % 2) + 1}`, 30]);
+      let inFlight = 0;
+      let peak = 0;
+      fakeDeps(root, {
+        complete: async (o) => {
+          peak = Math.max(peak, ++inFlight);
+          await sleep(3);
+          inFlight--;
+          return { text: o.input.replace(/^<script>\n|\n<\/script>$/g, ''), provider: 'codex' };
+        },
+      });
+      const r = await cleanScript(script(blocks).join('\n'), settings);
+      expect(r).toMatchObject({ chunks: 12, failed: 0 });
+      return peak;
+    };
+
+    it('부를 때 읽어 동시에 정리할 수를 바꾼다, 틀린 값이면 기본값(SCRIPT_PARALLEL)', async () => {
+      expect(SCRIPT_PARALLEL).toBe(4);
+      for (const [v, want] of [['1', 1], ['8', 8], ['16', 12], ['0', 4], ['17', 4], ['abc', 4], ['', 4]] as const) {
+        process.env.MR_SCRIPT_PARALLEL = v;
+        expect(await most(), v).toBe(want);
+      }
+    });
   });
 });
 
