@@ -82,10 +82,12 @@ export function createSettings(deps: SettingsDeps): SettingsStore {
     return path.join(deps.userData(), 'dictation.json');
   }
 
-  // 파일이 JSON 객체가 아니면(null·숫자·배열) 그대로 돌려준다 — docs/known-issues.md
+  // 읽히는 JSON이라도 객체가 아니면(null·배열·문자열·숫자) 깨진 파일처럼 빈 설정으로 본다.
+  // 파일은 고쳐 쓰지 않는다 — 다음 saveSettings가 객체로 쓴다
   function readStored(): StoredFile {
     try {
-      return JSON.parse(fs.readFileSync(settingsPath(), 'utf8')) as StoredFile;
+      const parsed: unknown = JSON.parse(fs.readFileSync(settingsPath(), 'utf8'));
+      return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? (parsed as StoredFile) : {};
     } catch {
       return {};
     }

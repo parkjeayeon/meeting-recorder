@@ -109,10 +109,39 @@ describe('설정 백업 (settings.json)', () => {
     expect(folders.mergePortableSettings()).toBe(false);
   });
 
+  it('합치기: 새 컴퓨터에서 기본 설정과 모양이 다른 값(문자열 아닌 사전 등)은 옮기지 않는다', () => {
+    fs.mkdirSync(folders.recordingsDir(), { recursive: true });
+    for (const vocabulary of [42, ['가나'], { a: 1 }, null]) {
+      stored = {};
+      saves = [];
+      const bad = { vocabulary, language: 7, meetingLanguage: false, enabled: 'yes', cleanup: null, provider: ['api'], minutes: 0, diarize: 'no', meetingSystemAudio: {} };
+      fs.writeFileSync(path.join(folders.recordingsDir(), 'settings.json'), JSON.stringify(bad));
+      expect(folders.mergePortableSettings()).toBe(false);
+      expect(saves).toEqual([]);
+    }
+    // 모양이 맞는 칸만 옮긴다
+    stored = {};
+    fs.writeFileSync(path.join(folders.recordingsDir(), 'settings.json'), JSON.stringify({ vocabulary: 5, language: 'ja', minutes: 'no', diarize: false }));
+    expect(folders.mergePortableSettings()).toBe(true);
+    expect(saves).toEqual([{ language: 'ja', diarize: false }]);
+  });
+
+  it('합치기: 쓰던 컴퓨터에서 백업이나 앱 설정의 사전이 문자열이 아니면 빈 사전으로 본다', () => {
+    fs.mkdirSync(folders.recordingsDir(), { recursive: true });
+    stored = { vocabulary: '다라', language: 'ko' };
+    fs.writeFileSync(path.join(folders.recordingsDir(), 'settings.json'), JSON.stringify({ vocabulary: [1, 2] }));
+    expect(folders.mergePortableSettings()).toBe(false);
+    stored = { vocabulary: 3 as unknown as string, language: 'ko' };
+    fs.writeFileSync(path.join(folders.recordingsDir(), 'settings.json'), JSON.stringify({ vocabulary: '가나' }));
+    expect(folders.mergePortableSettings()).toBe(true);
+    expect(saves).toEqual([{ vocabulary: '가나' }]); // 문자열로 다시 적힌다
+  });
+
   it('사전 글 나누기: 쉼표·줄바꿈, 앞뒤 공백과 빈 칸은 뺀다', () => {
     expect(vocabList(' 가나 ,다라\n\n마바, ')).toEqual(['가나', '다라', '마바']);
     expect(vocabList(undefined)).toEqual([]);
     expect(vocabList(null)).toEqual([]);
+    for (const v of [42, ['가나'], { a: 1 }, true]) expect(vocabList(v)).toEqual([]); // 문자열이 아니면 빈 사전
   });
 
   it('readJson: 없거나 깨진 파일은 null', () => {

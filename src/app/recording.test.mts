@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeIpc, tmpDir, type FakeIpc } from '../test/ipc.mjs';
+import { platform } from '../platform/index.mjs';
 import type { DictationSettings } from '../dictation/index.mjs';
 import { DICTATION_MAX_MS, registerRecording, type RecordingContext, type RecordingSession } from './recording.mjs';
 import type { DictationJob } from './dictation-run.mjs';
@@ -17,6 +18,7 @@ let minutesOn: boolean;
 let helperOut: string | null;
 let dialogAnswer: number;
 let session: RecordingSession;
+let ctx: RecordingContext;
 
 const fn = (name: string) => (...args: unknown[]) => void calls.push([name, ...args]);
 
@@ -30,7 +32,7 @@ beforeEach(() => {
   helperOut = '{"name":"메모장","bundleId":"x.notes"}';
   dialogAnswer = 1;
   ipc = fakeIpc();
-  const ctx: RecordingContext = {
+  ctx = {
     recordingsDir: () => root,
     tempDir: () => temp,
     fn: {
@@ -268,5 +270,31 @@ describe('녹음 저장', () => {
     expect(fs.existsSync(path.join(dir, 'meta.json'))).toBe(false);
     expect(fs.statSync(path.join(dir, 'mic.wav')).size).toBe(44 + 20);
     session.closeOnQuit(); // 녹음이 없으면 아무 일 없음
+  });
+});
+
+describe('셀프테스트 효과음', () => {
+  it('소리 명령을 띄우지 못해도 본체가 죽지 않는다 (받는 곳 없는 spawn error)', async () => {
+    const shell = platform.shell as { selftestSound: [string, string[]] | null };
+    const saved = shell.selftestSound;
+    shell.selftestSound = [path.join(temp, 'no-such-player'), []];
+    const errors: unknown[] = [];
+    const onUncaught = (e: unknown) => void errors.push(e);
+    process.on('uncaughtException', onUncaught);
+    try {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      const own = fakeIpc();
+      const s = registerRecording(own, { ...ctx, selftest: true });
+      await own.invoke('rec:start', { mode: 'meeting', sampleRate: 1000, tracks: ['mic'], devices: {} });
+      vi.advanceTimersByTime(1000); // 1초 뒤에 튼다
+      vi.useRealTimers();
+      await new Promise((r) => setTimeout(r, 100)); // spawn 'error'가 올 때까지
+      expect(errors).toEqual([]);
+      expect(s.get()?.mode).toBe('meeting');
+      await own.invoke('rec:stop');
+    } finally {
+      process.off('uncaughtException', onUncaught);
+      shell.selftestSound = saved;
+    }
   });
 });

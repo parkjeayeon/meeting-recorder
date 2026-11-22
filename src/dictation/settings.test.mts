@@ -44,6 +44,21 @@ describe('getSettings', () => {
     expect(store.getSettings().language).toBe('ko');
   });
 
+  it('읽히지만 객체가 아닌 파일(null·배열·문자열·숫자)도 깨진 파일처럼 기본값, 읽을 때 파일은 고치지 않는다', () => {
+    for (const v of [null, ['a', 'b'], 'ab', 7]) {
+      writeFile(v);
+      const before = fs.readFileSync(file(), 'utf8');
+      expect(store.getSettings()).toEqual({ ...DEFAULT_SETTINGS, meetingLanguage: 'ko', hasApiKey: false, hasHfToken: false });
+      expect(store.storedSettings()).toEqual({});
+      expect(store.apiKey()).toBe(null);
+      expect(store.tokenSources()).toEqual({ hf: { app: false, cli: false }, anthropic: { app: false, env: false } });
+      expect(fs.readFileSync(file(), 'utf8')).toBe(before);
+      // 다음 저장은 객체로 쓴다
+      store.saveSettings({ language: 'en' });
+      expect(readFile()).toEqual({ language: 'en', meetingLanguage: 'ko' });
+    }
+  });
+
   it('저장한 값이 기본값 위에, 모르는 칸도 그대로', () => {
     writeFile({ language: 'en', cleanup: false, recordingsDir: '/x' });
     expect(store.getSettings()).toMatchObject({ language: 'en', cleanup: false, recordingsDir: '/x', enabled: true, provider: 'auto' });

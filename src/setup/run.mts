@@ -1,7 +1,6 @@
 // 엔진 설치의 실행 도우미: 명령을 돌리며 진행을 줄 단위로 읽기, 파일을 진행률과 함께 내려받기 (src/setup.js에서 옮김, 결정 70)
 import { spawn } from 'node:child_process';
-import fs from 'node:fs';
-import path from 'node:path';
+import { downloadFile } from '../core/download.mjs';
 import type { SandboxOptions } from '../platform/index.mjs';
 
 export type Wrap = (cmd: string, args: string[], opts: SandboxOptions) => [string, string[]];
@@ -29,25 +28,8 @@ export function run(cmd: string, args: string[], { env = {}, sandboxed = null, o
   });
 }
 
-// url을 dest로 내려받는다 (dest.part에 쓰고 다 받으면 이름을 바꾼다). onProgress는 0.3초에 한 번까지
-export async function download(url: string, dest: string, onProgress: (received: number, total: number) => void, fetchImpl: typeof fetch = fetch): Promise<void> {
-  fs.mkdirSync(path.dirname(dest), { recursive: true });
-  const res = await fetchImpl(url);
-  if (!res.ok) throw new Error(`다운로드 실패 (HTTP ${res.status})`);
-  const total = Number(res.headers.get('content-length')) || 0;
-  const out = fs.createWriteStream(`${dest}.part`);
-  let received = 0;
-  let last = 0;
-  // 본문이 없으면 예전 코드(for await … of null)와 같이 TypeError로 끝난다
-  if (!res.body) throw new TypeError('res.body is not async iterable');
-  for await (const chunk of res.body) {
-    if (!out.write(chunk)) await new Promise<void>((r) => out.once('drain', () => r()));
-    received += chunk.length;
-    if (Date.now() - last > 300) {
-      last = Date.now();
-      onProgress(received, total);
-    }
-  }
-  await new Promise<void>((resolve, reject) => out.end((err?: Error | null) => (err ? reject(err) : resolve())));
-  fs.renameSync(`${dest}.part`, dest);
+// url을 dest로 내려받는다 (dest.part에 쓰고 다 받으면 이름을 바꾼다). onProgress는 0.3초에 한 번까지, 다 받으면 한 번 더.
+// 실패하면 .part를 지우고 던진다 (src/core/download.mts)
+export function download(url: string, dest: string, onProgress: (received: number, total: number) => void, fetchImpl: typeof fetch = fetch): Promise<void> {
+  return downloadFile(url, dest, { fetch: fetchImpl, onProgress, httpError: (status) => `다운로드 실패 (HTTP ${status})` });
 }

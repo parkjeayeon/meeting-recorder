@@ -1,5 +1,6 @@
 // 받아쓰기 엮기 (src/dictation/index.mts)와 Whisper 서버·엔진 상태 (server.mts)
 // 임시 앱 데이터 폴더, 가짜 플랫폼, 가짜 샌드박스로 돈다. whisper-server 대신 Node로 띄운 작은 가짜 서버(--port로 듣기만 함)를 쓴다.
+import { ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -23,8 +24,8 @@ let exitFns: (() => void)[];
 let wrapped: [string, string[], unknown][];
 let made: Dictation[];
 
-function make(over: Partial<DictationDeps> & { orphans?: { pid: number; command: string }[] } = {}): Dictation {
-  const { orphans = [], ...rest } = over;
+function make(over: Partial<DictationDeps> & { orphans?: { pid: number; command: string }[]; commandOf?: (pid: number) => string | null } = {}): Dictation {
+  const { orphans = [], commandOf = () => null, ...rest } = over;
   const d = createDictation({
     userData: () => userData,
     encrypt: (s) => Buffer.from(s),
@@ -41,7 +42,7 @@ function make(over: Partial<DictationDeps> & { orphans?: { pid: number; command:
       paths: { whisperServer: [path.join(root, 'none'), bin], brew: [], cli: () => [], uvArchive: () => ({ url: '', dir: '' }) },
       processes: {
         orphans: () => (calls.push('orphans'), orphans),
-        commandOf: (pid) => (calls.push(`commandOf ${pid}`), null),
+        commandOf: (pid) => (calls.push(`commandOf ${pid}`), commandOf(pid)),
       },
       paster: { sendPaste: async () => 'pasted' },
     },
@@ -146,6 +147,49 @@ describe('engineStatus', () => {
     expect(fs.existsSync(path.join(userData, 'models'))).toBe(true); // 폴더는 먼저 만든다
   });
 
+  it('모델을 받다 끊기면 .part를 지우고 그 오류를 던지고 원래 상태로', async () => {
+    const cut = new Error('연결이 끊김');
+    let n = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      async pull(c) {
+        await new Promise((r) => setTimeout(r, 20)); // 그사이 .part가 열린다
+        if (n++ < 2) c.enqueue(new Uint8Array(7));
+        else c.error(cut);
+      },
+    });
+    vi.stubGlobal('fetch', async () => new Response(stream, { headers: { 'content-length': '100' } }));
+    const d = make();
+    const seen: EngineStatus[] = [];
+    d.init({ onEngineStatus: (s) => seen.push(s) });
+    await expect(d.downloadModel()).rejects.toBe(cut);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(fs.readdirSync(path.join(userData, 'models'))).toEqual([]); // .part가 남지 않는다
+    expect(d.engineStatus()).toEqual({ state: 'no-model' });
+    expect(seen.at(-1)).toEqual({ state: 'no-model' });
+  });
+
+  it('모델을 다 받으면 마지막으로 다 받은 값을 알리고, 이름을 바꾼 뒤 서버를 띄운다', async () => {
+    // 두 조각이 0.3초 안에 와서 두 번째 알림은 걸러진다 → 다 받은 뒤 한 번 더 알려야 마지막 값이 6
+    let n = 0;
+    const two = new ReadableStream<Uint8Array>({
+      async pull(c) {
+        await new Promise((r) => setTimeout(r, 20));
+        if (n++ < 2) c.enqueue(new TextEncoder().encode(n === 1 ? 'mod' : 'el!'));
+        else c.close();
+      },
+    });
+    vi.stubGlobal('fetch', async (url: unknown) => (String(url).startsWith('https://') ? new Response(two, { headers: { 'content-length': '6' } }) : Promise.reject(new Error('not yet'))));
+    const d = make();
+    const seen: EngineStatus[] = [];
+    d.init({ onEngineStatus: (s) => seen.push(s) });
+    await d.downloadModel();
+    expect(fs.readFileSync(path.join(userData, 'models', MODEL_FILE), 'utf8')).toBe('model!');
+    const downloading = seen.filter((s) => s.state === 'downloading');
+    expect(downloading.at(-1)).toEqual({ state: 'downloading', received: 6, total: 6 });
+    expect(seen[seen.lastIndexOf(downloading.at(-1) as EngineStatus) + 1]).toEqual({ state: 'stopped' }); // finally의 알림
+    await vi.waitFor(() => expect(d.engineStatus().state).toBe('loading')); // 그다음 서버를 띄운다
+  });
+
   it('모델이 있으면 내려받지 않는다', async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
@@ -208,6 +252,154 @@ describe('init', () => {
     } finally {
       kill.mockRestore();
     }
+  });
+
+  it('고아 하나를 끄다 던져도(EPERM) 나머지는 끈다', () => {
+    const killed: number[] = [];
+    const kill = vi.spyOn(process, 'kill').mockImplementation((pid) => {
+      if (pid === 21) throw Object.assign(new Error('EPERM'), { code: 'EPERM' });
+      killed.push(pid);
+      return true;
+    });
+    try {
+      const models = path.join(userData, 'models');
+      make({
+        orphans: [
+          { pid: 21, command: `/x/whisper-server -m ${models}/a.bin` },
+          { pid: 22, command: `/x/whisper-server -m ${models}/b.bin` },
+        ],
+      }).init({ onEngineStatus: () => {} });
+      expect(killed).toEqual([22]);
+    } finally {
+      kill.mockRestore();
+    }
+  });
+});
+
+describe('whisper-server를 띄우지 못하면 (spawn 실패)', () => {
+  const missing = (cmd: string, args: string[]): [string, string[]] => (wrapped.push([cmd, args, null]), [path.join(root, 'no-such-server'), args]);
+
+  it('받아쓰기 서버: 까닭을 담아 거절하고, 상태를 되돌리고, pid 파일을 쓰지 않는다', async () => {
+    putModel();
+    const d = make({ sandboxWrap: missing });
+    const seen: string[] = [];
+    d.init({ onEngineStatus: (s) => seen.push(s.state) });
+    const p = d.startServer();
+    if (!p) throw new Error('startServer가 약속을 주지 않음');
+    await expect(p).rejects.toThrow(/Whisper 서버를 띄우지 못했습니다 \(.*ENOENT/);
+    expect(d.engineStatus()).toEqual({ state: 'stopped' });
+    expect(seen.at(-1)).toBe('stopped');
+    expect(fs.existsSync(path.join(userData, 'whisper-server.pid'))).toBe(false);
+    const again = d.startServer(); // 다시 시작할 수 있다 (또 실패한다)
+    expect(again).not.toBe(p);
+    await again?.catch(() => {});
+  });
+
+  it('회의용 서버: 2분 기다리지 않고 바로 까닭을 담아 거절하고, 끝날 때 끌 목록에서 뺀다', async () => {
+    const model = path.join(root, 'big.bin');
+    fs.writeFileSync(model, '');
+    const d = make({ sandboxWrap: missing });
+    const kill = vi.spyOn(ChildProcess.prototype, 'kill');
+    const t0 = Date.now();
+    await expect(d.startDedicatedServer(model)).rejects.toThrow(/회의용 음성 인식 서버를 띄우지 못했습니다 \(.*ENOENT/);
+    expect(Date.now() - t0).toBeLessThan(2000);
+    for (const fn of exitFns) fn(); // 앱이 끝날 때: 띄우지 못한 것은 끄지 않는다
+    expect(kill).not.toHaveBeenCalled();
+    kill.mockRestore();
+  });
+});
+
+describe('pid 파일 (같은 앱 데이터 폴더를 쓰는 두 앱)', () => {
+  const alive = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const asServer = (pid: number) => (alive(pid) ? `/x/whisper-server -m ${path.join(userData, 'models', MODEL_FILE)}` : null);
+  const pidFile = () => path.join(userData, 'whisper-server.pid');
+  const pidInFile = () => (fs.existsSync(pidFile()) ? Number(fs.readFileSync(pidFile(), 'utf8')) : null);
+
+  it('부모 앱이 살아 있는 서버는 끄지 않고 pid 파일도 그대로 둔다', () => {
+    fs.writeFileSync(pidFile(), '4242');
+    const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
+    try {
+      make({ commandOf: () => '/x/whisper-server -m /m.bin' }).init({ onEngineStatus: () => {} });
+      expect(kill).not.toHaveBeenCalled();
+      expect(pidInFile()).toBe(4242);
+    } finally {
+      kill.mockRestore();
+    }
+  });
+
+  it('launchd에 맡겨진(고아) 서버만 끄고 pid 파일을 지운다', () => {
+    fs.writeFileSync(pidFile(), '4242');
+    const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
+    try {
+      make({ commandOf: () => '/x/whisper-server -m /m.bin', orphans: [{ pid: 4242, command: '/x/whisper-server -m /m.bin' }] }).init({ onEngineStatus: () => {} });
+      expect(kill.mock.calls).toEqual([[4242]]);
+      expect(fs.existsSync(pidFile())).toBe(false);
+    } finally {
+      kill.mockRestore();
+    }
+  });
+
+  it('깨진 pid 파일(undefined 등)은 묻지 않고 지운다', () => {
+    fs.writeFileSync(pidFile(), 'undefined');
+    make().init({ onEngineStatus: () => {} });
+    expect(calls.filter((c) => c.startsWith('commandOf'))).toEqual([]);
+    expect(fs.existsSync(pidFile())).toBe(false);
+  });
+
+  it('먼저 띄운 앱의 pid 파일을 두 번째 앱이 덮어쓰거나 지우지 않는다 (어느 순서로 끝나도)', async () => {
+    putModel();
+    const a = make({ commandOf: asServer });
+    a.init({ onEngineStatus: () => {} });
+    await a.startServer();
+    const pidA = pidInFile();
+    expect(pidA).toBeGreaterThan(0);
+    // 두 번째 앱(개발 모드·셀프테스트): 시작해도 A의 서버를 끄지 않고, 자기 서버를 띄워도 A의 pid를 덮어쓰지 않는다
+    const b = make({ commandOf: asServer });
+    b.init({ onEngineStatus: () => {} });
+    await b.startServer();
+    expect(alive(pidA as number)).toBe(true);
+    expect(pidInFile()).toBe(pidA);
+    b.stopServer(); // B가 먼저 끝나도 A의 pid 파일은 남는다
+    expect(pidInFile()).toBe(pidA);
+    a.stopServer();
+    expect(pidInFile()).toBe(null);
+  });
+
+  it('A가 먼저 끝나면 pid 파일을 지우고, B는 남은 파일이 없어도 그대로 끝난다', async () => {
+    putModel();
+    const a = make({ commandOf: asServer });
+    a.init({ onEngineStatus: () => {} });
+    await a.startServer();
+    const pidA = pidInFile();
+    const b = make({ commandOf: asServer });
+    b.init({ onEngineStatus: () => {} });
+    await b.startServer();
+    a.stopServer();
+    expect(pidInFile()).toBe(null);
+    b.stopServer();
+    expect(pidInFile()).toBe(null);
+    expect(pidA).toBeGreaterThan(0);
+  });
+
+  it('자기 서버를 다시 띄우면 자기 pid로 바꿔 쓴다', async () => {
+    putModel();
+    const a = make({ commandOf: asServer });
+    a.init({ onEngineStatus: () => {} });
+    await a.startServer();
+    const first = pidInFile();
+    a.stopServer();
+    fs.writeFileSync(pidFile(), String(first)); // 지우기 전 상태로 (끝나는 중인 자기 서버가 적혀 있다)
+    await vi.waitFor(() => expect(a.engineStatus()).toEqual({ state: 'stopped' }));
+    await a.startServer();
+    expect(pidInFile()).not.toBe(first);
+    expect(pidInFile()).toBeGreaterThan(0);
   });
 });
 

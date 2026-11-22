@@ -15,6 +15,7 @@ export const paster: Paster = {
       let out = '';
       proc.stdout!.on('data', (d) => (out += d));
       proc.on('exit', (code) => resolve(pasteResult(code, out)));
+      proc.on('error', () => resolve('failed')); // 띄우지 못하면 'exit'가 오지 않는다 → 실패 (부르는 쪽이 글을 클립보드에 남긴다)
     });
   },
 };

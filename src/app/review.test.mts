@@ -88,6 +88,14 @@ describe('review:apply → 사전', () => {
     expect(calls.at(-1)).toEqual(['markReviewItems', dir(), ['ok30', 'four', 'twice1', 'twice2'], { vocabAdded: true }]); // 같은 말을 고친 항목은 둘 다
   });
 
+  it('저장된 사전이 문자열이 아니면 빈 사전으로 보고 더한다', async () => {
+    vocabulary = 42 as unknown as string;
+    review.items = [item('w', 'word', '쿠버네티스')];
+    const res = (await ipc.invoke('review:apply', dir(), [{ id: 'w' }])) as { addedWords: string[] };
+    expect(res.addedWords).toEqual(['쿠버네티스']);
+    expect(vocabulary).toBe('쿠버네티스');
+  });
+
   it('넘긴 항목만 본다, 더할 것이 없으면 사전·백업·표시를 건드리지 않는다', async () => {
     review.items = [item('w', 'word', '다른것')];
     const res = (await ipc.invoke('review:apply', dir(), [{ id: 'x' }])) as { addedWords: string[] };
@@ -119,6 +127,15 @@ describe('review:revert → 사전', () => {
     const res = (await ipc.invoke('review:revert', dir(), 'w')) as { removedWord: string | null };
     expect(res.removedWord).toBe('없는말');
     expect(vocabulary).toBe('기존, Kubernetes');
+    expect(portable).toBe(0);
+    expect(calls.at(-1)).toEqual(['markReviewItems', dir(), ['w'], { vocabAdded: false }]);
+  });
+
+  it('저장된 사전이 문자열이 아니면 빼지 않고 표시만 푼다', async () => {
+    vocabulary = ['쿠버네티스'] as unknown as string;
+    review.items = [{ ...item('w', 'word', '쿠버네티스'), vocabAdded: true } as Item];
+    const res = (await ipc.invoke('review:revert', dir(), 'w')) as { removedWord: string | null };
+    expect(res.removedWord).toBe('쿠버네티스');
     expect(portable).toBe(0);
     expect(calls.at(-1)).toEqual(['markReviewItems', dir(), ['w'], { vocabAdded: false }]);
   });

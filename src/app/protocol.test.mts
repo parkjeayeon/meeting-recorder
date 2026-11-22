@@ -49,6 +49,42 @@ describe('rec:// 재생', () => {
     expect(await body(res)).toEqual(BYTES.subarray(95));
   });
 
+  it('끝에서부터 세는 Range(bytes=-N): 마지막 N바이트, 파일보다 길면 전체', async () => {
+    let res = serve(req('rec://m/2026-01-01_09-00-00_meeting/mic.wav', 'bytes=-10'));
+    expect(res.status).toBe(206);
+    expect(res.headers.get('content-range')).toBe('bytes 90-99/100');
+    expect(res.headers.get('content-length')).toBe('10');
+    expect(await body(res)).toEqual(BYTES.subarray(90));
+    res = serve(req('rec://m/2026-01-01_09-00-00_meeting/mic.wav', 'bytes=-500'));
+    expect(res.status).toBe(206);
+    expect(res.headers.get('content-range')).toBe('bytes 0-99/100');
+    expect(res.headers.get('content-length')).toBe('100');
+    expect(await body(res)).toEqual(BYTES);
+  });
+
+  it('줄 수 없는 Range: 416, Content-Range bytes */크기, 몸 없음 (음수 길이를 내지 않는다)', async () => {
+    for (const r of ['bytes=100-', 'bytes=150-200', 'bytes=50-10', 'bytes=-0']) {
+      const res = serve(req('rec://m/2026-01-01_09-00-00_meeting/mic.wav', r));
+      expect(res.status, r).toBe(416);
+      expect(res.headers.get('content-range'), r).toBe('bytes */100');
+      expect(res.headers.get('content-length'), r).toBe(null);
+      expect((await body(res)).length, r).toBe(0);
+    }
+  });
+
+  it('빈 파일: Range가 없으면 200·길이 0, Range가 있으면 416', async () => {
+    fs.writeFileSync(path.join(root, '2026-01-01_09-00-00_meeting', 'empty.wav'), '');
+    let res = serve(req('rec://m/2026-01-01_09-00-00_meeting/empty.wav'));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-length')).toBe('0');
+    expect((await body(res)).length).toBe(0);
+    for (const r of ['bytes=0-', 'bytes=-5', 'bytes=0-0']) {
+      res = serve(req('rec://m/2026-01-01_09-00-00_meeting/empty.wav', r));
+      expect(res.status, r).toBe(416);
+      expect(res.headers.get('content-range'), r).toBe('bytes */0');
+    }
+  });
+
   it('m4a는 audio/mp4, 이름의 %인코딩을 푼다', async () => {
     const m = path.join(root, '2026-01-02_10-00-00 회의');
     fs.mkdirSync(m);

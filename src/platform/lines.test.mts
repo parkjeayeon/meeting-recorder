@@ -60,6 +60,19 @@ describe.runIf(process.platform !== 'win32')('startLineHelper', () => {
     expect(lines).toEqual(['ready', 'down', 'up']); // 줄바꿈 없는 끝 'tail'은 넘기지 않는다 (예전과 같다)
   });
 
+  it('띄우지 못하면(없음·실행할 수 없음) 죽지 않고 끝 코드 없이(null) 한 번만 끝났다고 알린다', async () => {
+    const notExec = path.join(tmp, 'not-executable');
+    fs.writeFileSync(notExec, '#!/bin/sh\necho ready\n', { mode: 0o644 });
+    for (const bin of [path.join(tmp, 'no-such-listener'), notExec]) {
+      const codes: (number | null)[] = [];
+      await new Promise<void>((resolve) => {
+        startLineHelper(bin, { line: () => {}, exit: (code) => (codes.push(code), resolve()) });
+      });
+      await new Promise((r) => setTimeout(r, 100)); // 'exit'가 뒤늦게 와도 두 번 부르지 않는다
+      expect(codes, bin).toEqual([null]);
+    }
+  });
+
   it('kill()로 끝낼 수 있다', async () => {
     const bin = path.join(tmp, 'fake-long');
     fs.writeFileSync(bin, '#!/bin/sh\necho ready\nexec sleep 30\n', { mode: 0o755 });

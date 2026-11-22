@@ -1,6 +1,9 @@
-// 엔진 설치의 명령 실행 (src/setup/run.mts, 결정 70) — node -e로 출력·끝 코드를 만들어 본다
+// 엔진 설치의 명령 실행 (src/setup/run.mts, 결정 70) — node -e로 출력·끝 코드를 만들어 본다. 내려받기는 가짜 fetch와 임시 폴더로
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { run, type Wrap } from './run.mjs';
+import { download, run, type Wrap } from './run.mjs';
 
 const plain: Wrap = (cmd, args) => [cmd, args];
 const node = (code: string) => [process.execPath, ['-e', code]] as const;
@@ -55,5 +58,49 @@ describe('run', () => {
 
   it('실행 파일이 없으면 거절한다', async () => {
     await expect(run('/nonexistent/mr-setup-test-bin', [], {}, plain)).rejects.toThrow(/ENOENT/);
+  });
+});
+
+describe('download', () => {
+  const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'mr-setup-download-'));
+  const respond = (res: Response): typeof fetch => (async () => res) as typeof fetch;
+  // 조각마다 20ms 쉬며 내주는 몸 (그사이 .part가 열린다). fail을 주면 다 내준 뒤 그 오류로 끊긴다
+  const chunked = (parts: string[], fail?: Error) => {
+    let i = 0;
+    return new ReadableStream<Uint8Array>({
+      async pull(c) {
+        await new Promise((r) => setTimeout(r, 20));
+        const part = parts[i++];
+        if (part !== undefined) c.enqueue(new TextEncoder().encode(part));
+        else if (fail) c.error(fail);
+        else c.close();
+      },
+    });
+  };
+
+  it('다 받으면 dest로, 마지막 진행률은 다 받은 값', async () => {
+    const root = tmp();
+    const dest = path.join(root, 'models', 'm.bin');
+    const seen: [number, number][] = [];
+    // 두 조각이 0.3초 안에 오면 두 번째는 걸러진다 → 다 받은 뒤 한 번 더 알려야 마지막 값이 6
+    await download('http://x', dest, (got, total) => seen.push([got, total]), respond(new Response(chunked(['abc', 'def']), { headers: { 'content-length': '6' } })));
+    expect(fs.readFileSync(dest, 'utf8')).toBe('abcdef');
+    expect(seen).toEqual([[3, 6], [6, 6]]);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it('응답이 OK가 아니면 다운로드 실패 (HTTP n)', async () => {
+    const root = tmp();
+    await expect(download('http://x', path.join(root, 'm.bin'), () => {}, respond(new Response('', { status: 404 })))).rejects.toThrow('다운로드 실패 (HTTP 404)');
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it('받는 도중 끊기면 .part를 지우고 그 오류를 던진다', async () => {
+    const root = tmp();
+    const cut = new Error('끊김');
+    await expect(download('http://x', path.join(root, 'm.bin'), () => {}, respond(new Response(chunked(['abc', 'def'], cut))))).rejects.toBe(cut);
+    await new Promise((r) => setTimeout(r, 50)); // 늦게 열린 .part가 있으면 보이게
+    expect(fs.readdirSync(root)).toEqual([]);
+    fs.rmSync(root, { recursive: true, force: true });
   });
 });

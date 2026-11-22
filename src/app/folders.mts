@@ -7,10 +7,25 @@ import os from 'node:os';
 import path from 'node:path';
 import * as core from '../core/index.mjs';
 import type { Dictation, SettingsPatch } from '../dictation/index.mjs';
+import { DEFAULT_SETTINGS } from '../dictation/settings.mjs'; // 기본값만 (Electron·서버를 가져오지 않는다)
 
 // ── 사전·설정 백업: 녹음 폴더의 settings.json에 같이 적어 두어, 녹음 폴더만 옮겨도 이어 쓸 수 있게 한다 (토큰·키는 넣지 않는다)
 export const PORTABLE_KEYS = ['vocabulary', 'language', 'meetingLanguage', 'enabled', 'cleanup', 'provider', 'minutes', 'diarize', 'meetingSystemAudio'] as const;
-export const vocabList = (v: string | null | undefined): string[] => (v ?? '').split(/[,\n]/).map((w) => w.trim()).filter(Boolean);
+// 문자열이 아닌 값(손으로 고친 파일의 숫자·배열·객체·null)은 빈 사전으로 본다
+export const vocabList = (v: unknown): string[] => (typeof v === 'string' ? v : '').split(/[,\n]/).map((w) => w.trim()).filter(Boolean);
+
+// 옮겨 쓸 칸마다 기본 설정의 값 모양 (회의 언어는 기본값이 없고 받아쓰기 언어를 따르므로 문자열)
+const PORTABLE_TYPES: Record<(typeof PORTABLE_KEYS)[number], string> = {
+  vocabulary: typeof DEFAULT_SETTINGS.vocabulary,
+  language: typeof DEFAULT_SETTINGS.language,
+  meetingLanguage: 'string',
+  enabled: typeof DEFAULT_SETTINGS.enabled,
+  cleanup: typeof DEFAULT_SETTINGS.cleanup,
+  provider: typeof DEFAULT_SETTINGS.provider,
+  minutes: typeof DEFAULT_SETTINGS.minutes,
+  diarize: typeof DEFAULT_SETTINGS.diarize,
+  meetingSystemAudio: typeof DEFAULT_SETTINGS.meetingSystemAudio,
+};
 
 export function readJson(file: string): unknown {
   try {
@@ -59,11 +74,11 @@ export function createFolders(ctx: FoldersContext): Folders {
     if (!saved) return false;
     const stored = dictation.storedSettings();
     const fresh = !('vocabulary' in stored) && !('language' in stored);
-    // 파일에 적힌 값은 모양을 보지 않고 그대로 넘긴다 (예전과 같다)
+    // 새 컴퓨터면 파일에 적힌 값을 넘기되, 기본 설정과 모양(문자열·참거짓)이 다른 값은 옮기지 않는다 (손으로 고친 파일)
     const patch: Record<string, unknown> = {};
-    if (fresh) for (const k of PORTABLE_KEYS) if (saved[k] !== undefined) patch[k] = saved[k];
-    // 문자열이 아닌 사전 값은 예전처럼 split에서 던진다 (known-issues.md)
-    const words = [...new Set([...vocabList(stored.vocabulary), ...vocabList(saved.vocabulary as string | undefined)])];
+    if (fresh) for (const k of PORTABLE_KEYS) if (saved[k] !== undefined && typeof saved[k] === PORTABLE_TYPES[k]) patch[k] = saved[k];
+    // 문자열이 아닌 사전 값은 빈 사전으로 본다 (vocabList)
+    const words = [...new Set([...vocabList(stored.vocabulary), ...vocabList(saved.vocabulary)])];
     if (words.join(', ') !== vocabList(stored.vocabulary).join(', ')) patch.vocabulary = words.join(', ');
     if (Object.keys(patch).length) dictation.saveSettings(patch as SettingsPatch);
     return Object.keys(patch).length > 0;
