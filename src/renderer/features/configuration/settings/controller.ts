@@ -1,6 +1,6 @@
 // 설정 창의 주인: 맥락(SettingsCtx) 하나를 만들고 칸(역할) 모듈을 엮어 설정 store 구독·처리기·본체 알림을 잇는다.
 // 칸마다 한 파일 — dialog(창 틀·탭·열 때 새로 읽기), status(엔진 줄·왼쪽 아래 표시), dictation(받아쓰기·마이크·녹음 폴더),
-// cleanup(다듬기·계정 고르기·사용량), meeting(회의·화자 구분), setup(엔진 설치), accounts(계정·토큰), permissions(권한).
+// cleanup(다듬기·계정 고르기·사용량), meeting(회의·화자 구분), phone(폰 녹음 받을 폴더), setup(엔진 설치), accounts(계정·토큰), permissions(권한).
 // 여러 칸이 같이 쓰는 것은 state.ts의 SettingsCtx로만 (docs/renderer-architecture.md)
 // 칸 팩토리는 그릴 영역(React 뿌리)만 만들고 아무것도 붙이지 않는다 — 붙이는 것은 아래에서 옛 차례 그대로 한다.
 import { mountReact } from '../../../shared/page-host/index.tsx';
@@ -10,6 +10,7 @@ import { createDialog } from './dialog.ts';
 import { createDictation } from './dictation.ts';
 import { createMeeting } from './meeting.ts';
 import { createPermissions } from './permissions.ts';
+import { createPhone } from './phone.ts';
 import { createSetup } from './setup.ts';
 import type { SettingsCtx, SettingsDeps, SettingsHandle } from './state.ts';
 import { createStatus } from './status.ts';
@@ -30,6 +31,7 @@ export function mountSettings({ api, settings: settingsStore, issues, toast, con
   const accounts = createAccounts(ctx);
   const dictation = createDictation(ctx, { recordingsChanged });
   const meeting = createMeeting(ctx, permissions);
+  const phone = createPhone(ctx);
   const shell = createDialog(ctx, { closePalette, rerunOnboarding }, { permissions, setup, cleanup, accounts });
 
   shell.wire();
@@ -41,6 +43,7 @@ export function mountSettings({ api, settings: settingsStore, issues, toast, con
       const s = settingsStore.getSnapshot().saved;
       meeting.applySaved(s);
       dictation.applySaved(s);
+      phone.applySaved(s);
       cleanup.applySaved(s);
       status.renderEngine(s.engine);
       status.renderSideCleanup();
@@ -56,6 +59,7 @@ export function mountSettings({ api, settings: settingsStore, issues, toast, con
   dictation.wire();
   meeting.wire();
   cleanup.wire();
+  phone.wire();
   // 떠 있는 막대에서 받아쓰기 언어를 바꾸면 왼쪽 아래·설정 화면도 같이
   settingsStore.connect();
   // 본체·브라우저 알림은 이 차례로 붙인다: 설정·엔진(connect) → 장치 바뀜 → 권한 3초·권한 바뀜 → 설치

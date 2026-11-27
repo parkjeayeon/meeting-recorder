@@ -39,6 +39,14 @@ describe('getSettings', () => {
     expect(store.getSettings()).toEqual({ ...DEFAULT_SETTINGS, meetingLanguage: 'ko', hasApiKey: false, hasHfToken: false });
   });
 
+  it('폰 녹음(결정 84)은 기본으로 꺼짐 — 받을 폴더 없음, 지켜보기·회의록 복사 끔. 저장한 값은 그대로 읽는다', () => {
+    expect(store.getSettings()).toMatchObject({ inboxDir: null, inboxEnabled: false, inboxCopyMinutes: false });
+    store.saveSettings({ inboxDir: '/x/Drive/녹음', inboxEnabled: true });
+    expect(store.getSettings()).toMatchObject({ inboxDir: '/x/Drive/녹음', inboxEnabled: true, inboxCopyMinutes: false });
+    store.saveSettings({ inboxDir: null, inboxEnabled: false, inboxCopyMinutes: false });
+    expect(store.getSettings()).toMatchObject({ inboxDir: null, inboxEnabled: false, inboxCopyMinutes: false });
+  });
+
   it('깨진 파일도 기본값', () => {
     fs.writeFileSync(file(), '{ 깨짐');
     expect(store.getSettings().language).toBe('ko');

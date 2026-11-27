@@ -4,6 +4,7 @@
       <button class="set-tab" data-sec="general"><svg><use href="#i-mic"/></svg>받아쓰기</button>
       <button class="set-tab" data-sec="cleanup"><svg><use href="#i-wand"/></svg>다듬기</button>
       <button class="set-tab" data-sec="meeting"><svg><use href="#i-people"/></svg>회의</button>
+      <button class="set-tab" data-sec="phone"><svg><use href="#i-phone"/></svg>폰 녹음</button>
       <button class="set-tab" data-sec="engine"><svg><use href="#i-gear"/></svg>엔진<span class="dot" id="engineDot" hidden></span></button>
       <button class="set-tab" data-sec="accounts"><svg><use href="#i-key"/></svg>계정·토큰<span class="dot" id="accountsDot" hidden></span></button>
       <button class="set-tab" data-sec="perms"><svg><use href="#i-shield"/></svg>권한<span class="dot" id="permDot" hidden></span></button>
@@ -89,6 +90,47 @@
         <div class="field">
           <div class="field-text"><b>화상 회의 상대방 소리</b><span>시스템 오디오를 따로 녹음합니다. 대면 회의에서는 꺼 두세요.</span></div>
           <label class="switch"><input type="checkbox" id="meetingSystem" /><i></i></label>
+        </div>
+      </section>
+
+      <section class="set-sec" data-sec="phone" hidden>
+        <h3>폰 녹음 가져오기</h3>
+        <p class="sec-lead">폰으로 녹음한 파일을 Google Drive 폴더에 올리면 이 Mac이 받아 회의록을 만듭니다. 녹음 파일은 Drive까지만 올라가고, 녹취와 화자 구분은 이 Mac에서 합니다.</p>
+
+        <div class="group">
+          <div class="group-head"><b>처음 한 번 준비</b></div>
+          <ol class="steps">
+            <li>Mac에 Google Drive 데스크톱 앱 설치 <button class="link" data-link="https://www.google.com/drive/download/">내려받기 페이지</button></li>
+            <li>Drive에 녹음을 받을 폴더 만들기<span class="step-note">Drive 데스크톱 앱에서 이 폴더를 오프라인으로 사용하게 두면 파일이 Mac에 바로 내려옵니다.</span></li>
+            <li>폰 녹음을 그 폴더로 올리기<span class="step-note">아이폰은 음성 메모 › 공유 › Drive, 안드로이드는 녹음 앱 › 공유 › Drive.</span></li>
+            <li>아래에서 그 폴더를 고르고 켜기</li>
+          </ol>
+        </div>
+
+        <div class="field">
+          <div class="field-text"><b>받을 폴더</b><span id="inboxDirPath">아직 고르지 않았습니다</span><span class="bad" id="inboxDirError" role="status" hidden></span></div>
+          <div class="field-acts">
+            <button class="btn small" id="inboxOpen" hidden><svg><use href="#i-folder"/></svg>열기</button>
+            <button class="btn small" id="inboxChoose">폴더 고르기…</button>
+            <button class="btn small ghost" id="inboxClear" hidden>선택 해제</button>
+          </div>
+        </div>
+        <div class="field">
+          <div class="field-text"><b>폴더 지켜보기</b><span id="inboxEnabledHint">먼저 받을 폴더를 고르세요.</span></div>
+          <label class="switch"><input type="checkbox" id="inboxEnabled" disabled /><i></i></label>
+        </div>
+        <div class="field">
+          <div class="field-text"><b>회의록을 폴더에도 저장</b><span>받을 폴더 안 '회의록' 폴더에 회의록을 복사합니다. 회의록 글이 Google Drive에 올라갑니다.</span></div>
+          <label class="switch"><input type="checkbox" id="inboxCopyMinutes" disabled /><i></i></label>
+        </div>
+
+        <div class="group">
+          <div class="group-head"><b>알아 둘 것</b></div>
+          <ul class="notes">
+            <li>Mac이 켜져 있어야 처리합니다. 잠자는 동안 들어온 녹음은 깨어난 뒤 처리합니다.</li>
+            <li>파일 이름의 시각이 가까운 녹음 여러 개는 한 회의로 이어 붙입니다.</li>
+            <li>처리한 원본은 지우지 않고 받을 폴더 안 '처리됨' 폴더로 옮깁니다.</li>
+          </ul>
         </div>
       </section>
 

@@ -2,7 +2,7 @@
 // 음성 인식 엔진 줄은 status.ts, '처음 설정 다시 보기'는 dialog.ts.
 import type { Settings } from '../../../entities/settings/index.ts';
 import { remember, store } from '../../../shared/lib/index.ts';
-import type { SettingsCtx, SettingsDeps } from './state.ts';
+import { tilde, type SettingsCtx, type SettingsDeps } from './state.ts';
 
 export interface DictationRole {
   /** 저장된 설정을 칸에 옮긴다 (설정 store의 'settings'에서) */
@@ -19,7 +19,6 @@ export function createDictation(ctx: SettingsCtx, { recordingsChanged }: Pick<Se
   const { api, settingsStore, toast } = ctx;
 
   // 녹음 폴더: 기본은 ~/Documents/MeetingRecorder, 사용자가 고르면 바꾼다
-  const tilde = (p: string | null | undefined) => p?.replace(/^\/Users\/[^/]+/, '~') ?? '';
   function showRecordingsDir(dir: string, def: string) {
     document.getElementById('recDirPath')!.textContent = tilde(dir);
     document.getElementById('recDirPath')!.title = dir;

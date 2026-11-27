@@ -7,7 +7,7 @@ import path from 'node:path';
 const { makeMeeting } = require('../scripts/dev/verify/fixture.js'); // package.json이 CommonJS라 Playwright도 CommonJS로 옮겨 돌린다
 
 // 기본값: 시험이 켠 상태(폴더 막힘·회의록 멈춤 등)만 다르게 — 옛 feature-test.js의 기본과 같다
-const BASE = { STUB_MANY: '0', STUB_DICTS: '0', STUB_STRAY: 'none', STUB_HISTORY_DICTS: '', STUB_JOB_MS: '300', STUB_ASK_MS: '100', STUB_FOLDER: '', STUB_MINUTES: '', STUB_GUESS: '' }; // ''는 지움 (셸에 남은 값이 번지지 않게)
+const BASE = { STUB_MANY: '0', STUB_DICTS: '0', STUB_STRAY: 'none', STUB_HISTORY_DICTS: '', STUB_JOB_MS: '300', STUB_ASK_MS: '100', STUB_FOLDER: '', STUB_MINUTES: '', STUB_GUESS: '', STUB_INBOX: '' }; // ''는 지움 (셸에 남은 값이 번지지 않게)
 // 화면 오류로 치지 않는 것 (가짜 화면에 없는 rec:// 소리 파일 등)
 const IGNORED_ERRORS = /rec:\/\/|net::ERR|Autofill/;
 

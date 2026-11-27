@@ -20,6 +20,10 @@ const recorderApi = {
   openRecordings: () => ipcRenderer.send('app:openRecordings'),
   chooseRecordings: () => ipcRenderer.invoke('recordings:choose'),
   resetRecordings: () => ipcRenderer.invoke('recordings:reset'),
+  /** 폰 녹음을 받을 폴더 고르기. 취소면 null, 녹음 폴더와 겹치면 저장하지 말라고 overlap
+   * @returns {Promise<{ ok: true, dir: string } | { ok: false, reason: 'overlap' } | null>} */
+  chooseInbox: () => ipcRenderer.invoke('inbox:chooseDir'),
+  openInbox: () => ipcRenderer.send('inbox:open'),
   permStatus: () => ipcRenderer.invoke('perm:status'),
   permRequest: (kind) => ipcRenderer.invoke('perm:request', kind),
   permOpenSettings: (kind) => ipcRenderer.send('perm:openSettings', kind),
