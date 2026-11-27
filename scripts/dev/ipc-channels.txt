@@ -34,6 +34,8 @@ handle glossary:explain
 handle glossary:make
 handle glossary:update
 handle history:list
+handle inbox:chooseDir
+on inbox:open
 handle meeting:compress
 handle meeting:compressDecline
 handle meeting:import

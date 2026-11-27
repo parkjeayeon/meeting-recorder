@@ -4,7 +4,7 @@
 // 진입점 src/main.js(CommonJS)는 require('../lib/app/main.mjs')의 start()만 부르고, start()가 아래 구역을 만들어 잇는다:
 // main.mts(start·init·앱 수명), folders(녹음 폴더·설정 백업), windows(메인 창·플로팅 독), tray(메뉴바), recording(녹음 저장), dictation-run(받아쓰기 처리),
 // minutes-run(회의록 실행·인터넷 기다리기), meeting·review·watch(회의 페이지), settings(설정·설치·앱 정보), fn-keys(fn 도우미·셀프테스트, fn.mts의 상태 머신을 만든다),
-// system(시스템 소리·권한 상태), protocol(rec://), 그리고 앞서 옮긴 history·ask·tokens·permissions·onboarding·recordings.
+// system(시스템 소리·권한 상태), protocol(rec://), 그리고 앞서 옮긴 history·ask·tokens·permissions·onboarding·recordings·inbox(폰 녹음 받을 폴더).
 export type { Ipc, Handler } from './ipc.mjs';
 export { start, type StartDeps } from './main.mjs';
 export type { MinutesModule, UsageModule, CompressModule } from './connectors.mjs';
@@ -14,6 +14,7 @@ export { registerTokens, DIARIZE_MODEL, EXTERNAL_LINKS, type TokensContext, type
 export { registerPermissions, type PermissionsContext, type PermissionStatus } from './permissions.mjs';
 export { registerOnboarding, type OnboardingContext, type OnboardingState } from './onboarding.mjs';
 export { registerRecordingsFolder, moveEntry, type RecordingsFolderContext, type FolderDialog, type ChooseResult } from './recordings.mjs';
+export { registerInbox, overlaps, type InboxContext, type InboxChoice } from './inbox.mjs';
 export { createFnMachine, type FnDeps, type FnMachine, type FnState } from './fn.mjs';
 export { createFolders, readJson, vocabList, PORTABLE_KEYS, type Folders, type FoldersContext } from './folders.mjs';
 export { registerWindows, created, type Windows, type WindowsContext } from './windows.mjs';

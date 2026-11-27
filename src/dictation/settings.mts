@@ -11,7 +11,9 @@ import { writeJsonAtomic } from '../core/write.mjs'; // 파일 쓰기는 끊겨�
 // minutes: 회의가 끝나면 녹취와 회의록을 자동으로 만든다
 // diarize: 회의 화자 구분 (pyannote). 토큰은 `hf auth login`으로 저장한 것을 쓰거나 설정에 넣은 값을 쓴다
 // meetingPretranscribe: 회의를 녹음하는 동안 끝난 조각을 미리 받아써 둔다 (결정 83). 화면에 켜고 끄는 곳은 아직 없다
-export const DEFAULT_SETTINGS = { enabled: true, language: 'ko', cleanup: true, provider: 'auto', vocabulary: '', meetingSystemAudio: false, minutes: true, diarize: true, meetingPretranscribe: true } as const;
+// inboxDir·inboxEnabled·inboxCopyMinutes: 설정 › 폰 녹음 (결정 84). 받을 폴더(Google Drive 데스크톱 앱이 Mac에 내려 두는 폴더)·지켜보기·회의록 복사.
+//   기기마다 다른 경로라 설정 백업(PORTABLE_KEYS)에는 넣지 않는다. 폴더를 지켜보는 일은 아직 없다 — 지금은 값만 저장한다
+export const DEFAULT_SETTINGS = { enabled: true, language: 'ko', cleanup: true, provider: 'auto', vocabulary: '', meetingSystemAudio: false, minutes: true, diarize: true, meetingPretranscribe: true, inboxDir: null, inboxEnabled: false, inboxCopyMinutes: false } as const;
 
 // 사용자가 저장한 설정 (dictation.json의 토큰 빼고). 화면·본체가 다른 칸(onboarding·recordingsDir 등)도 저장하므로 열어 둔다
 export interface StoredSettings {
@@ -25,6 +27,9 @@ export interface StoredSettings {
   minutes?: boolean;
   diarize?: boolean;
   meetingPretranscribe?: boolean;
+  inboxDir?: string | null;
+  inboxEnabled?: boolean;
+  inboxCopyMinutes?: boolean;
   [key: string]: unknown;
 }
 
@@ -46,6 +51,9 @@ export interface DictationSettings extends StoredSettings {
   minutes: boolean;
   diarize: boolean;
   meetingPretranscribe: boolean;
+  inboxDir: string | null;
+  inboxEnabled: boolean;
+  inboxCopyMinutes: boolean;
   hasApiKey: boolean;
   hasHfToken: boolean;
 }

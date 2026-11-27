@@ -16,6 +16,7 @@ import { registerTokens, type AnthropicClient } from './tokens.mjs';
 import { registerPermissions } from './permissions.mjs';
 import { registerOnboarding, type OnboardingState } from './onboarding.mjs';
 import { registerRecordingsFolder } from './recordings.mjs';
+import { registerInbox } from './inbox.mjs';
 import { createFolders, readJson } from './folders.mjs';
 import { registerWindows } from './windows.mjs';
 import { createTray } from './tray.mjs';
@@ -238,6 +239,16 @@ export function start(deps: StartDeps): void {
     dialog,
     shell,
     dictation,
+  });
+
+  // ── 설정 › 폰 녹음: 받을 폴더 고르기·열기 (src/app/inbox.mts, 결정 84). 폴더를 지켜보는 일은 아직 없다 ──
+  registerInbox(ipcMain, {
+    recordingsDir: folders.recordingsDir,
+    inboxDir: () => dictation.getSettings().inboxDir ?? null,
+    home: () => os.homedir(),
+    win: windows.win,
+    dialog,
+    shell,
   });
 
   // ── 메뉴바 (창을 닫아도 앱은 여기서 계속 실행된다) ─────────────────────────

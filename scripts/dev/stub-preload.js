@@ -72,6 +72,8 @@ const impl = {
     calls.importMeeting = opts;
     return { id: 'x', count: paths.length };
   },
+  // 설정 › 폰 녹음 받을 폴더 고르기 · STUB_INBOX=overlap: 녹음 폴더와 겹치는 폴더를 고른 것처럼
+  chooseInbox: async () => (process.env.STUB_INBOX === 'overlap' ? { ok: false, reason: 'overlap' } : { ok: true, dir: '/Users/me/Google Drive/폰 녹음' }),
   recordingsAccess: async () => (denied ? { ok: false, dir: '/Users/me/Documents/MeetingRecorder', code: 'EPERM' } : { ok: true }),
   dictSettings: async () => ({ ...dictStore }),
   dictSaveSettings: async (patch) => {
@@ -286,7 +288,7 @@ const dicts = Array.from({ length: Number(process.env.STUB_DICTS) || 0 }, (_, i)
   if (edit) Object.assign(r.transcript, edit);
   return r;
 });
-const dictStore = { enabled: true, language: 'ko', meetingLanguage: 'ko', cleanup: true, provider: 'auto', vocabulary: 'PJY, Whisper', minutes: true, diarize: true, diarizeReady: true, hasHfToken: true, meetingSystemAudio: false, engine: { state: 'ready' } };
+const dictStore = { enabled: true, language: 'ko', meetingLanguage: 'ko', cleanup: true, provider: 'auto', vocabulary: 'PJY, Whisper', minutes: true, diarize: true, diarizeReady: true, hasHfToken: true, meetingSystemAudio: false, inboxDir: null, inboxEnabled: false, inboxCopyMinutes: false, engine: { state: 'ready' } };
 // 질문으로 찾기 흉내 (LLM 없이): 단계를 짧게 지나 끝난다. "작년"이 든 질문에 올해 기간 칩을 주면 기간이 겹치지 않아 멈춘다.
 // "실패"가 든 질문은 오류로 끝난다. 결과는 예시 회의에서 고른다 (첫 회의는 주로 다룸, 둘째는 잠깐 언급)
 const askJobs = new Map();

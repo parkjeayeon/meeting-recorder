@@ -87,6 +87,8 @@ async function tour(page: Page, id: string) {
   }
   await page.locator('#openSettings').click();
   await shot(page, 'settings');
+  await page.locator('.set-tab[data-sec=phone]').click();
+  await shot(page, 'settings-phone');
   await page.locator('.set-tab[data-sec=engine]').click();
   await shot(page, 'settings-engine');
 }

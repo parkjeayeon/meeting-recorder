@@ -9,6 +9,7 @@ import { mountReact } from '../../../shared/page-host/index.tsx';
 import { createDialog } from './dialog.ts';
 import { createMeeting } from './meeting.ts';
 import { createPermissions } from './permissions.ts';
+import { createPhone, OVERLAP_TEXT } from './phone.ts';
 import { createSetup } from './setup.ts';
 import type { SettingsCtx } from './state.ts';
 import { createStatus } from './status.ts';
@@ -218,5 +219,93 @@ describe('permissions (권한 칸)', () => {
     snapshot.saved = { ...saved, meetingSystemAudio: true };
     await role.render(status);
     expect(issues.get('perm:systemAudio')?.sec).toBe('perms');
+  });
+});
+
+describe('phone (폰 녹음 칸)', () => {
+  const switches = () => [q<HTMLInputElement>('#inboxEnabled'), q<HTMLInputElement>('#inboxCopyMinutes')].map((b) => ({ checked: b.checked, disabled: b.disabled }));
+  const apply = (role: ReturnType<typeof createPhone>, over: object) => role.applySaved({ ...saved, ...over } as unknown as Settings);
+
+  it('기본값: 폴더 없음, 두 스위치 모두 꺼지고 잠김 — 저장한 적 없는 설정(칸 없음)도 같다', () => {
+    const { ctx } = fakeCtx();
+    const role = createPhone(ctx);
+    for (const over of [{}, { inboxDir: null, inboxEnabled: false, inboxCopyMinutes: false }]) {
+      apply(role, over);
+      expect(q('#inboxDirPath').textContent).toBe('아직 고르지 않았습니다');
+      expect(q('#inboxChoose').textContent).toBe('폴더 고르기…');
+      expect([q('#inboxOpen').hidden, q('#inboxClear').hidden, q('#inboxDirError').hidden]).toEqual([true, true, true]);
+      expect(q('#inboxEnabledHint').textContent).toBe('먼저 받을 폴더를 고르세요.');
+      expect(switches()).toEqual([{ checked: false, disabled: true }, { checked: false, disabled: true }]);
+    }
+  });
+
+  it('폴더를 고르면 ~로 줄여 보이고 지켜보기만 풀린다, 지켜보기를 켜야 회의록 저장이 풀린다', () => {
+    const { ctx } = fakeCtx();
+    const role = createPhone(ctx);
+    const dir = '/Users/test/Library/CloudStorage/Drive/녹음';
+    apply(role, { inboxDir: dir, inboxEnabled: false, inboxCopyMinutes: false });
+    expect(q('#inboxDirPath').textContent).toBe('~/Library/CloudStorage/Drive/녹음');
+    expect(q('#inboxDirPath').title).toBe(dir);
+    expect(q('#inboxChoose').textContent).toBe('변경…');
+    expect([q('#inboxOpen').hidden, q('#inboxClear').hidden]).toEqual([false, false]);
+    expect(q('#inboxEnabledHint').textContent).toBe('새 녹음이 들어오면 회의로 만들고 회의록까지 만듭니다.');
+    expect(switches()).toEqual([{ checked: false, disabled: false }, { checked: false, disabled: true }]);
+    apply(role, { inboxDir: dir, inboxEnabled: true, inboxCopyMinutes: true });
+    expect(switches()).toEqual([{ checked: true, disabled: false }, { checked: true, disabled: false }]);
+    // 폴더가 없는데 켜짐이 남아 있어도(손으로 고친 파일) 꺼진 것으로 보이고 잠긴다
+    apply(role, { inboxDir: null, inboxEnabled: true, inboxCopyMinutes: true });
+    expect(switches()).toEqual([{ checked: false, disabled: true }, { checked: false, disabled: true }]);
+  });
+
+  it('고르기: 고른 폴더를 저장, 취소면 저장하지 않음, 녹음 폴더와 겹치면 저장하지 않고 그 줄에 이유', async () => {
+    const chooseInbox = vi.fn();
+    const { ctx, settingsStore } = fakeCtx({ chooseInbox, openInbox: vi.fn() });
+    const role = createPhone(ctx);
+    role.wire();
+    chooseInbox.mockResolvedValueOnce(null);
+    q('#inboxChoose').click();
+    await settle();
+    expect(settingsStore.save).not.toHaveBeenCalled();
+    chooseInbox.mockResolvedValueOnce({ ok: false, reason: 'overlap' });
+    q('#inboxChoose').click();
+    await settle();
+    expect(settingsStore.save).not.toHaveBeenCalled();
+    expect(q('#inboxDirError').hidden).toBe(false);
+    expect(q('#inboxDirError').textContent).toBe(OVERLAP_TEXT);
+    expect(OVERLAP_TEXT).toBe('녹음 폴더와 겹치는 폴더는 고를 수 없습니다.');
+    chooseInbox.mockResolvedValueOnce({ ok: true, dir: '/Users/test/Drive/녹음' });
+    q('#inboxChoose').click();
+    expect(q('#inboxDirError').hidden).toBe(true); // 다시 고르면 이유를 지운다
+    await settle();
+    expect(settingsStore.save).toHaveBeenCalledExactlyOnceWith({ inboxDir: '/Users/test/Drive/녹음' });
+  });
+
+  it('고르기가 실패하면 알림으로', async () => {
+    const { ctx, settingsStore } = fakeCtx({ chooseInbox: vi.fn().mockRejectedValue(new Error('막힘')) });
+    createPhone(ctx).wire();
+    q('#inboxChoose').click();
+    await settle();
+    expect(ctx.toast).toHaveBeenCalledWith('받을 폴더를 바꾸지 못했습니다', '막힘', { bad: true });
+    expect(settingsStore.save).not.toHaveBeenCalled();
+  });
+
+  it('선택 해제는 폴더와 두 스위치를 한 번에 끈다, 열기는 본체에 맡긴다, 스위치는 제 값만 저장', () => {
+    const openInbox = vi.fn();
+    const { ctx, settingsStore } = fakeCtx({ chooseInbox: vi.fn(), openInbox });
+    const role = createPhone(ctx);
+    role.wire();
+    apply(role, { inboxDir: '/Users/test/Drive/녹음', inboxEnabled: true, inboxCopyMinutes: true });
+    q('#inboxOpen').click();
+    expect(openInbox).toHaveBeenCalledExactlyOnceWith();
+    const enabled = q<HTMLInputElement>('#inboxEnabled');
+    enabled.checked = false;
+    enabled.dispatchEvent(new Event('change'));
+    expect(settingsStore.save).toHaveBeenLastCalledWith({ inboxEnabled: false });
+    const copy = q<HTMLInputElement>('#inboxCopyMinutes');
+    copy.checked = false;
+    copy.dispatchEvent(new Event('change'));
+    expect(settingsStore.save).toHaveBeenLastCalledWith({ inboxCopyMinutes: false });
+    q('#inboxClear').click();
+    expect(settingsStore.save).toHaveBeenLastCalledWith({ inboxDir: null, inboxEnabled: false, inboxCopyMinutes: false });
   });
 });
